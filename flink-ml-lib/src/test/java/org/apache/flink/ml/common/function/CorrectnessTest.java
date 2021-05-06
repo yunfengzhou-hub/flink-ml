@@ -33,8 +33,6 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
-import java.util.function.Function;
 
 import static org.apache.flink.table.api.Expressions.$;
 import static org.junit.Assert.assertEquals;
@@ -46,7 +44,6 @@ public class CorrectnessTest {
 
     @Before
     public void setup(){
-
         env = StreamExecutionEnvironment.createLocalEnvironment();
         EnvironmentSettings settings =
                 EnvironmentSettings.newInstance().inStreamingMode().useBlinkPlanner().build();
@@ -58,11 +55,37 @@ public class CorrectnessTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        Function<TestType.Order, List<TestType.Order>> function =
+        StreamFunction<TestType.Order, TestType.Order> function =
                 PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
 
-        TestType.Order data = new TestType.Order(1L, "beer", 3);
+        TestType.Order data = new TestType.Order();
         assertEquals(Collections.singletonList(data), function.apply(data));
+
+    }
+
+    @Test
+    public void testArithmetic() throws Exception {
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                return table.select(
+                        $("user").plus(1).as("user"),
+                        $("product").repeat(2).as("product"),
+                        $("amount").times(2).as("amount"));
+            }
+        });
+
+        StreamFunction<TestType.Order, TestType.Order> function =
+                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+
+        TestType.Order inputData = new TestType.Order();
+        TestType.Order outputData = new TestType.Order(
+                2L,
+                "productproduct",
+                2L
+        );
+        assertEquals(Collections.singletonList(outputData), function.apply(inputData));
 
     }
 
@@ -71,12 +94,12 @@ public class CorrectnessTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        Function<TestType.Order, List<TestType.Order>> function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-        for(int i = 0; i < 100; i++){
+        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        for(int i = 0; i < 10; i++){
             function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
         }
 
-        TestType.Order data = new TestType.Order(1L, "beer", 3);
+        TestType.Order data = new TestType.Order();
         assertEquals(Collections.singletonList(data), function.apply(data));
 
     }
@@ -86,10 +109,10 @@ public class CorrectnessTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        Function<TestType.Order, List<TestType.Order>> function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-        TestType.Order data = new TestType.Order(1L, "beer", 3);
+        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        TestType.Order data = new TestType.Order();
 
-        for(int i = 0; i < 100; i++){
+        for(int i = 0; i < 10; i++){
             function.apply(data);
         }
         assertEquals(Collections.singletonList(data), function.apply(data));
@@ -106,10 +129,10 @@ public class CorrectnessTest {
         out.println(pipelineJson);
         out.close();
 
-        Function<TestType.Order, List<TestType.Order>> function =
+        StreamFunction<TestType.Order, TestType.Order> function =
                 PipelineUtils.toFunction(filename, TestType.Order.class, TestType.Order.class);
 
-        TestType.Order data = new TestType.Order(1L, "beer", 3);
+        TestType.Order data = new TestType.Order();
         assertEquals(Collections.singletonList(data), function.apply(data));
     }
 
@@ -123,10 +146,10 @@ public class CorrectnessTest {
             }
         });
 
-        Function<TestType.Order, List<TestType.Order>> function =
+        StreamFunction<TestType.Order, TestType.Order> function =
                 PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
 
-        TestType.Order data = new TestType.Order(1L, "beer", 3);
+        TestType.Order data = new TestType.Order();
         assertEquals(Collections.emptyList(), function.apply(data));
     }
 
@@ -140,11 +163,11 @@ public class CorrectnessTest {
             }
         });
 
-        Function<TestType.ExpandedOrder, List<TestType.Order>> function =
+        StreamFunction<TestType.ExpandedOrder, TestType.Order> function =
                 PipelineUtils.toFunction(pipeline, TestType.ExpandedOrder.class, TestType.Order.class);
 
-        TestType.ExpandedOrder input = new TestType.ExpandedOrder(1L, "beer", 3, 1.0);
-        TestType.Order output = new TestType.Order(1L, "beer", 3);
+        TestType.ExpandedOrder input = new TestType.ExpandedOrder();
+        TestType.Order output = new TestType.Order();
         assertEquals(Collections.singletonList(output), function.apply(input));
     }
 
@@ -158,10 +181,10 @@ public class CorrectnessTest {
             }
         });
 
-        Function<TestType.Order, List<TestType.Order>> function =
+        StreamFunction<TestType.Order, TestType.Order> function =
                 PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
 
-        TestType.Order data = new TestType.Order(1L, "beer", 3);
+        TestType.Order data = new TestType.Order();
         assertEquals(Arrays.asList(data, data), function.apply(data));
     }
 

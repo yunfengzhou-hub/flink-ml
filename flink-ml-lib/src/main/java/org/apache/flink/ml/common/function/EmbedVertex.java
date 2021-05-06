@@ -26,9 +26,10 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import java.util.ArrayList;
 import java.util.List;
 
-class EmbedVertex implements Runnable {
-    protected EmbedOutput<StreamRecord> output;
-    protected StreamNode node;
+abstract class EmbedVertex implements Runnable {
+    protected final EmbedOutput<StreamRecord> output;
+    protected final List<StreamEdge> inEdges;
+    protected final int id;
 
     public static EmbedVertex createEmbedGraphVertex(StreamNode node){
         EmbedOutput<StreamRecord> output = new EmbedOutput<>(new ArrayList<>());
@@ -38,7 +39,7 @@ class EmbedVertex implements Runnable {
         }else if(operator instanceof TwoInputStreamOperator){
             return new TwoInputEmbedVertex(node, output, (TwoInputStreamOperator<?, ?, ?>) operator);
         }else if(operator instanceof StreamSource){
-            return new EmbedVertex(node, output);
+            return new SourceEmbedVertex(node, output);
         }else{
             throw new IllegalArgumentException(String.format("%s only supports %s, %s and %s. %s is not supported yet.",
                     EmbedVertex.class, StreamSource.class, OneInputStreamOperator.class, TwoInputStreamOperator.class, operator.getClass()));
@@ -46,28 +47,24 @@ class EmbedVertex implements Runnable {
     }
 
     protected EmbedVertex(StreamNode node, EmbedOutput<StreamRecord> output) {
-        this.node = node;
         this.output = output;
+        this.inEdges = node.getInEdges();
+        this.id = node.getId();
     }
 
     public List<StreamEdge> getInEdges() {
-        return node.getInEdges();
+        return inEdges;
     }
 
     public int getId() {
-        return node.getId();
+        return id;
     }
 
-    public List<StreamRecord> getInputList(int typeNumber){
-        throw new UnsupportedOperationException();
-    }
+    public abstract List<StreamRecord> getInputList(int typeNumber);
+
+    public abstract void clear();
 
     public EmbedOutput<StreamRecord> getOutput(){
         return output;
-    }
-
-    @Override
-    public void run() {
-
     }
 }

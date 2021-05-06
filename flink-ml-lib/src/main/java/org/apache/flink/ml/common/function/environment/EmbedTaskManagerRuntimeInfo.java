@@ -20,9 +20,12 @@ package org.apache.flink.ml.common.function.environment;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
+import org.apache.flink.runtime.util.EnvironmentInformation;
 
 import java.io.File;
 import java.net.InetAddress;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 class EmbedTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
     private final Configuration configuration;
@@ -33,6 +36,14 @@ class EmbedTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
         this(
                 new Configuration(),
                 System.getProperty("java.io.tmpdir").split(",|" + File.pathSeparator));
+    }
+
+    public EmbedTaskManagerRuntimeInfo(Configuration configuration) {
+        this(configuration, EnvironmentInformation.getTemporaryFileDirectory());
+    }
+
+    public EmbedTaskManagerRuntimeInfo(Configuration configuration, String tmpDirectory) {
+        this(configuration, new String[] {checkNotNull(tmpDirectory)});
     }
 
     public EmbedTaskManagerRuntimeInfo(Configuration configuration, String[] tmpDirectories) {
@@ -60,7 +71,7 @@ class EmbedTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
 
     @Override
     public boolean shouldExitJvmOnOutOfMemoryError() {
-        // never kill the JVM in embed environment
+        // never kill the JVM in tests
         return false;
     }
 

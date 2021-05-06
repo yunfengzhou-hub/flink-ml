@@ -24,43 +24,51 @@ import java.util.function.BiConsumer;
 
 class EmbedUserCodeClassLoader implements UserCodeClassLoader {
 
-    private final ClassLoader classLoader;
+        private final ClassLoader classLoader;
 
-    private final BiConsumer<String, Runnable> registerReleaseHookConsumer;
+        private final BiConsumer<String, Runnable> registerReleaseHookConsumer;
 
-    public EmbedUserCodeClassLoader(
-            ClassLoader classLoader, BiConsumer<String, Runnable> registerReleaseHookConsumer) {
-        this.classLoader = classLoader;
-        this.registerReleaseHookConsumer = registerReleaseHookConsumer;
-    }
-
-    @Override
-    public ClassLoader asClassLoader() {
-        return classLoader;
-    }
-
-    @Override
-    public void registerReleaseHookIfAbsent(String releaseHookName, Runnable releaseHook) {
-        registerReleaseHookConsumer.accept(releaseHookName, releaseHook);
-    }
-
-    public static Builder newBuilder() {
-        return new Builder();
-    }
-
-    public static final class Builder {
-        private ClassLoader classLoader = Builder.class.getClassLoader();
-        private final BiConsumer<String, Runnable> registerReleaseHookConsumer = (ign, ore) -> {};
-
-        private Builder() {}
-
-        public Builder setClassLoader(ClassLoader classLoader) {
+        public EmbedUserCodeClassLoader(
+                ClassLoader classLoader, BiConsumer<String, Runnable> registerReleaseHookConsumer) {
             this.classLoader = classLoader;
-            return this;
+            this.registerReleaseHookConsumer = registerReleaseHookConsumer;
         }
 
-        public EmbedUserCodeClassLoader build() {
-            return new EmbedUserCodeClassLoader(classLoader, registerReleaseHookConsumer);
+        @Override
+        public ClassLoader asClassLoader() {
+            return classLoader;
         }
+
+        @Override
+        public void registerReleaseHookIfAbsent(String releaseHookName, Runnable releaseHook) {
+            registerReleaseHookConsumer.accept(releaseHookName, releaseHook);
+        }
+
+        public static Builder newBuilder() {
+            return new Builder();
+        }
+
+/** Builder for the testing classloader. */
+public static final class Builder {
+    private ClassLoader classLoader = Builder.class.getClassLoader();
+    private BiConsumer<String, Runnable> registerReleaseHookConsumer = (ign, ore) -> {};
+
+    private Builder() {}
+
+    public Builder setClassLoader(ClassLoader classLoader) {
+        this.classLoader = classLoader;
+        return this;
+    }
+
+    public Builder setRegisterReleaseHookConsumer(
+            BiConsumer<String, Runnable> registerReleaseHookConsumer) {
+        this.registerReleaseHookConsumer = registerReleaseHookConsumer;
+        return this;
+    }
+
+    public EmbedUserCodeClassLoader build() {
+        return new EmbedUserCodeClassLoader(classLoader, registerReleaseHookConsumer);
     }
 }
+}
+

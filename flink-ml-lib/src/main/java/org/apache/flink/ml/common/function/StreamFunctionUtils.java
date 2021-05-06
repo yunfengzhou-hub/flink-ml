@@ -21,10 +21,12 @@ package org.apache.flink.ml.common.function;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.functions.RichFunction;
+import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.ml.common.function.environment.EmbedRuntimeEnvironment;
+import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.ml.common.function.environment.EmbedOperatorEventDispatcherImpl;
 import org.apache.flink.ml.common.function.environment.EmbedProcessingTimeServiceImpl;
+import org.apache.flink.ml.common.function.environment.EmbedRuntimeEnvironment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -62,6 +64,7 @@ class StreamFunctionUtils {
         StreamConfig streamConfig = new StreamConfig(new Configuration());
         streamConfig.setOperatorID(new OperatorID());
         streamConfig.setOperatorName("operator name");
+        streamConfig.setManagedMemoryFractionOperatorOfUseCase(ManagedMemoryUseCase.BATCH_OP, 0.9);
 
         Supplier<ProcessingTimeService> processingTimeServiceFactory = EmbedProcessingTimeServiceImpl::new;
 
@@ -82,14 +85,30 @@ class StreamFunctionUtils {
             ((AbstractStreamOperatorFactory)factory).setProcessingTimeService(processingTimeServiceFactory.get());
         }
 
-        return factory.createStreamOperator(parameters);
+        StreamOperator operator = factory.createStreamOperator(parameters);
+        try {
+//            System.out.println(operator);
+//            boolean need = operator instanceof AbstractUdfStreamOperator;
+//            System.out.println(need);
+//            if(need){
+//                System.out.println(((AbstractUdfStreamOperator)operator).getUserFunction() instanceof RichFunction);
+//            }
+            operator.open();
+//            System.out.println(operator);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+        return operator;
     }
 
     static StreamGraph getStreamGraph(DataStream<?> dataStream){
-        StreamExecutionEnvironment env = dataStream.getExecutionEnvironment();
+        return getStreamGraph(Collections.singletonList(dataStream.getTransformation()), dataStream.getExecutionEnvironment());
+    }
 
+    static StreamGraph getStreamGraph(List<Transformation<?>> transformations, StreamExecutionEnvironment env){
         StreamGraphGenerator generator = new StreamGraphGenerator(
-                Collections.singletonList(dataStream.getTransformation()),
+                transformations,
                 env.getConfig(),
                 env.getCheckpointConfig(),
                 new Configuration());
@@ -103,8 +122,7 @@ class StreamFunctionUtils {
         return generator.setJobName("Stream Function").generate();
     }
 
-    static void validateGraph(DataStream<?> dataStream) {
-        StreamGraph graph = getStreamGraph(dataStream);
+    static void validateGraph(StreamGraph graph) {
         List<StreamNode> nodes = new ArrayList<>(graph.getStreamNodes());
 
         int sourceCount = 0;

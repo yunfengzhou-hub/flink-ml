@@ -38,7 +38,6 @@ class TwoInputEmbedVertex extends EmbedVertex {
         this.operator = operator;
     }
 
-    @Override
     public List<StreamRecord> getInputList(int typeNumber) {
         if(typeNumber == 1){
             return input1;
@@ -47,6 +46,13 @@ class TwoInputEmbedVertex extends EmbedVertex {
         }else{
             throw new RuntimeException(String.format("Illegal typeNumber: %d", typeNumber));
         }
+    }
+
+    @Override
+    public void clear() {
+        input1.clear();
+        input2.clear();
+        output.getOutputList().clear();
     }
 
     @Override
@@ -62,6 +68,7 @@ class TwoInputEmbedVertex extends EmbedVertex {
             try {
                 operator.processElement2(record);
             } catch (Exception e) {
+                e.printStackTrace();
                 throw new RuntimeException(e);
             }
         }

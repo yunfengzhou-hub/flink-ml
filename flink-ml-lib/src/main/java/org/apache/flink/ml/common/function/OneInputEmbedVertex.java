@@ -18,9 +18,12 @@
 
 package org.apache.flink.ml.common.function;
 
+import org.apache.flink.ml.common.function.environment.EmbedRuntimeEnvironment;
 import org.apache.flink.streaming.api.graph.StreamNode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.tasks.OneInputStreamTask;
+import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +37,13 @@ class OneInputEmbedVertex extends EmbedVertex {
             EmbedOutput<StreamRecord> output,
             OneInputStreamOperator operator){
         super(node, output);
+        EmbedRuntimeEnvironment env = new EmbedRuntimeEnvironment();
+        StreamTask<?, ?> task;
+        try {
+            task = new OneInputStreamTask<>(env);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         this.operator = operator;
     }
 
@@ -46,11 +56,18 @@ class OneInputEmbedVertex extends EmbedVertex {
     }
 
     @Override
+    public void clear() {
+        input.clear();
+        output.getOutputList().clear();
+    }
+
+    @Override
     public void run() {
         for(StreamRecord record : input){
             try {
                 operator.processElement(record);
             } catch (Exception e) {
+                e.printStackTrace();
                 throw new RuntimeException(e);
             }
         }

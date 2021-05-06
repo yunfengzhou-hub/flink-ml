@@ -19,16 +19,24 @@
 package org.apache.flink.ml.common.function.environment;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.streaming.runtime.tasks.TimerService;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
+import org.apache.flink.streaming.runtime.tasks.ProcessingTimeServiceUtil;
 import org.apache.flink.util.concurrent.NeverCompleteFuture;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 @Internal
 public class EmbedProcessingTimeServiceImpl implements ProcessingTimeService {
+
+    private final TimerService timerService;
+
+    private final Function<ProcessingTimeCallback, ProcessingTimeCallback>
+            processingTimeCallbackWrapper;
 
     private final AtomicInteger numRunningTimers;
 
@@ -36,7 +44,16 @@ public class EmbedProcessingTimeServiceImpl implements ProcessingTimeService {
 
     private volatile boolean quiesced;
 
-    public EmbedProcessingTimeServiceImpl() {
+    public EmbedProcessingTimeServiceImpl(){
+        this(new EmbedTimerService(), null);
+    }
+
+    public EmbedProcessingTimeServiceImpl(
+            TimerService timerService,
+            Function<ProcessingTimeCallback, ProcessingTimeCallback>
+                    processingTimeCallbackWrapper) {
+        this.timerService = timerService;
+        this.processingTimeCallbackWrapper = processingTimeCallbackWrapper;
 
         this.numRunningTimers = new AtomicInteger(0);
         this.quiesceCompletedFuture = new CompletableFuture<>();
@@ -45,12 +62,20 @@ public class EmbedProcessingTimeServiceImpl implements ProcessingTimeService {
 
     @Override
     public long getCurrentProcessingTime() {
-        return 1;
+        return timerService.getCurrentProcessingTime();
     }
 
     @Override
     public ScheduledFuture<?> registerTimer(long timestamp, ProcessingTimeCallback target) {
-        return new SimpleScheduledFuture<>();
+        if (isQuiesced()) {
+            return new NeverCompleteFuture(
+                    ProcessingTimeServiceUtil.getProcessingTimeDelay(
+                            timestamp, getCurrentProcessingTime()));
+        }
+
+        return timerService.registerTimer(
+                timestamp,
+                addQuiesceProcessingToCallback(processingTimeCallbackWrapper.apply(target)));
     }
 
     @Override
@@ -60,7 +85,10 @@ public class EmbedProcessingTimeServiceImpl implements ProcessingTimeService {
             return new NeverCompleteFuture(initialDelay);
         }
 
-        return new SimpleScheduledFuture<>();
+        return timerService.scheduleAtFixedRate(
+                addQuiesceProcessingToCallback(processingTimeCallbackWrapper.apply(callback)),
+                initialDelay,
+                period);
     }
 
     @Override
@@ -70,7 +98,10 @@ public class EmbedProcessingTimeServiceImpl implements ProcessingTimeService {
             return new NeverCompleteFuture(initialDelay);
         }
 
-        return new SimpleScheduledFuture<>();
+        return timerService.scheduleWithFixedDelay(
+                addQuiesceProcessingToCallback(processingTimeCallbackWrapper.apply(callback)),
+                initialDelay,
+                period);
     }
 
     @Override
@@ -90,4 +121,23 @@ public class EmbedProcessingTimeServiceImpl implements ProcessingTimeService {
         return quiesced;
     }
 
+    private ProcessingTimeCallback addQuiesceProcessingToCallback(ProcessingTimeCallback callback) {
+
+        return timestamp -> {
+            if (isQuiesced()) {
+                return;
+            }
+
+            numRunningTimers.incrementAndGet();
+            try {
+                if (!isQuiesced()) {
+                    callback.onProcessingTime(timestamp);
+                }
+            } finally {
+                if (numRunningTimers.decrementAndGet() == 0 && isQuiesced()) {
+                    quiesceCompletedFuture.complete(null);
+                }
+            }
+        };
+    }
 }

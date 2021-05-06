@@ -18,19 +18,26 @@
 
 package org.apache.flink.ml.common.function;
 
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.table.annotation.DataTypeHint;
+import org.apache.flink.table.data.RowData;
+
+import java.sql.Timestamp;
+import java.util.concurrent.TimeUnit;
+
 class TestType {
     public static class Order {
         public Long user;
         public String product;
-        public int amount;
+        public Long amount;
 
         public Order() {
             this.user = 1L;
             this.product = "product";
-            this.amount = 1;
+            this.amount = 1L;
         }
 
-        public Order(Long user, String product, int amount) {
+        public Order(Long user, String product, Long amount) {
             this.user = user;
             this.product = product;
             this.amount = amount;
@@ -51,13 +58,13 @@ class TestType {
 
         @Override
         public int hashCode() {
-            return (user.hashCode() * 31 + product.hashCode()) * 31 + amount;
+            return (user.hashCode() * 31 + product.hashCode()) * 31 + amount.hashCode();
         }
 
         @Override
         public boolean equals(Object obj) {
-            if(!(obj instanceof Order)) return false;
-            Order order = (Order)obj;
+            if (!(obj instanceof Order)) return false;
+            Order order = (Order) obj;
 
             return this.user.equals(order.user) && this.product.equals(order.product) && this.amount == order.amount;
         }
@@ -71,7 +78,7 @@ class TestType {
             this.price = 0.0;
         }
 
-        public ExpandedOrder(Long user, String product, int amount, Double price) {
+        public ExpandedOrder(Long user, String product, Long amount, Double price) {
             super(user, product, amount);
             this.price = price;
         }
@@ -88,5 +95,64 @@ class TestType {
 
             return super.equals(obj) && this.price.equals(order.price);
         }
+    }
+
+    public static class User {
+        public Long user;
+        public User() {
+            this.user = 1L;
+        }
+
+        public User(Long user) {
+            this.user = user;
+        }
+
+        @Override
+        public int hashCode() {
+            return user.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof User)) return false;
+            User order = (User) obj;
+
+            return this.user.equals(order.user);
+        }
+    }
+
+    public static class Meeting {
+        public @DataTypeHint(value = "TIMESTAMP(3)", bridgedTo = java.sql.Timestamp.class) Timestamp time;
+        public String event;
+
+        public Meeting(){
+            time = new Timestamp(1);
+            event = "default meeting event";
+        }
+
+        public Meeting(int millis, String event){
+            this.time = new Timestamp(millis);
+            this.event = event;
+        }
+
+        @Override
+        public int hashCode() {
+            return time.hashCode() * 31 + event.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if(!(obj instanceof Meeting)){
+                return false;
+            }
+            Meeting meeting = (Meeting) obj;
+            return this.time.equals(meeting.time) && this.event.equals(meeting.event);
+        }
+    }
+
+    public static void main(String[] args) {
+        Order order = new Order();
+        RowData rowData = (RowData) order;
+        System.out.println(rowData);
     }
 }

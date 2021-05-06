@@ -36,18 +36,15 @@ import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
-import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
-import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
-import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.UserCodeClassLoader;
 
 import java.util.Collections;
@@ -60,12 +57,13 @@ public class EmbedRuntimeEnvironment implements Environment {
     private final JobID jobId = new JobID();
     private final JobVertexID jobVertexId = new JobVertexID();
     private final ExecutionAttemptID executionId = new ExecutionAttemptID();
+    private final ExecutionConfig executionConfig = new ExecutionConfig();
     private final TaskInfo taskInfo;
     private final AccumulatorRegistry accumulatorRegistry =
             new AccumulatorRegistry(jobId, executionId);
 
     public EmbedRuntimeEnvironment() {
-        this("Function Job", 1, 0, 1);
+        this("Embed Job", 1, 0, 1);
     }
 
     public EmbedRuntimeEnvironment(
@@ -75,7 +73,7 @@ public class EmbedRuntimeEnvironment implements Environment {
 
     @Override
     public ExecutionConfig getExecutionConfig() {
-        return null;
+        return executionConfig;
     }
 
     @Override
@@ -169,9 +167,7 @@ public class EmbedRuntimeEnvironment implements Environment {
     }
 
     @Override
-    public void acknowledgeCheckpoint(long checkpointId, CheckpointMetrics checkpointMetrics) {
-        throw new UnsupportedOperationException();
-    }
+    public void acknowledgeCheckpoint(long checkpointId, CheckpointMetrics checkpointMetrics) {}
 
     @Override
     public ExternalResourceInfoProvider getExternalResourceInfoProvider() {
@@ -182,12 +178,10 @@ public class EmbedRuntimeEnvironment implements Environment {
     public void acknowledgeCheckpoint(
             long checkpointId,
             CheckpointMetrics checkpointMetrics,
-            TaskStateSnapshot subtaskState) {
-        throw new UnsupportedOperationException();
-    }
+            TaskStateSnapshot subtaskState) {}
 
     @Override
-    public void declineCheckpoint(long l, Throwable throwable) {
+    public void declineCheckpoint(long checkpointId, Throwable cause) {
         throw new UnsupportedOperationException();
     }
 
@@ -225,11 +219,5 @@ public class EmbedRuntimeEnvironment implements Environment {
     @Override
     public TaskOperatorEventGateway getOperatorCoordinatorEventGateway() {
         return new NoOpTaskOperatorEventGateway();
-    }
-
-    private static final class NoOpTaskOperatorEventGateway implements TaskOperatorEventGateway {
-        @Override
-        public void sendOperatorEventToCoordinator(
-                OperatorID operator, SerializedValue<OperatorEvent> event) {}
     }
 }
