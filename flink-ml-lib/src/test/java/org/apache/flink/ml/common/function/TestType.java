@@ -18,12 +18,10 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.table.annotation.DataTypeHint;
 import org.apache.flink.table.data.RowData;
 
 import java.sql.Timestamp;
-import java.util.concurrent.TimeUnit;
 
 class TestType {
     public static class Order {

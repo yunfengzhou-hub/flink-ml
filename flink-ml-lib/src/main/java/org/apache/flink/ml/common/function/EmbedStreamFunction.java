@@ -18,7 +18,7 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -29,15 +29,12 @@ import org.apache.flink.table.planner.utils.ExecutorUtils;
 
 import java.util.*;
 
+@PublicEvolving
 public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
 
     private Map<Integer, List<StreamRecord>> outputMap;
     private final Map<Integer, EmbedVertex> vertexMap = new HashMap<>();
     private final int resultOperatorId;
-
-    public EmbedStreamFunction(List<Transformation<?>> transformations, StreamExecutionEnvironment env) {
-        this(StreamFunctionUtils.getStreamGraph(transformations, env));
-    }
 
     public EmbedStreamFunction(DataStream<R> stream) {
         this(ExecutorUtils.generateStreamGraph(
@@ -50,7 +47,7 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
         StreamFunctionUtils.validateGraph(graph);
 
         List<StreamNode> nodes = new ArrayList<>(graph.getStreamNodes());
-        StreamFunctionUtils.topologicalSort(nodes);
+        nodes.sort(Comparator.comparingInt(StreamNode::getId));
         this.resultOperatorId = nodes.get(nodes.size() - 1).getId();
 
         for(StreamNode node: nodes) {
@@ -100,7 +97,7 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
 
             vertex.run();
 
-            result = vertex.getOutput().getOutputList();
+            result = vertex.getOutput();
         }
 
         outputMap.put(vertexId, result);

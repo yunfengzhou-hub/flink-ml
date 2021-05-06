@@ -33,7 +33,7 @@ abstract class EmbedVertex implements Runnable {
 
     public static EmbedVertex createEmbedGraphVertex(StreamNode node){
         EmbedOutput<StreamRecord> output = new EmbedOutput<>(new ArrayList<>());
-        StreamOperator<?> operator = StreamFunctionUtils.getStreamOperator(node.getOperatorFactory(), output);
+        StreamOperator<?> operator = StreamFunctionUtils.getStreamOperator(node, output);
         if(operator instanceof OneInputStreamOperator){
             return new OneInputEmbedVertex(node, output, (OneInputStreamOperator<?, ?>) operator);
         }else if(operator instanceof TwoInputStreamOperator){
@@ -64,7 +64,7 @@ abstract class EmbedVertex implements Runnable {
 
     public abstract void clear();
 
-    public EmbedOutput<StreamRecord> getOutput(){
-        return output;
+    public List<StreamRecord> getOutput(){
+        return output.getOutputList();
     }
 }

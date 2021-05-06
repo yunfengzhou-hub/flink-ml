@@ -33,7 +33,6 @@ import java.util.Arrays;
 
 import static org.apache.flink.table.api.Expressions.$;
 import static org.apache.flink.table.api.Expressions.lit;
-import static org.junit.Assert.assertEquals;
 
 public class ValidationTest {
     StreamExecutionEnvironment env;
@@ -93,7 +92,7 @@ public class ValidationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.User.class, false);
+        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.User.class);
     }
 
     @Test(expected = TableException.class)

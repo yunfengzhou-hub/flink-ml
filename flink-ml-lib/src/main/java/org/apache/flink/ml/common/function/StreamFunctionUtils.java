@@ -18,22 +18,15 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.functions.RichFunction;
-import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.ml.common.function.environment.EmbedOperatorEventDispatcherImpl;
 import org.apache.flink.ml.common.function.environment.EmbedProcessingTimeServiceImpl;
 import org.apache.flink.ml.common.function.environment.EmbedRuntimeEnvironment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamGraph;
-import org.apache.flink.streaming.api.graph.StreamGraphGenerator;
 import org.apache.flink.streaming.api.graph.StreamNode;
 import org.apache.flink.streaming.api.operators.*;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -42,12 +35,9 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.function.Supplier;
 
-@Internal
 class StreamFunctionUtils {
     public static StreamOperator getStreamOperator(StreamNode node, Output<StreamRecord> output){
         return getStreamOperator(node.getOperatorFactory(), output);
@@ -64,7 +54,6 @@ class StreamFunctionUtils {
         StreamConfig streamConfig = new StreamConfig(new Configuration());
         streamConfig.setOperatorID(new OperatorID());
         streamConfig.setOperatorName("operator name");
-        streamConfig.setManagedMemoryFractionOperatorOfUseCase(ManagedMemoryUseCase.BATCH_OP, 0.9);
 
         Supplier<ProcessingTimeService> processingTimeServiceFactory = EmbedProcessingTimeServiceImpl::new;
 
@@ -87,39 +76,12 @@ class StreamFunctionUtils {
 
         StreamOperator operator = factory.createStreamOperator(parameters);
         try {
-//            System.out.println(operator);
-//            boolean need = operator instanceof AbstractUdfStreamOperator;
-//            System.out.println(need);
-//            if(need){
-//                System.out.println(((AbstractUdfStreamOperator)operator).getUserFunction() instanceof RichFunction);
-//            }
             operator.open();
-//            System.out.println(operator);
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);
         }
         return operator;
-    }
-
-    static StreamGraph getStreamGraph(DataStream<?> dataStream){
-        return getStreamGraph(Collections.singletonList(dataStream.getTransformation()), dataStream.getExecutionEnvironment());
-    }
-
-    static StreamGraph getStreamGraph(List<Transformation<?>> transformations, StreamExecutionEnvironment env){
-        StreamGraphGenerator generator = new StreamGraphGenerator(
-                transformations,
-                env.getConfig(),
-                env.getCheckpointConfig(),
-                new Configuration());
-
-        generator.setRuntimeExecutionMode(RuntimeExecutionMode.BATCH)
-                .setStateBackend(env.getStateBackend())
-                .setChaining(env.isChainingEnabled())
-                .setUserArtifacts(env.getCachedFiles())
-                .setDefaultBufferTimeout(env.getBufferTimeout());
-
-        return generator.setJobName("Stream Function").generate();
     }
 
     static void validateGraph(StreamGraph graph) {
@@ -149,10 +111,6 @@ class StreamFunctionUtils {
             }
 
         }
-    }
-
-     static void topologicalSort(List<StreamNode> nodes){
-        nodes.sort(Comparator.comparingInt(StreamNode::getId));
     }
 }
 

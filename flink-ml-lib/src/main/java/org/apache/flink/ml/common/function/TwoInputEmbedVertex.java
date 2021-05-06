@@ -57,20 +57,16 @@ class TwoInputEmbedVertex extends EmbedVertex {
 
     @Override
     public void run() {
-        for(StreamRecord record : input1){
-            try {
+        try {
+            for(StreamRecord record : input1){
                 operator.processElement1(record);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
             }
-        }
-        for(StreamRecord record : input2){
-            try {
+            for(StreamRecord record : input2){
                 operator.processElement2(record);
-            } catch (Exception e) {
-                e.printStackTrace();
-                throw new RuntimeException(e);
             }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
 }
