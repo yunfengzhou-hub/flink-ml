@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+@SuppressWarnings({"unchecked", "rawtypes"})
 class StreamFunctionUtils {
     public static StreamOperator getStreamOperator(StreamNode node, Output<StreamRecord> output){
         return getStreamOperator(node.getOperatorFactory(), output);
@@ -79,7 +80,7 @@ class StreamFunctionUtils {
             operator.open();
         } catch (Exception e) {
             e.printStackTrace();
-            throw new RuntimeException(e);
+            throw new IllegalArgumentException(String.format("Cannot initiate operator %s", operator));
         }
         return operator;
     }

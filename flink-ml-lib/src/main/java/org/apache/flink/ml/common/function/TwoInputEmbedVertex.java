@@ -25,6 +25,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import java.util.ArrayList;
 import java.util.List;
 
+@SuppressWarnings({"unchecked", "rawtypes"})
 class TwoInputEmbedVertex extends EmbedVertex {
     private final TwoInputStreamOperator operator;
     protected final List<StreamRecord> input1 = new ArrayList<>();

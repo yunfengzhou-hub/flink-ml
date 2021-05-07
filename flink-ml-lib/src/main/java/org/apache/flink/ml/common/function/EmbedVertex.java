@@ -26,6 +26,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import java.util.ArrayList;
 import java.util.List;
 
+@SuppressWarnings({"rawtypes"})
 abstract class EmbedVertex implements Runnable {
     protected final EmbedOutput<StreamRecord> output;
     protected final List<StreamEdge> inEdges;

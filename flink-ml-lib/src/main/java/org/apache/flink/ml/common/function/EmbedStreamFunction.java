@@ -18,7 +18,7 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -29,7 +29,8 @@ import org.apache.flink.table.planner.utils.ExecutorUtils;
 
 import java.util.*;
 
-@PublicEvolving
+@Internal
+@SuppressWarnings({"unchecked", "rawtypes"})
 public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
 
     private Map<Integer, List<StreamRecord>> outputMap;

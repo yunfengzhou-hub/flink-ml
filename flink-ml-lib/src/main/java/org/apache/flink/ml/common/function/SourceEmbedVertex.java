@@ -22,7 +22,8 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.List;
 
-class SourceEmbedVertex extends EmbedVertex{
+@SuppressWarnings({"rawtypes"})
+class SourceEmbedVertex extends EmbedVertex {
     protected SourceEmbedVertex(StreamNode node, EmbedOutput<StreamRecord> output) {
         super(node, output);
     }

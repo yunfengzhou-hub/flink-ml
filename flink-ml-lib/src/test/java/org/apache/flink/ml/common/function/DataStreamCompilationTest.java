@@ -28,7 +28,7 @@ import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindo
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.junit.Test;
 
-public class DataStreamValidationTest {
+public class DataStreamCompilationTest {
     @Test(expected = IllegalArgumentException.class)
     public void testStatefulFunction() throws Exception{
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();

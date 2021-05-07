@@ -27,6 +27,8 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
 import org.apache.flink.streaming.api.functions.co.CoMapFunction;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.util.Collector;
 import org.junit.After;
 import org.junit.Before;
@@ -35,9 +37,10 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Collections;
 
+import static org.apache.flink.table.api.Expressions.$;
 import static org.junit.Assert.assertEquals;
 
-public class DataStreamCorrectnessTest {
+public class DataStreamExecutionTest {
     StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
 
     @Before
@@ -232,6 +235,39 @@ public class DataStreamCorrectnessTest {
                 .map(String::toUpperCase);
 
         assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
+    }
+
+    @Test
+    public void testMixTable() throws Exception {
+        DataStream<TestType.Order> stream = env.fromElements(new TestType.Order())
+                .map((MapFunction<TestType.Order, TestType.Order>) order -> {
+                    order.amount ++;
+                    return order;
+                });
+        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+        Table table = tEnv.fromDataStream(stream)
+                .select($("user").plus(1L).as("user"), $("amount"), $("product"));
+        DataStream<TestType.Order> outStream = tEnv.toAppendStream(table, TestType.Order.class);
+
+        TestType.Order inputData = new TestType.Order(
+                1L,
+                "product",
+                1L
+        );
+        TestType.Order outputData = new TestType.Order(
+                2L,
+                "product",
+                2L
+        );
+
+        assertEquals(Collections.singletonList(outputData), new EmbedStreamFunction<>(outStream).apply(inputData));
+    }
+
+    @Test(expected = Exception.class)
+    public void testRuntimeError() throws Exception {
+        DataStream<String> stream = env.fromElements("hello")
+                .map((MapFunction<String, String>) s -> s.substring(10));
+        new EmbedStreamFunction<>(stream).apply("hello");
     }
 
     @After

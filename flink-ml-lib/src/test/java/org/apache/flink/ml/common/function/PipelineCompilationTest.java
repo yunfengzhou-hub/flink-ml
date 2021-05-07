@@ -19,7 +19,10 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.api.java.tuple.Tuple1;
+import org.apache.flink.ml.api.core.Estimator;
+import org.apache.flink.ml.api.core.Model;
 import org.apache.flink.ml.api.core.Pipeline;
+import org.apache.flink.ml.api.misc.param.Params;
 import org.apache.flink.ml.common.utils.PipelineUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -30,11 +33,13 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 import static org.apache.flink.table.api.Expressions.$;
 import static org.apache.flink.table.api.Expressions.lit;
+import static org.junit.Assert.assertEquals;
 
-public class ValidationTest {
+public class PipelineCompilationTest {
     StreamExecutionEnvironment env;
     StreamTableEnvironment tEnv;
 
@@ -46,7 +51,20 @@ public class ValidationTest {
         tEnv = StreamTableEnvironment.create(env, settings);
     }
 
-    // Function should be stateless, i.e., not rely on Tables stored in Environment
+    @Test
+    public void testRepeatCompilation() throws Exception {
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NopTransformer());
+
+        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        for(int i = 0; i < 10; i++){
+            function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        }
+
+        TestType.Order data = new TestType.Order();
+        assertEquals(Collections.singletonList(data), function.apply(data));
+    }
+
     @Test(expected = ValidationException.class)
     public void testTableEnv() throws Exception {
         DataStream<TestType.Order> orderA =
@@ -68,7 +86,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = ValidationException.class)
     public void testGrammarUnion() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -82,7 +100,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = TableException.class)
     public void testGroupBy() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -107,7 +125,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Meeting.class, TestType.Meeting.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = ValidationException.class)
     public void testWindow() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -119,7 +137,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Meeting.class, TestType.Meeting.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = IllegalArgumentException.class)
     public void testGrammarIn() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -133,7 +151,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = ValidationException.class)
     public void testGrammarMinus() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -146,7 +164,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = TableException.class)
     public void testGrammarInsert() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -160,7 +178,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = IllegalArgumentException.class)
     public void testJoin() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -174,7 +192,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = NoSuchMethodException.class)
     public void testRow() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -187,7 +205,7 @@ public class ValidationTest {
         PipelineUtils.toFunction(pipeline, Row.class, Row.class);
     }
 
-    @Test(expected = Exception.class)
+    @Test(expected = RuntimeException.class)
     public void testTuple() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -198,5 +216,24 @@ public class ValidationTest {
         });
 
         PipelineUtils.toFunction(pipeline, Tuple1.class, Tuple1.class);
+    }
+
+    @Test(expected = RuntimeException.class)
+    public void testEstimator() throws Exception {
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new Estimator() {
+            @Override
+            public Model fit(TableEnvironment tableEnvironment, Table table) {
+                return new Pipeline();
+            }
+
+            @Override
+            public Params getParams() {
+                return null;
+            }
+        });
+        pipeline.appendStage(new NopTransformer());
+
+        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 }
