@@ -54,13 +54,15 @@ class OneInputEmbedVertex extends EmbedVertex {
 
     @Override
     public void run() {
-        for(StreamRecord record : input){
-            try {
-                operator.processElement(record);
-            } catch (Exception e) {
-                e.printStackTrace();
-                throw new RuntimeException(e);
+        try {
+            operator.close();
+            operator.open();
+            for(StreamRecord record : input){
+                    operator.processElement(record);
             }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
 }

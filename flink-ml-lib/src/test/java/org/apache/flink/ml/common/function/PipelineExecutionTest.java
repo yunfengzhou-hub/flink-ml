@@ -201,6 +201,30 @@ public class PipelineExecutionTest {
         assertEquals(Collections.singletonList(data), function.apply(data));
     }
 
+    @Test
+    public void testSQL() throws Exception {
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                tableEnvironment.createTemporaryView("tablename", table);
+                return table;
+            }
+        });
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                return tableEnvironment.sqlQuery("SELECT * FROM tablename WHERE amount > 1");
+            }
+        });
+
+        StreamFunction<TestType.Order, TestType.Order> function =
+                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+
+        TestType.Order data = new TestType.Order();
+        assertEquals(Collections.emptyList(), function.apply(data));
+    }
+
     @After
     public void teardown(){
         File f = new File(filename);

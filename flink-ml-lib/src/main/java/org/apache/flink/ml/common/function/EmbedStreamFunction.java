@@ -38,18 +38,22 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
     private final int resultOperatorId;
 
     public EmbedStreamFunction(DataStream<R> stream) {
-        this(ExecutorUtils.generateStreamGraph(
-                StreamExecutionEnvironment.createLocalEnvironment(),
-                Collections.singletonList(stream.getTransformation()))
-        );
-    }
-
-    public EmbedStreamFunction(StreamGraph graph) {
+//        this(ExecutorUtils.generateStreamGraph(
+//                StreamExecutionEnvironment.createLocalEnvironment(),
+//                Collections.singletonList(stream.getTransformation()))
+//        );
+//    }
+//
+//    public EmbedStreamFunction(StreamGraph graph) {
+        StreamGraph graph = ExecutorUtils.generateStreamGraph(
+                stream.getExecutionEnvironment(),
+                Collections.singletonList(stream.getTransformation()));
         StreamFunctionUtils.validateGraph(graph);
 
         List<StreamNode> nodes = new ArrayList<>(graph.getStreamNodes());
-        nodes.sort(Comparator.comparingInt(StreamNode::getId));
-        this.resultOperatorId = nodes.get(nodes.size() - 1).getId();
+//        nodes.sort(Comparator.comparingInt(StreamNode::getId));
+//        this.resultOperatorId = nodes.get(nodes.size() - 1).getId();
+        this.resultOperatorId = stream.getId();
 
         for(StreamNode node: nodes) {
             EmbedVertex vertex = EmbedVertex.createEmbedGraphVertex(node);
