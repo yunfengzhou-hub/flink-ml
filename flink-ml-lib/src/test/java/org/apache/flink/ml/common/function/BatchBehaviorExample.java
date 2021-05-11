@@ -32,11 +32,11 @@ public class BatchBehaviorExample {
         dataStreamBatchCountWindow();
         System.out.println("------");
         joinDuplicateKeys();
-        System.out.println("------");
+        System.out.println("joinDuplicateKeysStream");
         joinDuplicateKeysStream();
-        System.out.println("------");
+        System.out.println("reduceBatch");
         reduceBatch();
-        System.out.println("------");
+        System.out.println("reduceStream");
         reduceStream();
         System.out.println("------");
         batchState();

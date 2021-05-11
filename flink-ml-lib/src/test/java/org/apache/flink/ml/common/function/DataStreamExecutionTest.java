@@ -49,7 +49,7 @@ public class DataStreamExecutionTest {
     @Before
     public void createEnvironment() {
         env = StreamExecutionEnvironment.createLocalEnvironment();
-        env.setRuntimeMode(RuntimeExecutionMode.STREAMING);
+        env.setRuntimeMode(RuntimeExecutionMode.BATCH);
     }
 
     @Test
@@ -276,10 +276,11 @@ public class DataStreamExecutionTest {
 
     @Test
     public void testKeyBy() throws Exception {
-        DataStream<String> stream = env.fromElements("hello")
-                .keyBy((KeySelector<String, Object>) s -> s)
-                .reduce((ReduceFunction<String>) (s, t1) -> s);
-        new EmbedStreamFunction<>(stream).apply("hello");
+        DataStream<String> stream = env.fromElements("test");
+        DataStream<String> stream2 = stream.union(stream)
+                .keyBy((KeySelector<String, Object>) String::length)
+                .reduce((ReduceFunction<String>) (s, t1) -> s+t1);
+        assertEquals(Collections.singletonList("hellohello"), new EmbedStreamFunction<>(stream2).apply("hello"));
     }
 
     @After

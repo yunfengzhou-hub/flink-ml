@@ -40,7 +40,7 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
 
     public EmbedStreamFunction(DataStream<R> stream) {
         this(ExecutorUtils.generateStreamGraph(
-                StreamExecutionEnvironment.createLocalEnvironment().setStateBackend(new MemoryStateBackend()),
+                stream.getExecutionEnvironment().setStateBackend(new MemoryStateBackend()),
                 Collections.singletonList(stream.getTransformation()))
         );
     }
