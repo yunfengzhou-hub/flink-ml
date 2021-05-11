@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.streaming.api.graph.StreamNode;
+import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -47,6 +48,11 @@ class TwoInputEmbedVertex extends EmbedVertex {
         }else{
             throw new RuntimeException(String.format("Illegal typeNumber: %d", typeNumber));
         }
+    }
+
+    @Override
+    public StreamOperator getOperator() {
+        return operator;
     }
 
     @Override

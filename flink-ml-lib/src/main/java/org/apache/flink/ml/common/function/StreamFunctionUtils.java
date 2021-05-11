@@ -18,13 +18,15 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.api.common.functions.RichFunction;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.common.function.environment.EmbedOperatorEventDispatcherImpl;
 import org.apache.flink.ml.common.function.environment.EmbedProcessingTimeServiceImpl;
-import org.apache.flink.ml.common.function.environment.EmbedRuntimeEnvironment;
+import org.apache.flink.ml.common.function.environment.DummyEnvironment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
+import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.StreamNode;
@@ -33,6 +35,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OneInputStreamTask;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
+import org.apache.flink.util.InstantiationUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,21 +43,30 @@ import java.util.function.Supplier;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
 class StreamFunctionUtils {
-    public static StreamOperator getStreamOperator(StreamNode node, Output<StreamRecord> output){
-        return getStreamOperator(node.getOperatorFactory(), output);
-    }
-
-    public static StreamOperator getStreamOperator(StreamOperatorFactory factory, Output<StreamRecord> output){
-        EmbedRuntimeEnvironment env = new EmbedRuntimeEnvironment();
+    private static StreamConfig streamConfig;
+    public static StreamOperator getStreamOperator(StreamNode node, Output<StreamRecord> output, StateBackend backend){
+        StreamOperatorFactory factory = node.getOperatorFactory();
+        TypeSerializer serializer = node.getStateKeySerializer();
+//        return getStreamOperator(node.getOperatorFactory(), output, backend, node.getStateKeySerializer());
+//    }
+//
+//    public static StreamOperator getStreamOperator(StreamOperatorFactory factory, Output<StreamRecord> output, StateBackend backend, TypeSerializer serializer){
+        DummyEnvironment env = new DummyEnvironment();
         StreamTask<?, ?> task;
         try {
             task = new OneInputStreamTask<>(env);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        StreamConfig streamConfig = new StreamConfig(new Configuration());
+
+        streamConfig = new StreamConfig(new Configuration());
         streamConfig.setOperatorID(new OperatorID());
         streamConfig.setOperatorName("operator name");
+        streamConfig.setStateBackend(backend);
+        streamConfig.setStateKeySerializer(serializer);
+        for (int i = 0; i < node.getStatePartitioners().length; i++) {
+            streamConfig.setStatePartitioner(i, node.getStatePartitioners()[i]);
+        }
 
         Supplier<ProcessingTimeService> processingTimeServiceFactory = EmbedProcessingTimeServiceImpl::new;
 
@@ -77,10 +89,16 @@ class StreamFunctionUtils {
 
         StreamOperator operator = factory.createStreamOperator(parameters);
         try {
+//            operator.initializeState(new StreamTaskStateInitializerImpl(env, backend));
             operator.open();
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException(String.format("Cannot initiate operator %s", operator));
+            try{
+                operator.initializeState(new StreamTaskStateInitializerImpl(env, backend));
+                operator.open();
+            }catch (Exception e2){
+                e2.printStackTrace();
+                throw new IllegalArgumentException(String.format("Cannot initiate operator %s", operator));
+            }
         }
         return operator;
     }
@@ -90,7 +108,7 @@ class StreamFunctionUtils {
 
         int sourceCount = 0;
         for(StreamNode node:nodes){
-            StreamOperator operator = getStreamOperator(node, new EmbedOutput<>());
+            StreamOperator operator = getStreamOperator(node, new EmbedOutput<>(), graph.getStateBackend());
 
             if(operator instanceof StreamSource){
                 sourceCount ++;
@@ -105,11 +123,11 @@ class StreamFunctionUtils {
                         StreamFunction.class, AbstractStreamOperator.class, AbstractStreamOperatorV2.class));
             }
 
-            if(operator instanceof AbstractUdfStreamOperator){
-                if(((AbstractUdfStreamOperator<?, ?>) operator).getUserFunction() instanceof RichFunction){
-                    throw new IllegalArgumentException("Stateful/Rich functions are not supported yet.");
-                }
-            }
+//            if(operator instanceof AbstractUdfStreamOperator){
+//                if(((AbstractUdfStreamOperator<?, ?>) operator).getUserFunction() instanceof RichFunction){
+//                    throw new IllegalArgumentException("Stateful/Rich functions are not supported yet.");
+//                }
+//            }
 
         }
     }

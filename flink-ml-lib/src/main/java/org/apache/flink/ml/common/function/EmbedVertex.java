@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.function;
 
+import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.graph.StreamNode;
 import org.apache.flink.streaming.api.operators.*;
@@ -32,9 +33,9 @@ abstract class EmbedVertex implements Runnable {
     protected final List<StreamEdge> inEdges;
     protected final int id;
 
-    public static EmbedVertex createEmbedGraphVertex(StreamNode node){
+    public static EmbedVertex createEmbedGraphVertex(StreamNode node, StateBackend backend){
         EmbedOutput<StreamRecord> output = new EmbedOutput<>(new ArrayList<>());
-        StreamOperator<?> operator = StreamFunctionUtils.getStreamOperator(node, output);
+        StreamOperator<?> operator = StreamFunctionUtils.getStreamOperator(node, output, backend);
         if(operator instanceof OneInputStreamOperator){
             return new OneInputEmbedVertex(node, output, (OneInputStreamOperator<?, ?>) operator);
         }else if(operator instanceof TwoInputStreamOperator){
@@ -62,6 +63,8 @@ abstract class EmbedVertex implements Runnable {
     }
 
     public abstract List<StreamRecord> getInputList(int typeNumber);
+
+    public abstract StreamOperator getOperator();
 
     public abstract void clear();
 

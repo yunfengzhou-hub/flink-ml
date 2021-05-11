@@ -27,30 +27,31 @@ import java.net.InetAddress;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-class EmbedTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
+public class TestingTaskManagerRuntimeInfo implements TaskManagerRuntimeInfo {
+
     private final Configuration configuration;
     private final String[] tmpDirectories;
     private final String taskManagerExternalAddress;
 
-    public EmbedTaskManagerRuntimeInfo() {
+    public TestingTaskManagerRuntimeInfo() {
         this(
                 new Configuration(),
                 System.getProperty("java.io.tmpdir").split(",|" + File.pathSeparator));
     }
 
-    public EmbedTaskManagerRuntimeInfo(Configuration configuration) {
+    public TestingTaskManagerRuntimeInfo(Configuration configuration) {
         this(configuration, EnvironmentInformation.getTemporaryFileDirectory());
     }
 
-    public EmbedTaskManagerRuntimeInfo(Configuration configuration, String tmpDirectory) {
+    public TestingTaskManagerRuntimeInfo(Configuration configuration, String tmpDirectory) {
         this(configuration, new String[] {checkNotNull(tmpDirectory)});
     }
 
-    public EmbedTaskManagerRuntimeInfo(Configuration configuration, String[] tmpDirectories) {
+    public TestingTaskManagerRuntimeInfo(Configuration configuration, String[] tmpDirectories) {
         this(configuration, tmpDirectories, InetAddress.getLoopbackAddress().getHostAddress());
     }
 
-    public EmbedTaskManagerRuntimeInfo(
+    public TestingTaskManagerRuntimeInfo(
             Configuration configuration,
             String[] tmpDirectories,
             String taskManagerExternalAddress) {

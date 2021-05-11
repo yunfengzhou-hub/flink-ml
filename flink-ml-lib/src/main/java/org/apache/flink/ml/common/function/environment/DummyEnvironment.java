@@ -41,6 +41,7 @@ import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
+import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
@@ -52,23 +53,47 @@ import java.util.Map;
 import java.util.concurrent.Future;
 
 @Internal
-public class EmbedRuntimeEnvironment implements Environment {
+public class DummyEnvironment implements Environment {
 
     private final JobID jobId = new JobID();
     private final JobVertexID jobVertexId = new JobVertexID();
     private final ExecutionAttemptID executionId = new ExecutionAttemptID();
     private final ExecutionConfig executionConfig = new ExecutionConfig();
     private final TaskInfo taskInfo;
+    private KvStateRegistry kvStateRegistry = new KvStateRegistry();
+    private TaskStateManager taskStateManager;
+    private final GlobalAggregateManager aggregateManager;
     private final AccumulatorRegistry accumulatorRegistry =
             new AccumulatorRegistry(jobId, executionId);
+    private UserCodeClassLoader userClassLoader;
 
-    public EmbedRuntimeEnvironment() {
-        this("Embed Job", 1, 0, 1);
+    public DummyEnvironment() {
+        this("Test Job", 1, 0, 1);
     }
 
-    public EmbedRuntimeEnvironment(
+    public DummyEnvironment(ClassLoader userClassLoader) {
+        this("Test Job", 1, 0, 1);
+        this.userClassLoader =
+                TestingUserCodeClassLoader.newBuilder().setClassLoader(userClassLoader).build();
+    }
+
+    public DummyEnvironment(String taskName, int numSubTasks, int subTaskIndex) {
+        this(taskName, numSubTasks, subTaskIndex, numSubTasks);
+    }
+
+    public DummyEnvironment(
             String taskName, int numSubTasks, int subTaskIndex, int maxParallelism) {
         this.taskInfo = new TaskInfo(taskName, maxParallelism, subTaskIndex, numSubTasks, 0);
+        this.taskStateManager = new TestTaskStateManager();
+        this.aggregateManager = new TestGlobalAggregateManager();
+    }
+
+    public void setKvStateRegistry(KvStateRegistry kvStateRegistry) {
+        this.kvStateRegistry = kvStateRegistry;
+    }
+
+    public KvStateRegistry getKvStateRegistry() {
+        return kvStateRegistry;
     }
 
     @Override
@@ -98,7 +123,7 @@ public class EmbedRuntimeEnvironment implements Environment {
 
     @Override
     public TaskManagerRuntimeInfo getTaskManagerInfo() {
-        return new EmbedTaskManagerRuntimeInfo();
+        return new TestingTaskManagerRuntimeInfo();
     }
 
     @Override
@@ -133,7 +158,11 @@ public class EmbedRuntimeEnvironment implements Environment {
 
     @Override
     public UserCodeClassLoader getUserCodeClassLoader() {
-        return EmbedUserCodeClassLoader.newBuilder().build();
+        if (userClassLoader == null) {
+            return TestingUserCodeClassLoader.newBuilder().build();
+        } else {
+            return userClassLoader;
+        }
     }
 
     @Override
@@ -148,12 +177,12 @@ public class EmbedRuntimeEnvironment implements Environment {
 
     @Override
     public TaskStateManager getTaskStateManager() {
-        return null;
+        return taskStateManager;
     }
 
     @Override
     public GlobalAggregateManager getGlobalAggregateManager() {
-        return null;
+        return aggregateManager;
     }
 
     @Override
@@ -163,7 +192,7 @@ public class EmbedRuntimeEnvironment implements Environment {
 
     @Override
     public TaskKvStateRegistry getTaskKvStateRegistry() {
-        return null;
+        return kvStateRegistry.createTaskRegistry(jobId, jobVertexId);
     }
 
     @Override
@@ -188,7 +217,7 @@ public class EmbedRuntimeEnvironment implements Environment {
     @Override
     public void failExternally(Throwable cause) {
         throw new UnsupportedOperationException(
-                String.format("%s does not support external task failure.", this.getClass()));
+                "DummyEnvironment does not support external task failure.");
     }
 
     @Override
@@ -214,6 +243,10 @@ public class EmbedRuntimeEnvironment implements Environment {
     @Override
     public TaskEventDispatcher getTaskEventDispatcher() {
         throw new UnsupportedOperationException();
+    }
+
+    public void setTaskStateManager(TaskStateManager taskStateManager) {
+        this.taskStateManager = taskStateManager;
     }
 
     @Override

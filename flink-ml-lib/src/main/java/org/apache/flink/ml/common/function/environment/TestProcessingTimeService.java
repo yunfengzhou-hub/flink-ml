@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
-class EmbedTimerService implements TimerService {
+public class TestProcessingTimeService implements TimerService {
 
     private volatile long currentTime = Long.MIN_VALUE;
 
@@ -27,7 +27,7 @@ class EmbedTimerService implements TimerService {
     // sorts the timers by timestamp so that they are processed in the correct order.
     private final PriorityQueue<Tuple2<Long, CallbackTask>> priorityQueue;
 
-    public EmbedTimerService() {
+    public TestProcessingTimeService() {
         this.priorityQueue =
                 new PriorityQueue<>(
                         16,

@@ -18,9 +18,12 @@
 
 package org.apache.flink.ml.common.function;
 
+import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -46,6 +49,7 @@ public class DataStreamExecutionTest {
     @Before
     public void createEnvironment() {
         env = StreamExecutionEnvironment.createLocalEnvironment();
+        env.setRuntimeMode(RuntimeExecutionMode.STREAMING);
     }
 
     @Test
@@ -267,6 +271,14 @@ public class DataStreamExecutionTest {
     public void testRuntimeError() throws Exception {
         DataStream<String> stream = env.fromElements("hello")
                 .map((MapFunction<String, String>) s -> s.substring(10));
+        new EmbedStreamFunction<>(stream).apply("hello");
+    }
+
+    @Test
+    public void testKeyBy() throws Exception {
+        DataStream<String> stream = env.fromElements("hello")
+                .keyBy((KeySelector<String, Object>) s -> s)
+                .reduce((ReduceFunction<String>) (s, t1) -> s);
         new EmbedStreamFunction<>(stream).apply("hello");
     }
 

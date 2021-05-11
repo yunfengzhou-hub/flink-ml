@@ -45,7 +45,7 @@ public class EmbedProcessingTimeServiceImpl implements ProcessingTimeService {
     private volatile boolean quiesced;
 
     public EmbedProcessingTimeServiceImpl(){
-        this(new EmbedTimerService(), null);
+        this(new TestProcessingTimeService(), null);
     }
 
     public EmbedProcessingTimeServiceImpl(

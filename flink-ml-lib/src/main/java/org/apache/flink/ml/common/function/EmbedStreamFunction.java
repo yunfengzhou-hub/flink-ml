@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -39,7 +40,7 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
 
     public EmbedStreamFunction(DataStream<R> stream) {
         this(ExecutorUtils.generateStreamGraph(
-                StreamExecutionEnvironment.createLocalEnvironment(),
+                StreamExecutionEnvironment.createLocalEnvironment().setStateBackend(new MemoryStateBackend()),
                 Collections.singletonList(stream.getTransformation()))
         );
     }
@@ -52,7 +53,13 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
         this.resultOperatorId = nodes.get(nodes.size() - 1).getId();
 
         for(StreamNode node: nodes) {
-            EmbedVertex vertex = EmbedVertex.createEmbedGraphVertex(node);
+            EmbedVertex vertex = EmbedVertex.createEmbedGraphVertex(node, graph.getStateBackend());
+
+//            try {
+//                vertex.getOperator().initializeState(new StreamTaskStateInitializerImpl(new EmbedRuntimeEnvironment(), graph.getStateBackend()));
+//            } catch (Exception e) {
+//                e.printStackTrace();
+//            }
 
             vertexMap.put(vertex.getId(), vertex);
         }

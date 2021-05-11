@@ -18,6 +18,7 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.streaming.api.graph.StreamNode;
+import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.List;
@@ -31,6 +32,11 @@ class SourceEmbedVertex extends EmbedVertex {
     @Override
     public List<StreamRecord> getInputList(int typeNumber){
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public StreamOperator getOperator() {
+        return null;
     }
 
     @Override
