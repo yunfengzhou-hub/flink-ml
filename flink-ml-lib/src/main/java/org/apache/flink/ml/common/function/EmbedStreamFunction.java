@@ -19,7 +19,6 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamEdge;
@@ -39,27 +38,25 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
     private final int resultOperatorId;
 
     public EmbedStreamFunction(DataStream<R> stream) {
-        this(ExecutorUtils.generateStreamGraph(
-                stream.getExecutionEnvironment().setStateBackend(new MemoryStateBackend()),
-                Collections.singletonList(stream.getTransformation()))
-        );
-    }
-
-    public EmbedStreamFunction(StreamGraph graph) {
+//        this(ExecutorUtils.generateStreamGraph(
+//                StreamExecutionEnvironment.createLocalEnvironment(),
+//                Collections.singletonList(stream.getTransformation()))
+//        );
+//    }
+//
+//    public EmbedStreamFunction(StreamGraph graph) {
+        StreamGraph graph = ExecutorUtils.generateStreamGraph(
+                stream.getExecutionEnvironment(),
+                Collections.singletonList(stream.getTransformation()));
         StreamFunctionUtils.validateGraph(graph);
 
         List<StreamNode> nodes = new ArrayList<>(graph.getStreamNodes());
-        nodes.sort(Comparator.comparingInt(StreamNode::getId));
-        this.resultOperatorId = nodes.get(nodes.size() - 1).getId();
+//        nodes.sort(Comparator.comparingInt(StreamNode::getId));
+//        this.resultOperatorId = nodes.get(nodes.size() - 1).getId();
+        this.resultOperatorId = stream.getId();
 
         for(StreamNode node: nodes) {
-            EmbedVertex vertex = EmbedVertex.createEmbedGraphVertex(node, graph.getStateBackend());
-
-//            try {
-//                vertex.getOperator().initializeState(new StreamTaskStateInitializerImpl(new EmbedRuntimeEnvironment(), graph.getStateBackend()));
-//            } catch (Exception e) {
-//                e.printStackTrace();
-//            }
+            EmbedVertex vertex = EmbedVertex.createEmbedGraphVertex(node);
 
             vertexMap.put(vertex.getId(), vertex);
         }

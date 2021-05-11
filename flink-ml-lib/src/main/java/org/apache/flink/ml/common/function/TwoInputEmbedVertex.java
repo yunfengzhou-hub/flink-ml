@@ -65,6 +65,8 @@ class TwoInputEmbedVertex extends EmbedVertex {
     @Override
     public void run() {
         try {
+            operator.close();
+            operator.open();
             for(StreamRecord record : input1){
                 operator.setKeyContextElement1(record);
                 operator.processElement1(record);
