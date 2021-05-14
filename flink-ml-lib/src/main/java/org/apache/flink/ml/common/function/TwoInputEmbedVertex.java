@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.streaming.api.graph.StreamNode;
+import org.apache.flink.streaming.api.operators.BoundedMultiInput;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -34,7 +35,7 @@ class TwoInputEmbedVertex extends EmbedVertex {
 
     public TwoInputEmbedVertex(
             StreamNode node,
-            EmbedOutput<StreamRecord> output,
+            EmbedOutput output,
             TwoInputStreamOperator operator){
         super(node, output);
         this.operator = operator;
@@ -65,15 +66,26 @@ class TwoInputEmbedVertex extends EmbedVertex {
     @Override
     public void run() {
         try {
-            operator.close();
-            operator.open();
+//            operator.close();
+//            operator.open();
+            System.out.println(operator.getClass());
             for(StreamRecord record : input1){
                 operator.setKeyContextElement1(record);
+                System.out.println("to process1 "+record.getValue());
                 operator.processElement1(record);
+            }
+            if(operator instanceof BoundedMultiInput){
+                ((BoundedMultiInput)operator).endInput(1);
             }
             for(StreamRecord record : input2){
                 operator.setKeyContextElement2(record);
+                System.out.println("to process2 "+record.getValue());
                 operator.processElement2(record);
+            }
+            if(operator instanceof BoundedMultiInput){
+                ((BoundedMultiInput)operator).endInput(2);
+                operator.close();
+                operator.open();
             }
         } catch (Exception e) {
             e.printStackTrace();

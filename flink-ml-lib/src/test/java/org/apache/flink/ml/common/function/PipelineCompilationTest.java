@@ -86,46 +86,7 @@ public class PipelineCompilationTest {
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
-    @Test(expected = ValidationException.class)
-    public void testGrammarUnion() throws Exception {
-        Pipeline pipeline = new Pipeline();
-        pipeline.appendStage(new NoParamsTransformer() {
-            @Override
-            public Table transform(TableEnvironment tableEnvironment, Table table) {
-                Table table1 = table.select($("user"), $("product").repeat(2).as("product"), $("amount"));
-                return table1.union(table);
-            }
-        });
-
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-    }
-
     @Test(expected = TableException.class)
-    public void testGroupBy() throws Exception {
-        Pipeline pipeline = new Pipeline();
-        pipeline.appendStage(new NoParamsTransformer() {
-            @Override
-            public Table transform(TableEnvironment tableEnvironment, Table table) {
-                return table.groupBy($("user")).select($("user"));
-            }
-        });
-
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.User.class);
-    }
-
-    @Test(expected = TableException.class)
-    public void testOrderBy() throws Exception {
-        Pipeline pipeline = new Pipeline();
-        pipeline.appendStage(new NoParamsTransformer() {
-            @Override
-            public Table transform(TableEnvironment tableEnvironment, Table table) {
-                return table.orderBy($("time").asc());
-            }
-        });
-        PipelineUtils.toFunction(pipeline, TestType.Meeting.class, TestType.Meeting.class);
-    }
-
-    @Test(expected = ValidationException.class)
     public void testWindow() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NoParamsTransformer() {
@@ -137,33 +98,6 @@ public class PipelineCompilationTest {
         PipelineUtils.toFunction(pipeline, TestType.Meeting.class, TestType.Meeting.class);
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void testGrammarIn() throws Exception {
-        Pipeline pipeline = new Pipeline();
-        pipeline.appendStage(new NoParamsTransformer() {
-            @Override
-            public Table transform(TableEnvironment tableEnvironment, Table table) {
-                Table table1 = table.select($("product").repeat(2).as("product"));
-                return table.select($("*")).where($("product").in(table1));
-            }
-        });
-
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-    }
-
-    @Test(expected = ValidationException.class)
-    public void testGrammarMinus() throws Exception {
-        Pipeline pipeline = new Pipeline();
-        pipeline.appendStage(new NoParamsTransformer() {
-            @Override
-            public Table transform(TableEnvironment tableEnvironment, Table table) {
-                return table.minus(table);
-            }
-        });
-
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-    }
-
     @Test(expected = TableException.class)
     public void testGrammarInsert() throws Exception {
         Pipeline pipeline = new Pipeline();
@@ -172,20 +106,6 @@ public class PipelineCompilationTest {
             public Table transform(TableEnvironment tableEnvironment, Table table) {
                 table.executeInsert("OutOrders");
                 return table;
-            }
-        });
-
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void testJoin() throws Exception {
-        Pipeline pipeline = new Pipeline();
-        pipeline.appendStage(new NoParamsTransformer() {
-            @Override
-            public Table transform(TableEnvironment tableEnvironment, Table table) {
-                Table table1 = table.select($("user").as("user1"), $("product").repeat(2).as("product2"));
-                return table.join(table1).where($("user").isEqual($("user1"))).select($("user"), $("product"), $("amount"));
             }
         });
 
@@ -235,5 +155,52 @@ public class PipelineCompilationTest {
         pipeline.appendStage(new NopTransformer());
 
         PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+    }
+
+    @Test(expected = TableException.class)
+    public void testOrderByOffset() throws Exception {
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                Table table1 = table.select($("amount"), $("product"), $("user").plus(1).as("user"));
+                Table table2 = table.select($("amount"), $("product"), $("user").plus(2).as("user"));
+                return table.union(table1).union(table2);
+            }
+        });
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                return table.orderBy($("user").asc()).offset(2);
+            }
+        });
+
+        StreamFunction<TestType.Order, TestType.Order> function =
+                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+
+        TestType.Order data1 = new TestType.Order(1L, "product", 1L);
+        TestType.Order data2 = new TestType.Order(2L, "product", 1L);
+        TestType.Order data3 = new TestType.Order(3L, "product", 1L);
+
+        assertEquals(Arrays.asList(data3), function.apply(data1));
+    }
+
+    @Test(expected = TableException.class)
+    public void testExecuteInsert() throws Exception {
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                table.executeInsert("tablename");
+                return table;
+            }
+        });
+
+        StreamFunction<TestType.Order, TestType.Order> function =
+                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+
+        TestType.Order data = new TestType.Order();
+        assertEquals(Collections.singletonList(data), function.apply(data));
+
     }
 }

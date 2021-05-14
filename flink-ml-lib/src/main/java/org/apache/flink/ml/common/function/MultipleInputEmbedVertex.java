@@ -19,10 +19,7 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.streaming.api.graph.StreamNode;
-import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
-import org.apache.flink.streaming.api.operators.BoundedOneInput;
-import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.api.operators.StreamOperator;
+import org.apache.flink.streaming.api.operators.*;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.ArrayList;
@@ -30,24 +27,24 @@ import java.util.Arrays;
 import java.util.List;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
-class OneInputEmbedVertex extends EmbedVertex {
-    private final OneInputStreamOperator operator;
-    protected final List<StreamRecord> input = new ArrayList<>();
+class MultipleInputEmbedVertex extends EmbedVertex {
+    private final MultipleInputStreamOperator operator;
+    protected final List<List<StreamRecord>> inputs = new ArrayList<>();
 
-    public OneInputEmbedVertex(
+    public MultipleInputEmbedVertex(
             StreamNode node,
             EmbedOutput output,
-            OneInputStreamOperator operator){
+            MultipleInputStreamOperator operator){
         super(node, output);
         this.operator = operator;
+        for(int i=0;i<operator.getInputs().size();i++){
+            inputs.add(new ArrayList<>());
+        }
     }
 
     @Override
     public List<StreamRecord> getInputList(int typeNumber){
-        if(typeNumber != 0){
-            throw new RuntimeException(String.format("Illegal typeNumber: %d", typeNumber));
-        }
-        return input;
+        return inputs.get(typeNumber-1);
     }
 
     @Override
@@ -57,27 +54,36 @@ class OneInputEmbedVertex extends EmbedVertex {
 
     @Override
     public void clear() {
-        input.clear();
+        for(List<StreamRecord> input:inputs){
+            input.clear();
+        }
         output.getOutputList().clear();
     }
 
     @Override
     public void run() {
         try {
-//            System.out.println(operator.getClass());
-//            System.out.println(Arrays.toString(operator.getClass().getInterfaces()));
+            System.out.println(operator.getClass());
+            System.out.println(Arrays.toString(operator.getClass().getInterfaces()));
 //            operator.close();
 //            operator.open();
-            for(StreamRecord record : input){
-                operator.setKeyContextElement(record);
-//                System.out.println("to process "+record.getValue());
-                operator.processElement(record);
+            for(int i = 0; i < inputs.size(); i++){
+                List<StreamRecord> input = inputs.get(i);
+                Input inputOperator = (Input) operator.getInputs().get(i);
+                for(StreamRecord record : input){
+                    inputOperator.setKeyContextElement(record);
+                    System.out.println("to process "+record.getValue());
+                    inputOperator.processElement(record);
+                }
+                if(operator instanceof BoundedMultiInput){
+                    System.out.println("endInput "+i);
+                    ((BoundedMultiInput)operator).endInput(i+1);
+                }
             }
-            if(operator instanceof BoundedOneInput){
-                ((BoundedOneInput)operator).endInput();
+//            if(operator instanceof BoundedMultiInput){
 //                operator.close();
 //                operator.open();
-            }
+//            }
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);

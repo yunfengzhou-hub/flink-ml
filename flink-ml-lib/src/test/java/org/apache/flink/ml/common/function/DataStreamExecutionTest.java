@@ -19,10 +19,9 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.api.common.RuntimeExecutionMode;
-import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.common.functions.*;
+import org.apache.flink.api.common.state.ValueState;
+import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
@@ -275,12 +274,44 @@ public class DataStreamExecutionTest {
     }
 
     @Test
+    public void testState() throws Exception {
+        DataStream<Integer> stream = env.fromElements(0);
+        DataStream<Integer> stream2 = stream.union(stream)
+                .keyBy((KeySelector<Integer, Object>) x -> x)
+                .map(new RichMapFunction<Integer, Integer>() {
+                    final ValueStateDescriptor<Integer> descriptor = new ValueStateDescriptor<>("state", Integer.class);
+
+                    @Override
+                    public Integer map(Integer integer) throws Exception {
+                        ValueState<Integer> val = getRuntimeContext().getState(descriptor);
+                        if(val.value() == null){
+                            val.update(integer);
+                        }else{
+                            val.update(val.value() + integer);
+                        }
+                        return val.value();
+                    }
+                });
+        assertEquals(Arrays.asList(1, 2), new EmbedStreamFunction<>(stream2).apply(1));
+    }
+
+    @Test
     public void testKeyBy() throws Exception {
         DataStream<String> stream = env.fromElements("test");
         DataStream<String> stream2 = stream.union(stream)
                 .keyBy((KeySelector<String, Object>) String::length)
                 .reduce((ReduceFunction<String>) (s, t1) -> s+t1);
-        assertEquals(Collections.singletonList("hellohello"), new EmbedStreamFunction<>(stream2).apply("hello"));
+        assertEquals(Arrays.asList("hello", "hellohello"), new EmbedStreamFunction<>(stream2).apply("hello"));
+    }
+
+    @Test
+    public void testCountWindow() throws Exception {
+        DataStream<Integer> stream = env.fromElements(0);
+        DataStream<Integer> stream2 = stream.union(stream)
+                .keyBy((KeySelector<Integer, Object>) x -> x)
+                .countWindow(2)
+                .reduce((ReduceFunction<Integer>) Integer::sum);
+        assertEquals(Arrays.asList(2), new EmbedStreamFunction<>(stream2).apply(1));
     }
 
     @After

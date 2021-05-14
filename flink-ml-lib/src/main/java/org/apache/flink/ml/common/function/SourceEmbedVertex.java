@@ -25,7 +25,7 @@ import java.util.List;
 
 @SuppressWarnings({"rawtypes"})
 class SourceEmbedVertex extends EmbedVertex {
-    protected SourceEmbedVertex(StreamNode node, EmbedOutput<StreamRecord> output) {
+    protected SourceEmbedVertex(StreamNode node, EmbedOutput output) {
         super(node, output);
     }
 

@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.function;
 
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.graph.StreamNode;
@@ -29,17 +30,20 @@ import java.util.List;
 
 @SuppressWarnings({"rawtypes"})
 abstract class EmbedVertex implements Runnable {
-    protected final EmbedOutput<StreamRecord> output;
+    protected final EmbedOutput output;
     protected final List<StreamEdge> inEdges;
     protected final int id;
+    protected final TypeSerializer serializerOut;
 
     public static EmbedVertex createEmbedGraphVertex(StreamNode node, StateBackend backend){
-        EmbedOutput<StreamRecord> output = new EmbedOutput<>(new ArrayList<>());
+        EmbedOutput output = new EmbedOutput(new ArrayList<>(), node.getTypeSerializerOut());
         StreamOperator<?> operator = StreamFunctionUtils.getStreamOperator(node, output, backend);
         if(operator instanceof OneInputStreamOperator){
             return new OneInputEmbedVertex(node, output, (OneInputStreamOperator<?, ?>) operator);
         }else if(operator instanceof TwoInputStreamOperator){
             return new TwoInputEmbedVertex(node, output, (TwoInputStreamOperator<?, ?, ?>) operator);
+        }else if(operator instanceof MultipleInputStreamOperator){
+            return new MultipleInputEmbedVertex(node, output, (MultipleInputStreamOperator) operator);
         }else if(operator instanceof StreamSource){
             return new SourceEmbedVertex(node, output);
         }else{
@@ -48,14 +52,19 @@ abstract class EmbedVertex implements Runnable {
         }
     }
 
-    protected EmbedVertex(StreamNode node, EmbedOutput<StreamRecord> output) {
+    protected EmbedVertex(StreamNode node, EmbedOutput output) {
         this.output = output;
         this.inEdges = node.getInEdges();
         this.id = node.getId();
+        this.serializerOut = node.getTypeSerializerOut();
     }
 
     public List<StreamEdge> getInEdges() {
         return inEdges;
+    }
+
+    public TypeSerializer getSerializerOut(){
+        return serializerOut;
     }
 
     public int getId() {

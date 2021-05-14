@@ -32,6 +32,7 @@ import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.externalresource.ExternalResourceInfoProvider;
 import org.apache.flink.runtime.io.disk.iomanager.IOManager;
+import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
 import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
@@ -148,12 +149,12 @@ public class DummyEnvironment implements Environment {
 
     @Override
     public IOManager getIOManager() {
-        return null;
+        return new IOManagerAsync("./");
     }
 
     @Override
     public MemoryManager getMemoryManager() {
-        return null;
+        return MemoryManager.create(10 * 1024 * 1024L, MemoryManager.MIN_PAGE_SIZE);
     }
 
     @Override

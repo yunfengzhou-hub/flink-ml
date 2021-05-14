@@ -19,6 +19,9 @@
 package org.apache.flink.ml.common.utils;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.api.common.RuntimeExecutionMode;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.ml.api.core.Pipeline;
 import org.apache.flink.ml.common.function.EmbedStreamFunction;
 import org.apache.flink.ml.common.function.StreamFunction;
@@ -26,10 +29,24 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.TableConfig;
+import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
+import org.apache.flink.table.catalog.CatalogManager;
+import org.apache.flink.table.catalog.FunctionCatalog;
+import org.apache.flink.table.catalog.GenericInMemoryCatalog;
+import org.apache.flink.table.delegation.Executor;
+import org.apache.flink.table.delegation.ExecutorFactory;
+import org.apache.flink.table.delegation.Planner;
+import org.apache.flink.table.delegation.PlannerFactory;
+import org.apache.flink.table.factories.ComponentFactoryService;
+import org.apache.flink.table.module.ModuleManager;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.lang.reflect.Method;
+import java.util.Map;
 
 @PublicEvolving
 public class PipelineUtils {
@@ -89,9 +106,9 @@ public class PipelineUtils {
      */
     public static <IN, OUT> StreamFunction<IN, OUT> toFunction(Pipeline pipeline, Class<IN> inClass, Class<OUT> outClass) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
-        EnvironmentSettings settings =
-                EnvironmentSettings.newInstance().inStreamingMode().useBlinkPlanner().build();
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
+        env.setRuntimeMode(RuntimeExecutionMode.BATCH);
+        EnvironmentSettings settings = EnvironmentSettings.newInstance().useBlinkPlanner().inBatchMode().build();
+        StreamTableEnvironment tEnv = createStreamTableEnvironment(env, settings);
 
         DataStream<IN> inStream = env.fromElements(inClass.getDeclaredConstructor().newInstance());
         Table input_table = tEnv.fromDataStream(inStream);
@@ -99,7 +116,85 @@ public class PipelineUtils {
         Table output_table = pipeline.transform(tEnv, input_table);
 
         DataStream<OUT> outStream = tEnv.toAppendStream(output_table, outClass);
+//        DataStream<OUT> outStream = tEnv.toRetractStream(output_table, outClass)
+//                .map((MapFunction<Tuple2<Boolean, OUT>, OUT>) booleanOUTTuple2 -> {
+//                    System.out.println(booleanOUTTuple2.f0);
+//                    return booleanOUTTuple2.f1;
+//                });
 
         return new EmbedStreamFunction<>(outStream);
+    }
+
+    private static StreamTableEnvironment createStreamTableEnvironment(
+            StreamExecutionEnvironment executionEnvironment,
+            EnvironmentSettings settings) {
+
+//        EnvironmentSettings settings = EnvironmentSettings.newInstance().build();
+        TableConfig tableConfig = new TableConfig();
+
+        // temporary solution until FLINK-15635 is fixed
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+
+        ModuleManager moduleManager = new ModuleManager();
+
+        CatalogManager catalogManager =
+                CatalogManager.newBuilder()
+                        .classLoader(classLoader)
+                        .config(tableConfig.getConfiguration())
+                        .defaultCatalog(
+                                settings.getBuiltInCatalogName(),
+                                new GenericInMemoryCatalog(
+                                        settings.getBuiltInCatalogName(),
+                                        settings.getBuiltInDatabaseName()))
+                        .executionConfig(executionEnvironment.getConfig())
+                        .build();
+
+        FunctionCatalog functionCatalog =
+                new FunctionCatalog(tableConfig, catalogManager, moduleManager);
+
+        Map<String, String> executorProperties = settings.toExecutorProperties();
+        Executor executor = lookupExecutor(executorProperties, executionEnvironment);
+
+        Map<String, String> plannerProperties = settings.toPlannerProperties();
+        Planner planner =
+                ComponentFactoryService.find(PlannerFactory.class, plannerProperties)
+                        .create(
+                                plannerProperties,
+                                executor,
+                                tableConfig,
+                                functionCatalog,
+                                catalogManager);
+
+        return new StreamTableEnvironmentImpl(
+                catalogManager,
+                moduleManager,
+                functionCatalog,
+                tableConfig,
+                executionEnvironment,
+                planner,
+                executor,
+                settings.isStreamingMode(),
+                classLoader);
+    }
+
+
+    private static Executor lookupExecutor(
+            Map<String, String> executorProperties,
+            StreamExecutionEnvironment executionEnvironment) {
+        try {
+            ExecutorFactory executorFactory =
+                    ComponentFactoryService.find(ExecutorFactory.class, executorProperties);
+            Method createMethod =
+                    executorFactory
+                            .getClass()
+                            .getMethod("create", Map.class, StreamExecutionEnvironment.class);
+
+            return (Executor)
+                    createMethod.invoke(executorFactory, executorProperties, executionEnvironment);
+        } catch (Exception e) {
+            throw new TableException(
+                    "Could not instantiate the executor. Make sure a planner module is on the classpath",
+                    e);
+        }
     }
 }
