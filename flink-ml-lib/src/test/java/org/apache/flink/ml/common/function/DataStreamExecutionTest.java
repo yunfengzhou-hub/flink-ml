@@ -40,6 +40,7 @@ import java.util.Collections;
 import static org.apache.flink.table.api.Expressions.$;
 import static org.junit.Assert.assertEquals;
 
+@SuppressWarnings({"unused"})
 public class DataStreamExecutionTest {
     StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
 
@@ -52,7 +53,7 @@ public class DataStreamExecutionTest {
     public void testBasicCorrectness() throws Exception {
         DataStream<String> stream = env.fromElements("hello")
                 .map(String::toUpperCase);
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<String, String>(stream).apply("hello"));
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");
     }
 
     @Test
@@ -60,7 +61,7 @@ public class DataStreamExecutionTest {
         DataStream<String> stream = env.fromElements(1)
                 .map(x -> x + "x")
                 .map(String::toUpperCase);
-        assertEquals(Collections.singletonList("1X"), new EmbedStreamFunction<>(stream).apply(1));
+        dataStreamEndToEndAssertEquals(stream, 1, "1X");
     }
 
     @Test
@@ -81,7 +82,7 @@ public class DataStreamExecutionTest {
                 return value;
             }
         });
-        assertEquals(Arrays.asList(2,2), new EmbedStreamFunction<>(connected).apply(1));
+        dataStreamEndToEndAssertEquals(connected, 1, 2, 2);
     }
 
     @Test
@@ -96,7 +97,7 @@ public class DataStreamExecutionTest {
                 return value;
             }
         });
-        assertEquals(Arrays.asList(2,2), new EmbedStreamFunction<>(unioned).apply(1));
+        dataStreamEndToEndAssertEquals(unioned, 1, 2, 2);
     }
 
     @Test
@@ -112,7 +113,7 @@ public class DataStreamExecutionTest {
                     }
                 });
 
-        assertEquals(Arrays.asList(2,2), new EmbedStreamFunction<>(stream).apply(1));
+        dataStreamEndToEndAssertEquals(stream, 1, 2, 2);
     }
 
     @Test
@@ -120,7 +121,7 @@ public class DataStreamExecutionTest {
         DataStream<Integer> stream = env.fromElements(1)
                 .filter((FilterFunction<Integer>) integer -> false);
 
-        assertEquals(Collections.emptyList(), new EmbedStreamFunction<>(stream).apply(1));
+        dataStreamEndToEndAssertEquals(stream, 1);
     }
 
     @Test
@@ -141,7 +142,7 @@ public class DataStreamExecutionTest {
                 out.collect(value);
             }
         });
-        assertEquals(Arrays.asList(2, 2), new EmbedStreamFunction<>(connected).apply(1));
+        dataStreamEndToEndAssertEquals(connected, 1, 2, 2);
     }
 
     @Test
@@ -149,7 +150,7 @@ public class DataStreamExecutionTest {
         DataStream<Tuple3<String, Integer, Boolean>> input = env.fromElements(new Tuple3<>("hello", 1, true));
         DataStream<Tuple2<Boolean, String>> stream = input.project(2, 0);
 
-        assertEquals(Collections.singletonList(new Tuple2<>(true, "hello")), new EmbedStreamFunction<>(stream).apply(new Tuple3<>("hello", 1, true)));
+        dataStreamEndToEndAssertEquals(stream, new Tuple3<>("hello", 1, true), new Tuple2<>(true, "hello"));
     }
 
     @Test
@@ -160,7 +161,7 @@ public class DataStreamExecutionTest {
                 .startNewChain()
                 .map(String::toUpperCase)
                 .map(String::toUpperCase);
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
     }
 
     @Test
@@ -171,16 +172,16 @@ public class DataStreamExecutionTest {
                 .disableChaining()
                 .map(String::toUpperCase)
                 .map(String::toUpperCase);
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
     }
 
     @Test
     public void testNotClearOperators() throws Exception {
         DataStream<String> stream = env.fromElements("hello")
                 .map(String::toUpperCase);
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
     }
 
     @Test
@@ -203,7 +204,7 @@ public class DataStreamExecutionTest {
                 .map(String::toUpperCase).uid("operator 2")
                 .map(String::toLowerCase).uid("operator 1")
                 .map(String::toUpperCase);
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
     }
 
     @Test
@@ -224,8 +225,8 @@ public class DataStreamExecutionTest {
             throw new Exception();
         });
 
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
-        assertEquals(Collections.singletonList("HELLO HELLO"), new EmbedStreamFunction<>(stream2).apply("hello"));
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");
+        dataStreamEndToEndAssertEquals(stream2, "hello", "HELLO HELLO");
     }
 
     @Test
@@ -234,7 +235,7 @@ public class DataStreamExecutionTest {
                 .shuffle()
                 .map(String::toUpperCase);
 
-        assertEquals(Collections.singletonList("HELLO"), new EmbedStreamFunction<>(stream).apply("hello"));
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
     }
 
     @Test
@@ -260,7 +261,7 @@ public class DataStreamExecutionTest {
                 2L
         );
 
-        assertEquals(Collections.singletonList(outputData), new EmbedStreamFunction<>(outStream).apply(inputData));
+        dataStreamEndToEndAssertEquals(outStream, inputData, outputData);
     }
 
     @Test(expected = Exception.class)
@@ -268,6 +269,12 @@ public class DataStreamExecutionTest {
         DataStream<String> stream = env.fromElements("hello")
                 .map((MapFunction<String, String>) s -> s.substring(10));
         new EmbedStreamFunction<>(stream).apply("hello");
+    }
+
+    public <IN, OUT> void dataStreamEndToEndAssertEquals(DataStream<OUT> stream, IN input, OUT... expectedOutput) {
+        EmbedStreamFunction<IN, OUT> function = new EmbedStreamFunction<>(stream);
+        function = EmbedStreamFunction.deserialize(function.serialize());
+        assertEquals(Arrays.asList(expectedOutput), function.apply(input));
     }
 
     @After

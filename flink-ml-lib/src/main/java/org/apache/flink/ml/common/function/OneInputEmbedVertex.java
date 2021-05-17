@@ -18,8 +18,9 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.streaming.api.graph.StreamNode;
+import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.ArrayList;
@@ -31,10 +32,12 @@ class OneInputEmbedVertex extends EmbedVertex {
     protected final List<StreamRecord> input = new ArrayList<>();
 
     public OneInputEmbedVertex(
-            StreamNode node,
+            List<StreamEdge> inEdges,
+            int id,
             EmbedOutput<StreamRecord> output,
-            OneInputStreamOperator operator){
-        super(node, output);
+            OneInputStreamOperator operator,
+            StreamOperatorFactory factory){
+        super(inEdges, id, output, factory);
         this.operator = operator;
     }
 
@@ -58,7 +61,7 @@ class OneInputEmbedVertex extends EmbedVertex {
             operator.close();
             operator.open();
             for(StreamRecord record : input){
-                    operator.processElement(record);
+                operator.processElement(record);
             }
         } catch (Exception e) {
             e.printStackTrace();

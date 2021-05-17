@@ -24,6 +24,6 @@ import org.apache.flink.ml.api.misc.param.Params;
 public abstract class NoParamsTransformer implements Transformer {
     @Override
     public final Params getParams() {
-        return null;
+        return new Params();
     }
 }

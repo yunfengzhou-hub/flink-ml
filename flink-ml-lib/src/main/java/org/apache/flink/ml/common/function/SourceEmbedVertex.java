@@ -17,15 +17,16 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.streaming.api.graph.StreamNode;
+import org.apache.flink.streaming.api.graph.StreamEdge;
+import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import java.util.List;
 
 @SuppressWarnings({"rawtypes"})
 class SourceEmbedVertex extends EmbedVertex {
-    protected SourceEmbedVertex(StreamNode node, EmbedOutput<StreamRecord> output) {
-        super(node, output);
+    protected SourceEmbedVertex(List<StreamEdge> inEdges, int id, EmbedOutput<StreamRecord> output, StreamOperatorFactory factory) {
+        super(inEdges, id, output, factory);
     }
 
     @Override

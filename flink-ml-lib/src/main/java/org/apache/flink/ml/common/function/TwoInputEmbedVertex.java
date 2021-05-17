@@ -18,7 +18,8 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.streaming.api.graph.StreamNode;
+import org.apache.flink.streaming.api.graph.StreamEdge;
+import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -32,10 +33,12 @@ class TwoInputEmbedVertex extends EmbedVertex {
     protected final List<StreamRecord> input2 = new ArrayList<>();
 
     public TwoInputEmbedVertex(
-            StreamNode node,
+            List<StreamEdge> inEdges,
+            int id,
             EmbedOutput<StreamRecord> output,
-            TwoInputStreamOperator operator){
-        super(node, output);
+            TwoInputStreamOperator operator,
+            StreamOperatorFactory factory){
+        super(inEdges, id, output, factory);
         this.operator = operator;
     }
 

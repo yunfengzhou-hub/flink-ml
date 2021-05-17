@@ -20,6 +20,7 @@ package org.apache.flink.ml.common.function;
 import org.apache.flink.annotation.PublicEvolving;
 
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * A functional representation of the stream graph of a flink job. The
@@ -30,7 +31,7 @@ import java.util.List;
  * @param <R> class of the output data
  */
 @PublicEvolving
-public interface StreamFunction<T, R> {
+public interface StreamFunction<T, R> extends Function<T, List<R>> {
     /**
      * executes the computation logic of a stream graph onto the provided input data.
      *

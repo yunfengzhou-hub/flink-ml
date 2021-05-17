@@ -19,8 +19,9 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.StreamNode;
@@ -34,32 +35,27 @@ import java.util.*;
 public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
 
     private Map<Integer, List<StreamRecord>> outputMap;
-    private final Map<Integer, EmbedVertex> vertexMap = new HashMap<>();
-    private final int resultOperatorId;
+    private final Map<Integer, EmbedVertex> vertexMap;
+    private final int outOperatorId;
 
-    public EmbedStreamFunction(DataStream<R> stream) {
-//        this(ExecutorUtils.generateStreamGraph(
-//                StreamExecutionEnvironment.createLocalEnvironment(),
-//                Collections.singletonList(stream.getTransformation()))
-//        );
-//    }
-//
-//    public EmbedStreamFunction(StreamGraph graph) {
+    public EmbedStreamFunction(DataStream<R> outStream) {
         StreamGraph graph = ExecutorUtils.generateStreamGraph(
-                stream.getExecutionEnvironment(),
-                Collections.singletonList(stream.getTransformation()));
+                outStream.getExecutionEnvironment(),
+                Collections.singletonList(outStream.getTransformation()));
         StreamFunctionUtils.validateGraph(graph);
-
         List<StreamNode> nodes = new ArrayList<>(graph.getStreamNodes());
-//        nodes.sort(Comparator.comparingInt(StreamNode::getId));
-//        this.resultOperatorId = nodes.get(nodes.size() - 1).getId();
-        this.resultOperatorId = stream.getId();
+        this.outOperatorId = outStream.getId();
 
+        vertexMap = new HashMap<>();
         for(StreamNode node: nodes) {
             EmbedVertex vertex = EmbedVertex.createEmbedGraphVertex(node);
-
             vertexMap.put(vertex.getId(), vertex);
         }
+    }
+
+    private EmbedStreamFunction(int outOperatorId, Map<Integer, EmbedVertex> vertexMap) {
+        this.outOperatorId = outOperatorId;
+        this.vertexMap = vertexMap;
     }
 
     /**
@@ -73,7 +69,7 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
         outputMap = new HashMap<>();
 
         List<R> result = new ArrayList<>();
-        for(StreamRecord r:execute(resultOperatorId, t)) {
+        for(StreamRecord r:execute(outOperatorId, t)) {
             result.add((R) r.getValue());
         }
         return result;
@@ -93,9 +89,10 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
             result.add(new StreamRecord(t));
         } else {
             vertex.clear();
-
             for(StreamEdge edge:vertex.getInEdges()){
                 for(StreamRecord record:execute(edge.getSourceId(), t)){
+                    // some stateful operations require deep copy of StreamRecord values,
+                    // but in stateless cases this could be avoided, bringing better performance.
                     vertex.getInputList(edge.getTypeNumber()).add(new StreamRecord(record.getValue()));
                 }
             }
@@ -108,5 +105,42 @@ public class EmbedStreamFunction<T, R> implements StreamFunction<T, R> {
         outputMap.put(vertexId, result);
 
         return result;
+    }
+
+    public String serialize() {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+
+            Map<String, String> map = new HashMap<>();
+            map.put("outOperatorId", Integer.toString(outOperatorId));
+
+            Map<String, String> vertexJsonMap = new HashMap<>();
+            for(Map.Entry<Integer, EmbedVertex> entry:vertexMap.entrySet()){
+                vertexJsonMap.put(entry.getKey().toString(), entry.getValue().serialize());
+            }
+            map.put("vertexJsonMap", mapper.writeValueAsString(vertexJsonMap));
+            return mapper.writeValueAsString(map);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize EmbedStreamFunction", e);
+        }
+    }
+
+    public static <T, R> EmbedStreamFunction<T, R> deserialize(String json) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, String> map = mapper.readValue(json, Map.class);
+
+            int outOperatorId = Integer.parseInt(map.get("outOperatorId"));
+
+            Map<String, String> vertexJsonMap = (Map<String, String>) mapper.readValue(map.get("vertexJsonMap"), Map.class);
+            Map<Integer, EmbedVertex> vertexMap = new HashMap<>();
+            for(Map.Entry<String, String> entry:vertexJsonMap.entrySet()){
+                vertexMap.put(Integer.parseInt(entry.getKey()), EmbedVertex.deserialize(entry.getValue()));
+            }
+
+            return new EmbedStreamFunction<>(outOperatorId, vertexMap);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to deserialize EmbedStreamFunction json:" + json, e);
+        }
     }
 }

@@ -56,34 +56,13 @@ public class PipelineCompilationTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
         for(int i = 0; i < 10; i++){
-            function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+            function = PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
         }
 
         TestType.Order data = new TestType.Order();
         assertEquals(Collections.singletonList(data), function.apply(data));
-    }
-
-    @Test(expected = ValidationException.class)
-    public void testTableEnv() throws Exception {
-        DataStream<TestType.Order> orderA =
-                env.fromCollection(
-                        Arrays.asList(
-                                new TestType.Order(1L, "beer", 3L),
-                                new TestType.Order(1L, "diaper", 4L),
-                                new TestType.Order(3L, "rubber", 2L)));
-        tEnv.createTemporaryView("OrderA", orderA, $("user"), $("product"), $("amount"));
-
-        Pipeline pipeline = new Pipeline();
-        pipeline.appendStage(new NoParamsTransformer() {
-            @Override
-            public Table transform(TableEnvironment tableEnvironment, Table table) {
-                return tableEnvironment.sqlQuery("SELECT * FROM OrderA");
-            }
-        });
-
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
     }
 
     @Test(expected = ValidationException.class)
@@ -97,7 +76,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
     }
 
     @Test(expected = TableException.class)
@@ -110,7 +89,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.User.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.User.class);
     }
 
     @Test(expected = TableException.class)
@@ -122,7 +101,7 @@ public class PipelineCompilationTest {
                 return table.orderBy($("time").asc());
             }
         });
-        PipelineUtils.toFunction(pipeline, TestType.Meeting.class, TestType.Meeting.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Meeting.class, TestType.Meeting.class);
     }
 
     @Test(expected = ValidationException.class)
@@ -134,7 +113,7 @@ public class PipelineCompilationTest {
                 return table.window(Tumble.over(lit(5).minutes()).on($("time")).as("time")).groupBy($("time")).select($("*"));
             }
         });
-        PipelineUtils.toFunction(pipeline, TestType.Meeting.class, TestType.Meeting.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Meeting.class, TestType.Meeting.class);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -148,7 +127,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
     }
 
     @Test(expected = ValidationException.class)
@@ -161,7 +140,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
     }
 
     @Test(expected = TableException.class)
@@ -175,7 +154,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -189,7 +168,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
     }
 
     @Test(expected = NoSuchMethodException.class)
@@ -202,7 +181,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, Row.class, Row.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Row.class, Row.class);
     }
 
     @Test(expected = RuntimeException.class)
@@ -215,10 +194,36 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, Tuple1.class, Tuple1.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Tuple1.class, Tuple1.class);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testReadFromTableEnv() throws Exception {
+        DataStream<TestType.Order> orderA =
+                env.fromCollection(
+                        Arrays.asList(
+                                new TestType.Order(2L, "beer", 3L),
+                                new TestType.Order(1L, "diaper", 4L),
+                                new TestType.Order(3L, "rubber", 2L)));
+        tEnv.createTemporaryView("OrderA", orderA, $("user"), $("product"), $("amount"));
+
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                return table.select(
+                        $("user"),
+                        $("product"),
+                        $("amount")
+                ).unionAll(tableEnvironment.from("OrderA"));
+            }
+        });
+
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.ExpandedOrder.class, TestType.Order.class);
     }
 
     @Test(expected = RuntimeException.class)
+    @SuppressWarnings({"rawtypes"})
     public void testEstimator() throws Exception {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new Estimator() {
@@ -234,6 +239,6 @@ public class PipelineCompilationTest {
         });
         pipeline.appendStage(new NopTransformer());
 
-        PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
     }
 }

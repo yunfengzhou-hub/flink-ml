@@ -24,7 +24,6 @@ import org.apache.flink.ml.common.function.EmbedStreamFunction;
 import org.apache.flink.ml.common.function.StreamFunction;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
@@ -68,7 +67,11 @@ public class PipelineUtils {
      * @throws Exception if the provided path is invalid or a function cannot be produced.
      */
     public static <IN, OUT> StreamFunction<IN, OUT> toFunction(
-            String pipelineJsonFilePath, Class<IN> inClass, Class<OUT> outClass) throws Exception {
+            String pipelineJsonFilePath,
+            StreamExecutionEnvironment env,
+            StreamTableEnvironment tEnv,
+            Class<IN> inClass,
+            Class<OUT> outClass) throws Exception {
         BufferedReader br = new BufferedReader(new FileReader(pipelineJsonFilePath));
         StringBuilder sb = new StringBuilder();
         String line = br.readLine();
@@ -81,18 +84,19 @@ public class PipelineUtils {
 
         String pipelineJson = sb.toString();
 
-        return toFunction(new Pipeline(pipelineJson), inClass, outClass);
+        return toFunction(new Pipeline(pipelineJson), env, tEnv, inClass, outClass);
     }
 
     /**
-     * Similar to {@link #toFunction(String, Class, Class)}, except that users can directly pass a {@link Pipeline} object.
+     * Similar to {@link #toFunction(String, StreamExecutionEnvironment, StreamTableEnvironment, Class, Class)},
+     * except that users can directly pass a {@link Pipeline} object.
      */
-    public static <IN, OUT> StreamFunction<IN, OUT> toFunction(Pipeline pipeline, Class<IN> inClass, Class<OUT> outClass) throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
-        EnvironmentSettings settings =
-                EnvironmentSettings.newInstance().inStreamingMode().useBlinkPlanner().build();
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env, settings);
-
+    public static <IN, OUT> StreamFunction<IN, OUT> toFunction(
+                Pipeline pipeline,
+                StreamExecutionEnvironment env,
+                StreamTableEnvironment tEnv,
+                Class<IN> inClass,
+                Class<OUT> outClass) throws Exception {
         DataStream<IN> inStream = env.fromElements(inClass.getDeclaredConstructor().newInstance());
         Table input_table = tEnv.fromDataStream(inStream);
 

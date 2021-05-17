@@ -21,10 +21,11 @@ package org.apache.flink.ml.common.function;
 import org.apache.flink.table.annotation.DataTypeHint;
 import org.apache.flink.table.data.RowData;
 
+import java.io.Serializable;
 import java.sql.Timestamp;
 
 class TestType {
-    public static class Order {
+    public static class Order implements Serializable {
         public Long user;
         public String product;
         public Long amount;
@@ -68,16 +69,20 @@ class TestType {
         }
     }
 
-    public static class ExpandedOrder extends Order {
+    public static class ExpandedOrder {
         public Double price;
+        public Long user;
+        public String product;
+        public Long amount;
 
         public ExpandedOrder(){
-            super();
-            this.price = 0.0;
+            this(1L, "product", 1L, 0.0);
         }
 
         public ExpandedOrder(Long user, String product, Long amount, Double price) {
-            super(user, product, amount);
+            this.user = user;
+            this.product = product;
+            this.amount = amount;
             this.price = price;
         }
 

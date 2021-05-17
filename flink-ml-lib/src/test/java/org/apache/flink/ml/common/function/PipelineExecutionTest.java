@@ -25,12 +25,12 @@ import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.functions.ScalarFunction;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.File;
-import java.io.PrintWriter;
+import java.io.*;
 import java.util.Arrays;
 import java.util.Collections;
 
@@ -55,12 +55,8 @@ public class PipelineExecutionTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-
         TestType.Order data = new TestType.Order();
-        assertEquals(Collections.singletonList(data), function.apply(data));
-
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data, data);
     }
 
     @Test
@@ -76,20 +72,9 @@ public class PipelineExecutionTest {
             }
         });
 
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-
-        TestType.Order inputData = new TestType.Order(
-                1L,
-                "product",
-                1L
-        );
-        TestType.Order outputData = new TestType.Order(
-                2L,
-                "productproduct",
-                3L
-        );
-        assertEquals(Collections.singletonList(outputData), function.apply(inputData));
+        TestType.Order inputData = new TestType.Order(1L, "product", 1L);
+        TestType.Order outputData = new TestType.Order(2L, "productproduct", 3L);
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, inputData, outputData);
 
     }
 
@@ -98,7 +83,7 @@ public class PipelineExecutionTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
+        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
         TestType.Order data = new TestType.Order();
 
         for(int i = 0; i < 10; i++){
@@ -119,7 +104,7 @@ public class PipelineExecutionTest {
         out.close();
 
         StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(filename, TestType.Order.class, TestType.Order.class);
+                PipelineUtils.toFunction(filename, env, tEnv, TestType.Order.class, TestType.Order.class);
 
         TestType.Order data = new TestType.Order();
         assertEquals(Collections.singletonList(data), function.apply(data));
@@ -135,11 +120,8 @@ public class PipelineExecutionTest {
             }
         });
 
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-
         TestType.Order data = new TestType.Order();
-        assertEquals(Collections.emptyList(), function.apply(data));
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data);
     }
 
     @Test
@@ -152,12 +134,9 @@ public class PipelineExecutionTest {
             }
         });
 
-        StreamFunction<TestType.ExpandedOrder, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, TestType.ExpandedOrder.class, TestType.Order.class);
-
         TestType.ExpandedOrder input = new TestType.ExpandedOrder();
         TestType.Order output = new TestType.Order();
-        assertEquals(Collections.singletonList(output), function.apply(input));
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.ExpandedOrder.class, TestType.Order.class, input, output);
     }
 
     @Test
@@ -170,11 +149,8 @@ public class PipelineExecutionTest {
             }
         });
 
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-
         TestType.Order data = new TestType.Order();
-        assertEquals(Arrays.asList(data, data), function.apply(data));
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data, data, data);
     }
 
     @Test
@@ -194,11 +170,8 @@ public class PipelineExecutionTest {
             }
         });
 
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-
         TestType.Order data = new TestType.Order();
-        assertEquals(Collections.singletonList(data), function.apply(data));
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data, data);
     }
 
     @Test
@@ -207,6 +180,7 @@ public class PipelineExecutionTest {
         pipeline.appendStage(new NoParamsTransformer() {
             @Override
             public Table transform(TableEnvironment tableEnvironment, Table table) {
+                tableEnvironment.dropTemporaryView("tablename");
                 tableEnvironment.createTemporaryView("tablename", table);
                 return table;
             }
@@ -218,11 +192,75 @@ public class PipelineExecutionTest {
             }
         });
 
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, TestType.Order.class, TestType.Order.class);
-
         TestType.Order data = new TestType.Order();
-        assertEquals(Collections.emptyList(), function.apply(data));
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data);
+    }
+
+    @Test
+    public void testCallUDF() throws Exception {
+        tEnv.createTemporarySystemFunction("myMap", MyMapFunction.class);
+
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                tEnv.dropTemporaryView("MyTable");
+                tEnv.createTemporaryView("MyTable", table);
+                return tEnv.sqlQuery("SELECT myMap(product, 1, 4) AS product, user, amount FROM MyTable");
+            }
+        });
+
+        TestType.Order inputData = new TestType.Order(1L, "product", 1L);
+        TestType.Order outputData = new TestType.Order(1L, "rod", 1L);
+
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, inputData, outputData);
+    }
+
+    @Test
+    public void testIndependentFromEnv() throws Exception {
+        tEnv.createTemporarySystemFunction("myMap", MyMapFunction.class);
+
+        Pipeline pipeline = new Pipeline();
+        pipeline.appendStage(new NoParamsTransformer() {
+            @Override
+            public Table transform(TableEnvironment tableEnvironment, Table table) {
+                tEnv.dropTemporaryView("MyTable");
+                tEnv.createTemporaryView("MyTable", table);
+                return tEnv.sqlQuery("SELECT myMap(product, 1, 4) AS product, user, amount FROM MyTable");
+            }
+        });
+
+        TestType.Order inputData = new TestType.Order(1L, "product", 1L);
+        TestType.Order outputData = new TestType.Order(1L, "rod", 1L);
+
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, inputData, outputData);
+        StreamFunction<TestType.Order, TestType.Order> function =
+                PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+
+        // generated function should be independent from external environment.
+        tEnv.dropTemporarySystemFunction("myMap");
+
+        assertEquals(Collections.singletonList(outputData), function.apply(inputData));
+    }
+
+    public static class MyMapFunction extends ScalarFunction {
+        public String eval(String s, Integer begin, Integer end) {
+            return s.substring(begin, end);
+        }
+    }
+
+    public <IN, OUT> void pipelineEndToEndAssertEquals(
+            Pipeline pipeline,
+            StreamExecutionEnvironment env,
+            StreamTableEnvironment tEnv,
+            Class<IN> inClass,
+            Class<OUT> outClass,
+            IN input, OUT... expectedOutput) throws Exception {
+        EmbedStreamFunction<IN, OUT> function =
+                (EmbedStreamFunction<IN, OUT>) PipelineUtils.toFunction(pipeline, env, tEnv, inClass, outClass);
+
+        function = EmbedStreamFunction.deserialize(function.serialize());
+        assertEquals(Arrays.asList(expectedOutput), function.apply(input));
     }
 
     @After
