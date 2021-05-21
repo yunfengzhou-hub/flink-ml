@@ -65,7 +65,7 @@ class OneInputEmbedVertex extends EmbedVertex {
             }
         } catch (Exception e) {
             e.printStackTrace();
-            throw new RuntimeException(e);
+            throw new RuntimeException(String.format("Operator %s failed", operator));
         }
     }
 }

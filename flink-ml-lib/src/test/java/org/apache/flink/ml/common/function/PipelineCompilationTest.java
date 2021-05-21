@@ -23,6 +23,10 @@ import org.apache.flink.ml.api.core.Estimator;
 import org.apache.flink.ml.api.core.Model;
 import org.apache.flink.ml.api.core.Pipeline;
 import org.apache.flink.ml.api.misc.param.Params;
+import org.apache.flink.ml.common.function.types.ExpandedOrder;
+import org.apache.flink.ml.common.function.types.Meeting;
+import org.apache.flink.ml.common.function.types.Order;
+import org.apache.flink.ml.common.function.types.User;
 import org.apache.flink.ml.common.utils.PipelineUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -56,12 +60,12 @@ public class PipelineCompilationTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        StreamFunction<Order, Order> function = PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
         for(int i = 0; i < 10; i++){
-            function = PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+            function = PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
         }
 
-        TestType.Order data = new TestType.Order();
+        Order data = new Order();
         assertEquals(Collections.singletonList(data), function.apply(data));
     }
 
@@ -76,7 +80,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
     }
 
     @Test(expected = TableException.class)
@@ -89,7 +93,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.User.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, User.class);
     }
 
     @Test(expected = TableException.class)
@@ -101,7 +105,7 @@ public class PipelineCompilationTest {
                 return table.orderBy($("time").asc());
             }
         });
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Meeting.class, TestType.Meeting.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Meeting.class, Meeting.class);
     }
 
     @Test(expected = ValidationException.class)
@@ -113,7 +117,7 @@ public class PipelineCompilationTest {
                 return table.window(Tumble.over(lit(5).minutes()).on($("time")).as("time")).groupBy($("time")).select($("*"));
             }
         });
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Meeting.class, TestType.Meeting.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Meeting.class, Meeting.class);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -127,7 +131,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
     }
 
     @Test(expected = ValidationException.class)
@@ -140,7 +144,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
     }
 
     @Test(expected = TableException.class)
@@ -154,7 +158,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -168,7 +172,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
     }
 
     @Test(expected = NoSuchMethodException.class)
@@ -199,12 +203,12 @@ public class PipelineCompilationTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testReadFromTableEnv() throws Exception {
-        DataStream<TestType.Order> orderA =
+        DataStream<Order> orderA =
                 env.fromCollection(
                         Arrays.asList(
-                                new TestType.Order(2L, "beer", 3L),
-                                new TestType.Order(1L, "diaper", 4L),
-                                new TestType.Order(3L, "rubber", 2L)));
+                                new Order(2L, "beer", 3L),
+                                new Order(1L, "diaper", 4L),
+                                new Order(3L, "rubber", 2L)));
         tEnv.createTemporaryView("OrderA", orderA, $("user"), $("product"), $("amount"));
 
         Pipeline pipeline = new Pipeline();
@@ -219,7 +223,7 @@ public class PipelineCompilationTest {
             }
         });
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.ExpandedOrder.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, ExpandedOrder.class, Order.class);
     }
 
     @Test(expected = RuntimeException.class)
@@ -239,6 +243,6 @@ public class PipelineCompilationTest {
         });
         pipeline.appendStage(new NopTransformer());
 
-        PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
     }
 }

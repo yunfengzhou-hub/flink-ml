@@ -39,7 +39,7 @@ public class DataStreamCompilationTest {
                         return s.toUpperCase();
                     }
                 });
-        new EmbedStreamFunction<>(stream);
+        new StreamFunction<>(stream);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -48,7 +48,7 @@ public class DataStreamCompilationTest {
         DataStream<Integer> input1 = env.fromElements(1);
         DataStream<Integer> input2 = env.fromElements(1);
         DataStream<Integer> unioned = input1.union(input2);
-        new EmbedStreamFunction<>(unioned);
+        new StreamFunction<>(unioned);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -58,7 +58,7 @@ public class DataStreamCompilationTest {
                 .windowAll(TumblingEventTimeWindows.of(Time.seconds(5)))
                 .sum(1);
 
-        new EmbedStreamFunction<>(stream);
+        new StreamFunction<>(stream);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -68,7 +68,7 @@ public class DataStreamCompilationTest {
                 .keyBy((KeySelector<Integer, Object>) integer -> integer)
                 .sum(1);
 
-        new EmbedStreamFunction<>(stream);
+        new StreamFunction<>(stream);
     }
 
     @Test(expected = Exception.class)
@@ -82,6 +82,16 @@ public class DataStreamCompilationTest {
         stream.closeWith(feedback);
         DataStream<Integer> result = stream.filter((FilterFunction<Integer>) integer -> integer<0);
 
-        new EmbedStreamFunction<>(result);
+        new StreamFunction<>(result);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testPartitioning() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+        DataStream<String> stream = env.fromElements("hello")
+                .shuffle()
+                .map(String::toUpperCase);
+
+        new StreamFunction<>(stream);
     }
 }

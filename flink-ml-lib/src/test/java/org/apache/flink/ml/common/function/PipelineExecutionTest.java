@@ -19,6 +19,8 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.ml.api.core.Pipeline;
+import org.apache.flink.ml.common.function.types.ExpandedOrder;
+import org.apache.flink.ml.common.function.types.Order;
 import org.apache.flink.ml.common.utils.PipelineUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
@@ -55,8 +57,8 @@ public class PipelineExecutionTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        TestType.Order data = new TestType.Order();
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data, data);
+        Order data = new Order();
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, data, data);
     }
 
     @Test
@@ -72,9 +74,9 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.Order inputData = new TestType.Order(1L, "product", 1L);
-        TestType.Order outputData = new TestType.Order(2L, "productproduct", 3L);
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, inputData, outputData);
+        Order inputData = new Order(1L, "product", 1L);
+        Order outputData = new Order(2L, "productproduct", 3L);
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, inputData, outputData);
 
     }
 
@@ -83,8 +85,8 @@ public class PipelineExecutionTest {
         Pipeline pipeline = new Pipeline();
         pipeline.appendStage(new NopTransformer());
 
-        StreamFunction<TestType.Order, TestType.Order> function = PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
-        TestType.Order data = new TestType.Order();
+        StreamFunction<Order, Order> function = PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
+        Order data = new Order();
 
         for(int i = 0; i < 10; i++){
             function.apply(data);
@@ -103,10 +105,10 @@ public class PipelineExecutionTest {
         out.println(pipelineJson);
         out.close();
 
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(filename, env, tEnv, TestType.Order.class, TestType.Order.class);
+        StreamFunction<Order, Order> function =
+                PipelineUtils.toFunction(filename, env, tEnv, Order.class, Order.class);
 
-        TestType.Order data = new TestType.Order();
+        Order data = new Order();
         assertEquals(Collections.singletonList(data), function.apply(data));
     }
 
@@ -120,8 +122,8 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.Order data = new TestType.Order();
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data);
+        Order data = new Order();
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, data);
     }
 
     @Test
@@ -134,9 +136,9 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.ExpandedOrder input = new TestType.ExpandedOrder();
-        TestType.Order output = new TestType.Order();
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.ExpandedOrder.class, TestType.Order.class, input, output);
+        ExpandedOrder input = new ExpandedOrder();
+        Order output = new Order();
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, ExpandedOrder.class, Order.class, input, output);
     }
 
     @Test
@@ -149,8 +151,8 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.Order data = new TestType.Order();
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data, data, data);
+        Order data = new Order();
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, data, data, data);
     }
 
     @Test
@@ -170,8 +172,8 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.Order data = new TestType.Order();
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data, data);
+        Order data = new Order();
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, data, data);
     }
 
     @Test
@@ -192,8 +194,8 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.Order data = new TestType.Order();
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, data);
+        Order data = new Order();
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, data);
     }
 
     @Test
@@ -210,10 +212,10 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.Order inputData = new TestType.Order(1L, "product", 1L);
-        TestType.Order outputData = new TestType.Order(1L, "rod", 1L);
+        Order inputData = new Order(1L, "product", 1L);
+        Order outputData = new Order(1L, "rod", 1L);
 
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, inputData, outputData);
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, inputData, outputData);
     }
 
     @Test
@@ -230,12 +232,12 @@ public class PipelineExecutionTest {
             }
         });
 
-        TestType.Order inputData = new TestType.Order(1L, "product", 1L);
-        TestType.Order outputData = new TestType.Order(1L, "rod", 1L);
+        Order inputData = new Order(1L, "product", 1L);
+        Order outputData = new Order(1L, "rod", 1L);
 
-        pipelineEndToEndAssertEquals(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class, inputData, outputData);
-        StreamFunction<TestType.Order, TestType.Order> function =
-                PipelineUtils.toFunction(pipeline, env, tEnv, TestType.Order.class, TestType.Order.class);
+        pipelineEndToEndAssertEquals(pipeline, env, tEnv, Order.class, Order.class, inputData, outputData);
+        StreamFunction<Order, Order> function =
+                PipelineUtils.toFunction(pipeline, env, tEnv, Order.class, Order.class);
 
         // generated function should be independent from external environment.
         tEnv.dropTemporarySystemFunction("myMap");
@@ -256,10 +258,10 @@ public class PipelineExecutionTest {
             Class<IN> inClass,
             Class<OUT> outClass,
             IN input, OUT... expectedOutput) throws Exception {
-        EmbedStreamFunction<IN, OUT> function =
-                (EmbedStreamFunction<IN, OUT>) PipelineUtils.toFunction(pipeline, env, tEnv, inClass, outClass);
+        StreamFunction<IN, OUT> function =
+                (StreamFunction<IN, OUT>) PipelineUtils.toFunction(pipeline, env, tEnv, inClass, outClass);
 
-        function = EmbedStreamFunction.deserialize(function.serialize());
+        function = StreamFunction.deserialize(function.serialize());
         assertEquals(Arrays.asList(expectedOutput), function.apply(input));
     }
 

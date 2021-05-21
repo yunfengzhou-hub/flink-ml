@@ -26,20 +26,24 @@ import org.apache.flink.ml.common.function.environment.EmbedRuntimeEnvironment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
 import org.apache.flink.streaming.api.graph.StreamConfig;
+import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.StreamNode;
 import org.apache.flink.streaming.api.operators.*;
+import org.apache.flink.streaming.runtime.partitioner.ForwardPartitioner;
+import org.apache.flink.streaming.runtime.partitioner.RebalancePartitioner;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.OneInputStreamTask;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.function.Supplier;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
 class StreamFunctionUtils {
+    private static Set<Class<?>> allowedPartitionerClass = new HashSet<>(Arrays.asList(ForwardPartitioner.class, RebalancePartitioner.class));
+
     public static StreamOperator getStreamOperator(StreamNode node, Output<StreamRecord> output){
         return getStreamOperator(node.getOperatorFactory(), output);
     }
@@ -90,6 +94,13 @@ class StreamFunctionUtils {
 
         int sourceCount = 0;
         for(StreamNode node:nodes){
+            for(StreamEdge edge:graph.getStreamEdges(node.getId())){
+                if(!allowedPartitionerClass.contains(edge.getPartitioner().getClass())){
+                    throw new IllegalArgumentException(
+                            "Only FORWARD and REBALANCE partition mode is supported");
+                }
+            }
+
             StreamOperator operator = getStreamOperator(node, new EmbedOutput<>());
 
             if(operator instanceof StreamSource){
@@ -110,7 +121,6 @@ class StreamFunctionUtils {
                     throw new IllegalArgumentException("Stateful/Rich functions are not supported yet.");
                 }
             }
-
         }
     }
 }

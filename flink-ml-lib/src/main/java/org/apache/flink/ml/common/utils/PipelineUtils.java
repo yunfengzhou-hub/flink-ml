@@ -20,7 +20,7 @@ package org.apache.flink.ml.common.utils;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.ml.api.core.Pipeline;
-import org.apache.flink.ml.common.function.EmbedStreamFunction;
+import org.apache.flink.ml.common.function.StreamFunction;
 import org.apache.flink.ml.common.function.StreamFunction;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -104,6 +104,6 @@ public class PipelineUtils {
 
         DataStream<OUT> outStream = tEnv.toAppendStream(output_table, outClass);
 
-        return new EmbedStreamFunction<>(outStream);
+        return new StreamFunction<>(outStream);
     }
 }

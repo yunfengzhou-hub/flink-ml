@@ -23,6 +23,7 @@ import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.ml.common.function.types.Order;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
@@ -188,7 +189,7 @@ public class DataStreamExecutionTest {
     public void testMultipleInvocation() throws Exception {
         DataStream<String> stream = env.fromElements("hello")
                 .map(String::toUpperCase);
-        EmbedStreamFunction<String, String> function = new EmbedStreamFunction<>(stream);
+        StreamFunction<String, String> function = new StreamFunction<>(stream);
         assertEquals(Collections.singletonList("HELLO"), function.apply("hello"));
         assertEquals(Collections.singletonList("HELLO"), function.apply("hello"));
         assertEquals(Collections.singletonList("HELLO"), function.apply("hello"));
@@ -230,32 +231,23 @@ public class DataStreamExecutionTest {
     }
 
     @Test
-    public void testPartitioning() throws Exception {
-        DataStream<String> stream = env.fromElements("hello")
-                .shuffle()
-                .map(String::toUpperCase);
-
-        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
-    }
-
-    @Test
     public void testMixTable() throws Exception {
-        DataStream<TestType.Order> stream = env.fromElements(new TestType.Order())
-                .map((MapFunction<TestType.Order, TestType.Order>) order -> {
+        DataStream<Order> stream = env.fromElements(new Order())
+                .map((MapFunction<Order, Order>) order -> {
                     order.amount ++;
                     return order;
                 });
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         Table table = tEnv.fromDataStream(stream)
                 .select($("user").plus(1L).as("user"), $("amount"), $("product"));
-        DataStream<TestType.Order> outStream = tEnv.toAppendStream(table, TestType.Order.class);
+        DataStream<Order> outStream = tEnv.toAppendStream(table, Order.class);
 
-        TestType.Order inputData = new TestType.Order(
+        Order inputData = new Order(
                 1L,
                 "product",
                 1L
         );
-        TestType.Order outputData = new TestType.Order(
+        Order outputData = new Order(
                 2L,
                 "product",
                 2L
@@ -268,12 +260,12 @@ public class DataStreamExecutionTest {
     public void testRuntimeError() throws Exception {
         DataStream<String> stream = env.fromElements("hello")
                 .map((MapFunction<String, String>) s -> s.substring(10));
-        new EmbedStreamFunction<>(stream).apply("hello");
+        new StreamFunction<>(stream).apply("hello");
     }
 
     public <IN, OUT> void dataStreamEndToEndAssertEquals(DataStream<OUT> stream, IN input, OUT... expectedOutput) {
-        EmbedStreamFunction<IN, OUT> function = new EmbedStreamFunction<>(stream);
-        function = EmbedStreamFunction.deserialize(function.serialize());
+        StreamFunction<IN, OUT> function = new StreamFunction<>(stream);
+        function = StreamFunction.deserialize(function.serialize());
         assertEquals(Arrays.asList(expectedOutput), function.apply(input));
     }
 

@@ -80,10 +80,10 @@ abstract class EmbedVertex implements Runnable {
         }
     }
 
-    public static EmbedVertex deserialize(String json) {
+    public static EmbedVertex deserialize(String s) {
         try {
             ObjectMapper mapper = new ObjectMapper();
-            Map<String, Object> map = mapper.readValue(json, Map.class);
+            Map<String, Object> map = mapper.readValue(s, Map.class);
 
             int id = (Integer)map.get("id");
 
@@ -94,17 +94,30 @@ abstract class EmbedVertex implements Runnable {
             }
 
             StreamOperatorFactory factory = (StreamOperatorFactory)fromString((String) map.get("factory"));
+
             return EmbedVertex.createEmbedGraphVertex(factory, inEdges, id);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to deserialize vertex json:" + json, e);
+            throw new RuntimeException("Failed to deserialize vertex:" + s, e);
         }
     }
 
 
     private static Object fromString(String s) throws IOException, ClassNotFoundException {
         byte [] data = Base64.getDecoder().decode( s );
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+
         ObjectInputStream ois = new ObjectInputStream(
-                new ByteArrayInputStream(  data ) );
+                new ByteArrayInputStream(data)){
+            @Override
+            protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+                String name = desc.getName();
+                try {
+                    return loader.loadClass(name);
+                }catch (Exception e){
+                    return super.resolveClass(desc);
+                }
+            }
+        };
         Object o  = ois.readObject();
         ois.close();
         return o;
