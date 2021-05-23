@@ -1,8 +1,6 @@
 package org.apache.flink.ml.common.function.tomcat;
 
-import java.io.Serializable;
-
-public class MenuItem implements Serializable {
+public class MenuItem {
     public String name;
     public Double price;
 

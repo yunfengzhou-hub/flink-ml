@@ -27,8 +27,6 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
-import org.apache.flink.streaming.api.graph.StreamGraph;
-import org.apache.flink.streaming.api.graph.StreamNode;
 import org.apache.flink.streaming.api.operators.*;
 import org.apache.flink.streaming.runtime.partitioner.ForwardPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.RebalancePartitioner;
@@ -42,11 +40,8 @@ import java.util.function.Supplier;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
 class StreamFunctionUtils {
-    private static Set<Class<?>> allowedPartitionerClass = new HashSet<>(Arrays.asList(ForwardPartitioner.class, RebalancePartitioner.class));
-
-    public static StreamOperator getStreamOperator(StreamNode node, Output<StreamRecord> output){
-        return getStreamOperator(node.getOperatorFactory(), output);
-    }
+    private static final Set<Class<?>> allowedPartitionerClass = new HashSet<>(
+            Arrays.asList(ForwardPartitioner.class, RebalancePartitioner.class));
 
     public static StreamOperator getStreamOperator(StreamOperatorFactory factory, Output<StreamRecord> output){
         EmbedRuntimeEnvironment env = new EmbedRuntimeEnvironment();
@@ -89,19 +84,30 @@ class StreamFunctionUtils {
         return operator;
     }
 
-    static void validateGraph(StreamGraph graph) {
-        List<StreamNode> nodes = new ArrayList<>(graph.getStreamNodes());
-
+    static void validateGraph(Map<Integer, StreamOperatorFactory> factoryMap, Map<Integer, List<StreamEdge>> inEdgeMap){
         int sourceCount = 0;
-        for(StreamNode node:nodes){
-            for(StreamEdge edge:graph.getStreamEdges(node.getId())){
+
+        for(int nodeId:factoryMap.keySet()){
+            List<StreamEdge> inEdges = inEdgeMap.get(nodeId);
+            for(StreamEdge edge:inEdges){
                 if(!allowedPartitionerClass.contains(edge.getPartitioner().getClass())){
                     throw new IllegalArgumentException(
                             "Only FORWARD and REBALANCE partition mode is supported");
                 }
             }
 
-            StreamOperator operator = getStreamOperator(node, new EmbedOutput<>());
+            StreamOperatorFactory factory = factoryMap.get(nodeId);
+            StreamOperator operator = getStreamOperator(factory, new EmbedOutput<>());
+
+            if(!((operator instanceof StreamSource)
+            || (operator instanceof OneInputStreamOperator)
+            || (operator instanceof TwoInputStreamOperator))){
+                throw new IllegalArgumentException(
+                        String.format(
+                                "Stream Operator class %s is not supported.", operator.getClass()
+                        )
+                );
+            }
 
             if(operator instanceof StreamSource){
                 sourceCount ++;

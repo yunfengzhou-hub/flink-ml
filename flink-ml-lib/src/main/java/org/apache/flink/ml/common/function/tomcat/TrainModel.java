@@ -5,7 +5,6 @@ import org.apache.flink.ml.api.core.Model;
 import org.apache.flink.ml.api.core.Pipeline;
 import org.apache.flink.ml.api.misc.param.Params;
 import org.apache.flink.ml.common.function.StreamFunction;
-import org.apache.flink.ml.common.function.StreamFunction;
 import org.apache.flink.ml.common.utils.PipelineUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -34,7 +33,7 @@ public class TrainModel {
         );
 
         PrintWriter out = new PrintWriter("/tmp/model.txt");
-        out.println(((StreamFunction<MenuItem, MenuItem>)function).serialize());
+        out.println(PipelineUtils.serializeFunction(function));
         out.close();
     }
 

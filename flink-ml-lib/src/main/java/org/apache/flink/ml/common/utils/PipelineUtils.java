@@ -21,14 +21,13 @@ package org.apache.flink.ml.common.utils;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.ml.api.core.Pipeline;
 import org.apache.flink.ml.common.function.StreamFunction;
-import org.apache.flink.ml.common.function.StreamFunction;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.*;
+import java.util.Base64;
 
 @PublicEvolving
 public class PipelineUtils {
@@ -105,5 +104,36 @@ public class PipelineUtils {
         DataStream<OUT> outStream = tEnv.toAppendStream(output_table, outClass);
 
         return new StreamFunction<>(outStream);
+    }
+
+    public static <T, R> String serializeFunction(StreamFunction<T, R> function) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream( baos );
+        oos.writeObject( function );
+        oos.close();
+        return Base64.getEncoder().encodeToString(baos.toByteArray());
+    }
+
+    @SuppressWarnings({"cast"})
+    public static <T, R> StreamFunction<T, R> deserializeFunction(String functionString) throws Exception {
+        byte [] data = Base64.getDecoder().decode( functionString );
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+
+        ObjectInputStream ois = new ObjectInputStream(
+                new ByteArrayInputStream(data)){
+            @Override
+            protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+                String name = desc.getName();
+                try {
+                    return loader.loadClass(name);
+                }catch (Exception e){
+                    return super.resolveClass(desc);
+                }
+            }
+        };
+        StreamFunction<T, R> function = (StreamFunction<T, R>) ois.readObject();
+        function.setup();
+        ois.close();
+        return function;
     }
 }

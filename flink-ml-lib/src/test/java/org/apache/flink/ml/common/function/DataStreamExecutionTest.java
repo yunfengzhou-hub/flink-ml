@@ -24,6 +24,7 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.ml.common.function.types.Order;
+import org.apache.flink.ml.common.utils.PipelineUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
@@ -180,9 +181,9 @@ public class DataStreamExecutionTest {
     public void testNotClearOperators() throws Exception {
         DataStream<String> stream = env.fromElements("hello")
                 .map(String::toUpperCase);
-        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
-        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
-        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");;
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");
+        dataStreamEndToEndAssertEquals(stream, "hello", "HELLO");
     }
 
     @Test
@@ -263,9 +264,10 @@ public class DataStreamExecutionTest {
         new StreamFunction<>(stream).apply("hello");
     }
 
-    public <IN, OUT> void dataStreamEndToEndAssertEquals(DataStream<OUT> stream, IN input, OUT... expectedOutput) {
+    @SafeVarargs
+    public final <IN, OUT> void dataStreamEndToEndAssertEquals(DataStream<OUT> stream, IN input, OUT... expectedOutput) throws Exception {
         StreamFunction<IN, OUT> function = new StreamFunction<>(stream);
-        function = StreamFunction.deserialize(function.serialize());
+        function = PipelineUtils.deserializeFunction(PipelineUtils.serializeFunction(function));
         assertEquals(Arrays.asList(expectedOutput), function.apply(input));
     }
 

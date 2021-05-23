@@ -1,7 +1,7 @@
 package org.apache.flink.ml.common.function.tomcat;
 
 import org.apache.flink.ml.common.function.StreamFunction;
-import org.apache.flink.ml.common.function.StreamFunction;
+import org.apache.flink.ml.common.utils.PipelineUtils;
 
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -19,18 +19,10 @@ public class FlinkInferenceServlet extends HttpServlet {
 
     public FlinkInferenceServlet() throws Exception {
         BufferedReader br = new BufferedReader(new FileReader("/tmp/model.txt"));
-        StringBuilder sb = new StringBuilder();
-        String line = br.readLine();
 
-        while (line != null) {
-            sb.append(line);
-            sb.append(System.lineSeparator());
-            line = br.readLine();
-        }
+        String functionString = br.readLine();
 
-        String functionString = sb.toString();
-
-        function = StreamFunction.deserialize(functionString);
+        function = PipelineUtils.deserializeFunction(functionString);
     }
 
     public void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {

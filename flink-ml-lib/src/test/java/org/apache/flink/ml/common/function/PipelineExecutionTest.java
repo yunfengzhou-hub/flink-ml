@@ -251,7 +251,8 @@ public class PipelineExecutionTest {
         }
     }
 
-    public <IN, OUT> void pipelineEndToEndAssertEquals(
+    @SafeVarargs
+    public final <IN, OUT> void pipelineEndToEndAssertEquals(
             Pipeline pipeline,
             StreamExecutionEnvironment env,
             StreamTableEnvironment tEnv,
@@ -259,9 +260,8 @@ public class PipelineExecutionTest {
             Class<OUT> outClass,
             IN input, OUT... expectedOutput) throws Exception {
         StreamFunction<IN, OUT> function =
-                (StreamFunction<IN, OUT>) PipelineUtils.toFunction(pipeline, env, tEnv, inClass, outClass);
-
-        function = StreamFunction.deserialize(function.serialize());
+                PipelineUtils.toFunction(pipeline, env, tEnv, inClass, outClass);
+        function = PipelineUtils.deserializeFunction(PipelineUtils.serializeFunction(function));
         assertEquals(Arrays.asList(expectedOutput), function.apply(input));
     }
 

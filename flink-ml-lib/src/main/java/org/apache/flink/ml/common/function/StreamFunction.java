@@ -18,16 +18,15 @@
 
 package org.apache.flink.ml.common.function;
 
-import org.apache.flink.annotation.Internal;
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.StreamNode;
+import org.apache.flink.streaming.api.operators.*;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.planner.utils.ExecutorUtils;
 
+import java.io.Serializable;
 import java.util.*;
 import java.util.function.Function;
 
@@ -39,116 +38,118 @@ import java.util.function.Function;
  * @param <T> class of the input data
  * @param <R> class of the output data
  */
-@Internal
 @SuppressWarnings({"unchecked", "rawtypes"})
-public class StreamFunction<T, R> implements Function<T, List<R>> {
-    private Map<Integer, List<StreamRecord>> outputMap;
-    private final Map<Integer, EmbedVertex> vertexMap;
-    private final int outOperatorId;
+public class StreamFunction<T, R> implements Function<T, List<R>>, Serializable {
+    private final Map<Integer, StreamOperatorFactory> factoryMap;
+    private final Map<Integer, List<StreamEdge>> inEdgeMap;
+    private final int outVertexId;
+    private transient Map<Integer, List<StreamRecord>> intermediateResults;
+    private transient Map<Integer, EmbedOutput> outputMap;
+    private transient Map<Integer, StreamOperator> operatorMap;
+    private transient boolean setup = false;
 
     public StreamFunction(DataStream<R> outStream) {
+        outVertexId = outStream.getId();
+
         StreamGraph graph = ExecutorUtils.generateStreamGraph(
                 outStream.getExecutionEnvironment(),
                 Collections.singletonList(outStream.getTransformation()));
-        StreamFunctionUtils.validateGraph(graph);
-        List<StreamNode> nodes = new ArrayList<>(graph.getStreamNodes());
-        this.outOperatorId = outStream.getId();
 
-        vertexMap = new HashMap<>();
-        for(StreamNode node: nodes) {
-            EmbedVertex vertex = EmbedVertex.createEmbedGraphVertex(node);
-            vertexMap.put(vertex.getId(), vertex);
+        factoryMap = new HashMap<>();
+        inEdgeMap = new HashMap<>();
+        for(StreamNode node:graph.getStreamNodes()){
+            factoryMap.put(node.getId(), node.getOperatorFactory());
+            inEdgeMap.put(node.getId(), node.getInEdges());
         }
+
+        setup();
     }
 
-    private StreamFunction(int outOperatorId, Map<Integer, EmbedVertex> vertexMap) {
-        this.outOperatorId = outOperatorId;
-        this.vertexMap = vertexMap;
-    }
+    public void setup(){
+        if(setup)   return;
 
-    /**
-     * Applies the computation logic of stored StreamGraph to the input data. Output is collected and returned.
-     *
-     * @param t input data of the StreamGraph.
-     * @return result after applying the computation logic to input data.
-     */
-    @Override
-    public List<R> apply(T t){
+        StreamFunctionUtils.validateGraph(factoryMap, inEdgeMap);
+
         outputMap = new HashMap<>();
+        operatorMap = new HashMap<>();
 
-        List<R> result = new ArrayList<>();
-        for(StreamRecord r:execute(outOperatorId, t)) {
-            result.add((R) r.getValue());
+        for(int nodeId:factoryMap.keySet()){
+            StreamOperatorFactory factory = factoryMap.get(nodeId);
+            EmbedOutput output = new EmbedOutput();
+            StreamOperator operator = StreamFunctionUtils.getStreamOperator(factory, output);
+            outputMap.put(nodeId, output);
+            operatorMap.put(nodeId, operator);
         }
-        return result;
+
+        setup = true;
     }
 
-    private List<StreamRecord> execute(int vertexId, T t){
-        List<StreamRecord> result = outputMap.get(vertexId);
-
-        if(result != null){
+    @Override
+    public List<R> apply(T t) {
+        try{
+            setup();
+            intermediateResults = new HashMap<>();
+            List<R> result = new ArrayList<>();
+            for(StreamRecord r:execute(outVertexId, t)) {
+                result.add((R) r.getValue());
+            }
             return result;
+        }catch (Exception e){
+            e.printStackTrace();
+            throw new RuntimeException("Failed to apply function logic on input "+t);
+        }
+    }
+
+    private List<StreamRecord> execute(int nodeId, T t) throws Exception {
+        if(intermediateResults.containsKey(nodeId)){
+            return intermediateResults.get(nodeId);
         }
 
-        EmbedVertex vertex = vertexMap.get(vertexId);
+        List<StreamRecord> result = new ArrayList<>();
 
-        if(vertex instanceof SourceEmbedVertex) {
-            result = new ArrayList<>();
+        StreamOperator operator = operatorMap.get(nodeId);
+
+        Map<Integer, List<StreamRecord>> inputMap = new HashMap<>();
+
+        if(operator instanceof StreamSource){
             result.add(new StreamRecord(t));
-        } else {
-            vertex.clear();
-            for(StreamEdge edge:vertex.getInEdges()){
+        }else{
+            outputMap.get(nodeId).getOutputList().clear();
+
+            for(StreamEdge edge:inEdgeMap.get(nodeId)){
                 for(StreamRecord record:execute(edge.getSourceId(), t)){
                     // some stateful operations require deep copy of StreamRecord values,
                     // but in stateless cases this could be avoided, bringing better performance.
-                    vertex.getInputList(edge.getTypeNumber()).add(new StreamRecord(record.getValue()));
+                    inputMap.computeIfAbsent(edge.getTypeNumber(), k -> new ArrayList<>());
+                    inputMap.get(edge.getTypeNumber()).add(new StreamRecord(record.getValue()));
                 }
             }
 
-            vertex.run();
+            operator.close();
+            operator.open();
 
-            result = vertex.getOutput();
+            if(operator instanceof OneInputStreamOperator){
+                OneInputStreamOperator oneInputStreamOperator = (OneInputStreamOperator)operator;
+                for(StreamRecord record:inputMap.getOrDefault(0, new ArrayList<>())){
+                    oneInputStreamOperator.processElement(record);
+                }
+            }else if(operator instanceof TwoInputStreamOperator){
+                TwoInputStreamOperator twoInputStreamOperator = (TwoInputStreamOperator)operator;
+                for(StreamRecord record:inputMap.getOrDefault(1, new ArrayList<>())){
+                    twoInputStreamOperator.processElement1(record);
+                }
+                for(StreamRecord record:inputMap.getOrDefault(2, new ArrayList<>())){
+                    twoInputStreamOperator.processElement2(record);
+                }
+            }else{
+                throw new RuntimeException("Unsupported operator " + operator + "used.");
+            }
+
+            result = outputMap.get(nodeId).getOutputList();
         }
 
-        outputMap.put(vertexId, result);
+        intermediateResults.put(nodeId, result);
 
         return result;
-    }
-
-    public String serialize() {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-
-            Map<String, String> map = new HashMap<>();
-            map.put("outOperatorId", Integer.toString(outOperatorId));
-
-            Map<String, String> vertexJsonMap = new HashMap<>();
-            for(Map.Entry<Integer, EmbedVertex> entry:vertexMap.entrySet()){
-                vertexJsonMap.put(entry.getKey().toString(), entry.getValue().serialize());
-            }
-            map.put("vertexJsonMap", mapper.writeValueAsString(vertexJsonMap));
-            return mapper.writeValueAsString(map);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize StreamFunction", e);
-        }
-    }
-
-    public static <T, R> StreamFunction<T, R> deserialize(String s) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            Map<String, String> map = mapper.readValue(s, Map.class);
-
-            int outOperatorId = Integer.parseInt(map.get("outOperatorId"));
-
-            Map<String, String> vertexJsonMap = (Map<String, String>) mapper.readValue(map.get("vertexJsonMap"), Map.class);
-            Map<Integer, EmbedVertex> vertexMap = new HashMap<>();
-            for(Map.Entry<String, String> entry:vertexJsonMap.entrySet()){
-                vertexMap.put(Integer.parseInt(entry.getKey()), EmbedVertex.deserialize(entry.getValue()));
-            }
-
-            return new StreamFunction<>(outOperatorId, vertexMap);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to deserialize StreamFunction:" + s, e);
-        }
     }
 }
