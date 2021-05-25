@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.function;
 
+import org.apache.flink.api.common.functions.Function;
 import org.apache.flink.api.common.functions.RichFunction;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.common.function.environment.EmbedOperatorEventDispatcherImpl;
@@ -25,6 +26,8 @@ import org.apache.flink.ml.common.function.environment.EmbedProcessingTimeServic
 import org.apache.flink.ml.common.function.environment.EmbedRuntimeEnvironment;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.OperatorEventDispatcher;
+import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
+import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.graph.StreamEdge;
 import org.apache.flink.streaming.api.operators.*;
@@ -43,14 +46,9 @@ class StreamFunctionUtils {
     private static final Set<Class<?>> allowedPartitionerClass = new HashSet<>(
             Arrays.asList(ForwardPartitioner.class, RebalancePartitioner.class));
 
-    public static StreamOperator getStreamOperator(StreamOperatorFactory factory, Output<StreamRecord> output){
+    public static StreamOperator getStreamOperator(StreamOperatorFactory factory, Output<StreamRecord> output) throws Exception{
         EmbedRuntimeEnvironment env = new EmbedRuntimeEnvironment();
-        StreamTask<?, ?> task;
-        try {
-            task = new OneInputStreamTask<>(env);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        StreamTask<?, ?> task = new OneInputStreamTask<>(env);
         StreamConfig streamConfig = new StreamConfig(new Configuration());
         streamConfig.setOperatorID(new OperatorID());
         streamConfig.setOperatorName("operator name");
@@ -75,16 +73,11 @@ class StreamFunctionUtils {
         }
 
         StreamOperator operator = factory.createStreamOperator(parameters);
-        try {
-            operator.open();
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new IllegalArgumentException(String.format("Cannot initiate operator %s", operator));
-        }
+        operator.open();
         return operator;
     }
 
-    static void validateGraph(Map<Integer, StreamOperatorFactory> factoryMap, Map<Integer, List<StreamEdge>> inEdgeMap){
+    static void validateGraph(Map<Integer, StreamOperatorFactory> factoryMap, Map<Integer, List<StreamEdge>> inEdgeMap) throws Exception{
         int sourceCount = 0;
 
         for(int nodeId:factoryMap.keySet()){
@@ -123,7 +116,10 @@ class StreamFunctionUtils {
             }
 
             if(operator instanceof AbstractUdfStreamOperator){
-                if(((AbstractUdfStreamOperator<?, ?>) operator).getUserFunction() instanceof RichFunction){
+                Function function = ((AbstractUdfStreamOperator<?, ?>) operator).getUserFunction();
+                if(function instanceof RichFunction
+                || function instanceof CheckpointedFunction
+                || function instanceof ListCheckpointed){
                     throw new IllegalArgumentException("Stateful/Rich functions are not supported yet.");
                 }
             }

@@ -19,8 +19,13 @@
 package org.apache.flink.ml.common.function;
 
 import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.runtime.state.FunctionInitializationContext;
+import org.apache.flink.runtime.state.FunctionSnapshotContext;
+import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
+import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.IterativeStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -28,18 +33,65 @@ import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindo
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.junit.Test;
 
+import java.util.List;
+
+@SuppressWarnings({"rawtypes"})
 public class DataStreamCompilationTest {
     @Test(expected = IllegalArgumentException.class)
-    public void testStatefulFunction() throws Exception{
+    public void testRichFunction() throws Exception{
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         DataStream<String> stream = env.fromElements("hello")
                 .map(new RichMapFunction<String, String>() {
                     @Override
-                    public String map(String s) throws Exception {
+                    public String map(String s) {
                         return s.toUpperCase();
                     }
                 });
         new StreamFunction<>(stream);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testCheckpointedFunction() throws Exception{
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        DataStream<String> stream = env.fromElements("hello")
+                .map(new CheckpointedStringMapFunction());
+        new StreamFunction<>(stream);
+    }
+
+    private static class CheckpointedStringMapFunction implements CheckpointedFunction, MapFunction<String, String> {
+        @Override
+        public String map(String str) {
+            return str;
+        }
+
+        @Override
+        public void snapshotState(FunctionSnapshotContext functionSnapshotContext) {}
+
+        @Override
+        public void initializeState(FunctionInitializationContext functionInitializationContext) {}
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testListCheckpointedFunction() throws Exception{
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        DataStream<String> stream = env.fromElements("hello")
+                .map(new ListCheckpointedStringMapFunction());
+        new StreamFunction<>(stream);
+    }
+
+    private static class ListCheckpointedStringMapFunction implements ListCheckpointed, MapFunction<String, String> {
+        @Override
+        public String map(String str) {
+            return str;
+        }
+
+        @Override
+        public List snapshotState(long l, long l1) {
+            return null;
+        }
+
+        @Override
+        public void restoreState(List list) {}
     }
 
     @Test(expected = IllegalArgumentException.class)

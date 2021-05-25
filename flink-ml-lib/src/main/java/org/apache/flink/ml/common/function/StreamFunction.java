@@ -48,7 +48,7 @@ public class StreamFunction<T, R> implements Function<T, List<R>>, Serializable 
     private transient Map<Integer, StreamOperator> operatorMap;
     private transient boolean setup = false;
 
-    public StreamFunction(DataStream<R> outStream) {
+    public StreamFunction(DataStream<R> outStream) throws Exception {
         outVertexId = outStream.getId();
 
         StreamGraph graph = ExecutorUtils.generateStreamGraph(
@@ -65,7 +65,7 @@ public class StreamFunction<T, R> implements Function<T, List<R>>, Serializable 
         setup();
     }
 
-    public void setup(){
+    public void setup() throws Exception {
         if(setup)   return;
 
         StreamFunctionUtils.validateGraph(factoryMap, inEdgeMap);
