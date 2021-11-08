@@ -29,6 +29,10 @@ under the License.
   <artifactId>flink-ml-lib_${scala.binary.version}</artifactId>
   <name>Flink ML : Lib</name>
 
+  <properties>
+    <netlib.ludovic.dev.version>2.2.0</netlib.ludovic.dev.version>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.apache.flink</groupId>
@@ -72,11 +76,17 @@ under the License.
       <scope>provided</scope>
     </dependency>
 
+      <dependency>
+          <groupId>org.apache.flink</groupId>
+          <artifactId>flink-table-runtime_${scala.binary.version}</artifactId>
+          <version>${flink.version}</version>
+          <scope>provided</scope>
+      </dependency>
+
     <dependency>
-      <groupId>org.apache.flink</groupId>
-      <artifactId>flink-table-runtime_${scala.binary.version}</artifactId>
-      <version>${flink.version}</version>
-      <scope>provided</scope>
+      <groupId>dev.ludovic.netlib</groupId>
+      <artifactId>blas</artifactId>
+      <version>${netlib.ludovic.dev.version}</version>
     </dependency>
 
     <dependency>
