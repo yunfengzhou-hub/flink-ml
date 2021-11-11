@@ -55,7 +55,7 @@ public final class PipelineModel implements Model<PipelineModel> {
      * @return a list of tables
      */
     @Override
-    public Table[] transform(Table... inputs) throws Exception {
+    public Table[] transform(Table... inputs) {
         for (Stage<?> stage : stages) {
             inputs = ((AlgoOperator<?>) stage).transform(inputs);
         }
