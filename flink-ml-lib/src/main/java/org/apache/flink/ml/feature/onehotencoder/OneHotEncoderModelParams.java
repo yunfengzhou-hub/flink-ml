@@ -16,28 +16,16 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.linalg;
+package org.apache.flink.ml.feature.onehotencoder;
 
-/** Utility methods for instantiating Vector. */
-public class Vectors {
+import org.apache.flink.ml.common.param.HasDropLast;
+import org.apache.flink.ml.common.param.HasInputCols;
+import org.apache.flink.ml.common.param.HasOutputCols;
 
-    /** Creates a dense vector from its values. */
-    public static DenseVector dense(double... values) {
-        return new DenseVector(values);
-    }
-
-    /** Creates a sparse vector from its values. */
-    public static SparseVector sparse(int size) {
-        return new SparseVector(size);
-    }
-
-    /** Creates a sparse vector from its values. */
-    public static SparseVector sparse(int size, int index, double value) {
-        return new SparseVector(size, index, value);
-    }
-
-    /** Creates a sparse vector from its values. */
-    public static SparseVector sparse(int size, int[] indices, double[] values) {
-        return new SparseVector(size, indices, values);
-    }
-}
+/**
+ * Params of OneHotEncoderModel.
+ *
+ * @param <T> The class type of this instance.
+ */
+public interface OneHotEncoderModelParams<T>
+        extends HasInputCols<T>, HasOutputCols<T>, HasDropLast<T> {}

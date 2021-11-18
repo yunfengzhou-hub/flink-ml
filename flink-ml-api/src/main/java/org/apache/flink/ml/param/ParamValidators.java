@@ -95,4 +95,9 @@ public class ParamValidators {
             }
         };
     }
+
+    // Check if the length of the parameter value is greater than lowerBound.
+    public static <T> ParamValidator<T> lenGt(int lowerBound) {
+        return value -> ((Object[]) value).length > lowerBound;
+    }
 }

@@ -16,28 +16,22 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.linalg;
+package org.apache.flink.ml.common.param;
 
-/** Utility methods for instantiating Vector. */
-public class Vectors {
+import org.apache.flink.ml.param.BooleanParam;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.param.WithParams;
 
-    /** Creates a dense vector from its values. */
-    public static DenseVector dense(double... values) {
-        return new DenseVector(values);
+/** Interface for the shared dropLast param. */
+public interface HasDropLast<T> extends WithParams<T> {
+    Param<Boolean> DROP_LAST =
+            new BooleanParam("dropLast", "Whether to drop the last category.", true);
+
+    default boolean getDropLast() {
+        return get(DROP_LAST);
     }
 
-    /** Creates a sparse vector from its values. */
-    public static SparseVector sparse(int size) {
-        return new SparseVector(size);
-    }
-
-    /** Creates a sparse vector from its values. */
-    public static SparseVector sparse(int size, int index, double value) {
-        return new SparseVector(size, index, value);
-    }
-
-    /** Creates a sparse vector from its values. */
-    public static SparseVector sparse(int size, int[] indices, double[] values) {
-        return new SparseVector(size, indices, values);
+    default T setDropLast(boolean value) {
+        return set(DROP_LAST, value);
     }
 }
