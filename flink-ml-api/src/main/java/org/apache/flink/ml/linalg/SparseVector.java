@@ -1,11 +1,29 @@
-package org.apache.flink.ml.linalg;
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+package org.apache.flink.ml.linalg;
 
 import org.apache.flink.util.Preconditions;
 
 import java.util.Arrays;
 import java.util.Objects;
 
+/** A sparse vector of double values. */
 public class SparseVector implements Vector {
     public final int n;
     public final int[] indices;
@@ -20,7 +38,7 @@ public class SparseVector implements Vector {
     }
 
     public SparseVector(int n, int index, double value) {
-        this(n, new int[]{index}, new double[]{value});
+        this(n, new int[] {index}, new double[] {value});
     }
 
     public SparseVector(int n, int[] indices, double[] values) {
@@ -48,7 +66,7 @@ public class SparseVector implements Vector {
     @Override
     public double[] toArray() {
         double[] result = new double[n];
-        for (int i = 0; i < indices.length; i ++) {
+        for (int i = 0; i < indices.length; i++) {
             result[indices[i]] = values[i];
         }
         return result;
@@ -87,9 +105,9 @@ public class SparseVector implements Vector {
             return false;
         }
         SparseVector that = (SparseVector) o;
-        return n == that.n &&
-                Arrays.equals(indices, that.indices) &&
-                Arrays.equals(values, that.values);
+        return n == that.n
+                && Arrays.equals(indices, that.indices)
+                && Arrays.equals(values, that.values);
     }
 
     @Override
@@ -101,21 +119,20 @@ public class SparseVector implements Vector {
     }
 
     /**
-     * Check whether the indices array and values array are of the same size,
-     * and whether vector indices are in valid range.
+     * Check whether the indices array and values array are of the same size, and whether vector
+     * indices are in valid range.
      */
     private void checkSizeAndIndicesRange() {
-        Preconditions.checkArgument(indices.length == values.length,
+        Preconditions.checkArgument(
+                indices.length == values.length,
                 "Indices size and values size should be the same.");
         for (int index : indices) {
-            Preconditions.checkArgument(!(index < 0 || (n >= 0 && index >= n)),
-                    "Index out of bound.");
+            Preconditions.checkArgument(
+                    !(index < 0 || (n >= 0 && index >= n)), "Index out of bound.");
         }
     }
 
-    /**
-     * Sort the indices and values if the indices are out of order.
-     */
+    /** Sort the indices and values if the indices are out of order. */
     private void sortIndices() {
         boolean outOfOrder = false;
         for (int i = 0; i < this.indices.length - 1; i++) {
@@ -129,9 +146,7 @@ public class SparseVector implements Vector {
         }
     }
 
-    /**
-     * Sort the indices and values using quick sort.
-     */
+    /** Sort the indices and values using quick sort. */
     private static void sortImpl(int[] indices, double[] values, int low, int high) {
         int pivotPos = (low + high) / 2;
         int pivot = indices[pivotPos];

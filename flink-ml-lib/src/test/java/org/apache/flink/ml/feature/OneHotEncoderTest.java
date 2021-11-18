@@ -1,6 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.flink.ml.feature;
 
-import org.apache.commons.collections.IteratorUtils;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -17,6 +34,8 @@ import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
+
+import org.apache.commons.collections.IteratorUtils;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -29,6 +48,7 @@ import java.util.Map;
 import static org.apache.flink.table.api.Expressions.$;
 import static org.junit.Assert.*;
 
+/** Tests OneHotEncoder and OneHotEncoderModel. */
 public class OneHotEncoderTest {
     private StreamExecutionEnvironment env;
     private StreamTableEnvironment tEnv;
@@ -60,58 +80,44 @@ public class OneHotEncoderTest {
 
         trainData =
                 new Row[] {
-                        Row.of(0.0),
-                        Row.of(1.0),
-                        Row.of(2.0),
-                        Row.of(0.0),
+                    Row.of(0.0), Row.of(1.0), Row.of(2.0), Row.of(0.0),
                 };
 
         expectedOutput =
                 new Row[] {
-                        Row.of(Vectors.sparse(2, 0, 1.0)),
-                        Row.of(Vectors.sparse(2, 1, 1.0)),
-                        Row.of(Vectors.sparse(2)),
-                        Row.of(Vectors.sparse(2, 0, 1.0)),
+                    Row.of(Vectors.sparse(2, 0, 1.0)),
+                    Row.of(Vectors.sparse(2, 1, 1.0)),
+                    Row.of(Vectors.sparse(2)),
+                    Row.of(Vectors.sparse(2, 0, 1.0)),
                 };
 
         predictData = trainData;
-        inputCols = new String[]{"f0"};
-        outputCols = new String[]{"output_f0"};
+        inputCols = new String[] {"f0"};
+        outputCols = new String[] {"output_f0"};
         dropLast = true;
         isSaveLoad = false;
     }
-
 
     @Test
     public void testParam() {
         OneHotEncoder estimator = new OneHotEncoder();
 
-        assertArrayEquals(new String[]{"input"}, estimator.getInputCols());
-        assertArrayEquals(new String[]{"output"}, estimator.getOutputCols());
         assertTrue(estimator.getDropLast());
 
-        estimator
-                .setInputCols("test_input")
-                .setOutputCols("test_output")
-                .setDropLast(false);
+        estimator.setInputCols("test_input").setOutputCols("test_output").setDropLast(false);
 
-        assertArrayEquals(new String[]{"test_input"}, estimator.getInputCols());
-        assertArrayEquals(new String[]{"test_output"}, estimator.getOutputCols());
+        assertArrayEquals(new String[] {"test_input"}, estimator.getInputCols());
+        assertArrayEquals(new String[] {"test_output"}, estimator.getOutputCols());
         assertFalse(estimator.getDropLast());
 
         OneHotEncoderModel model = new OneHotEncoderModel();
 
-        assertArrayEquals(new String[]{"input"}, model.getInputCols());
-        assertArrayEquals(new String[]{"output"}, model.getOutputCols());
         assertTrue(model.getDropLast());
 
-        model
-                .setInputCols("test_input")
-                .setOutputCols("test_output")
-                .setDropLast(false);
+        model.setInputCols("test_input").setOutputCols("test_output").setDropLast(false);
 
-        assertArrayEquals(new String[]{"test_input"}, model.getInputCols());
-        assertArrayEquals(new String[]{"test_output"}, model.getOutputCols());
+        assertArrayEquals(new String[] {"test_input"}, model.getInputCols());
+        assertArrayEquals(new String[] {"test_output"}, model.getOutputCols());
         assertFalse(model.getDropLast());
     }
 
@@ -126,10 +132,10 @@ public class OneHotEncoderTest {
 
         expectedOutput =
                 new Row[] {
-                        Row.of(Vectors.sparse(3, 0, 1.0)),
-                        Row.of(Vectors.sparse(3, 1, 1.0)),
-                        Row.of(Vectors.sparse(3, 2, 1.0)),
-                        Row.of(Vectors.sparse(3, 0, 1.0)),
+                    Row.of(Vectors.sparse(3, 0, 1.0)),
+                    Row.of(Vectors.sparse(3, 1, 1.0)),
+                    Row.of(Vectors.sparse(3, 2, 1.0)),
+                    Row.of(Vectors.sparse(3, 0, 1.0)),
                 };
         runAndCheck();
     }
@@ -145,16 +151,13 @@ public class OneHotEncoderTest {
 
         trainData =
                 new Row[] {
-                        Row.of(0),
-                        Row.of(1),
-                        Row.of(2),
-                        Row.of(0),
+                    Row.of(0), Row.of(1), Row.of(2), Row.of(0),
                 };
         predictData = trainData;
         runAndCheck();
     }
 
-    @Test (expected = Exception.class)
+    @Test(expected = Exception.class)
     public void testNonIntegerDouble() throws Exception {
         schema =
                 Schema.newBuilder()
@@ -165,15 +168,12 @@ public class OneHotEncoderTest {
 
         trainData =
                 new Row[] {
-                        Row.of(0.5),
-                        Row.of(1.5),
-                        Row.of(2.5),
-                        Row.of(0.5),
+                    Row.of(0.5), Row.of(1.5), Row.of(2.5), Row.of(0.5),
                 };
         runAndCheck();
     }
 
-    @Test (expected = Exception.class)
+    @Test(expected = Exception.class)
     public void testNonIntegerDouble2() throws Exception {
         schema =
                 Schema.newBuilder()
@@ -184,10 +184,7 @@ public class OneHotEncoderTest {
 
         predictData =
                 new Row[] {
-                        Row.of(0.5),
-                        Row.of(1.5),
-                        Row.of(2.5),
-                        Row.of(0.5),
+                    Row.of(0.5), Row.of(1.5), Row.of(2.5), Row.of(0.5),
                 };
         runAndCheck();
     }
@@ -229,14 +226,14 @@ public class OneHotEncoderTest {
         Table trainTable =
                 tEnv.fromDataStream(
                         env.fromElements(trainData)
-                                .assignTimestampsAndWatermarks(
-                                        WatermarkStrategy.noWatermarks()),
+                                .assignTimestampsAndWatermarks(WatermarkStrategy.noWatermarks()),
                         schema);
 
-        OneHotEncoder estimator = new OneHotEncoder()
-                .setDropLast(dropLast)
-                .setInputCols(inputCols)
-                .setOutputCols(outputCols);
+        OneHotEncoder estimator =
+                new OneHotEncoder()
+                        .setDropLast(dropLast)
+                        .setInputCols(inputCols)
+                        .setOutputCols(outputCols);
 
         if (isSaveLoad) {
             String tempDir = Files.createTempDirectory("").toString();
@@ -263,11 +260,9 @@ public class OneHotEncoderTest {
         Table predictTable =
                 tEnv.fromDataStream(
                         env.fromElements(predictData)
-                                .assignTimestampsAndWatermarks(
-                                        WatermarkStrategy.noWatermarks()),
+                                .assignTimestampsAndWatermarks(WatermarkStrategy.noWatermarks()),
                         schema);
-        Table output =
-                model.transform(predictTable)[0].select($("output_f0"));
+        Table output = model.transform(predictTable)[0].select($("output_f0"));
 
         Object[] actualObjects = IteratorUtils.toArray(output.execute().collect());
         Row[] actual = new Row[actualObjects.length];
@@ -281,13 +276,13 @@ public class OneHotEncoderTest {
     private static Map<Object, Integer> getFrequencyMap(Row[] rows) {
         Map<Object, Integer> map = new HashMap<>();
         for (Row row : rows) {
-            List<Object> list = toList(row);
+            List<Object> list = getFieldValues(row);
             map.put(list, map.getOrDefault(list, 0) + 1);
         }
         return map;
     }
 
-    private static List<Object> toList(Row row) {
+    private static List<Object> getFieldValues(Row row) {
         List<Object> list = new ArrayList<>();
         for (int i = 0; i < row.getArity(); i++) {
             list.add(row.getField(i));

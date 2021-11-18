@@ -1,8 +1,23 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.flink.ml.feature.onehotencoder;
 
-import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.io.Input;
-import com.esotericsoftware.kryo.io.Output;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -16,27 +31,38 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
 
+import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
+
 import java.io.IOException;
 import java.io.OutputStream;
 
+/** Provides classes to save/load model data. */
 public class OneHotEncoderModelData {
-    public static Table fromDataStream(StreamTableEnvironment tEnv, DataStream<Tuple2<Integer, Integer>> stream) {
+    public static Table fromDataStream(
+            StreamTableEnvironment tEnv, DataStream<Tuple2<Integer, Integer>> stream) {
         return tEnv.fromDataStream(stream);
     }
 
-    public static DataStream<Tuple2<Integer, Integer>> toDataStream(StreamTableEnvironment tEnv, Table table) {
+    public static DataStream<Tuple2<Integer, Integer>> toDataStream(
+            StreamTableEnvironment tEnv, Table table) {
         return tEnv.toDataStream(table)
-                .map(new MapFunction<Row, Tuple2<Integer, Integer>>() {
-                    @Override
-                    public Tuple2<Integer, Integer> map(Row row) throws Exception {
-                        return new Tuple2<>((int) row.getField("f0"), (int) row.getField("f1"));
-                    }
-                });
+                .map(
+                        new MapFunction<Row, Tuple2<Integer, Integer>>() {
+                            @Override
+                            public Tuple2<Integer, Integer> map(Row row) throws Exception {
+                                return new Tuple2<>(
+                                        (int) row.getField("f0"), (int) row.getField("f1"));
+                            }
+                        });
     }
 
+    /** Encoder for the OneHotEncoder model data. */
     public static class ModelDataEncoder implements Encoder<Tuple2<Integer, Integer>> {
         @Override
-        public void encode(Tuple2<Integer, Integer> modeldata, OutputStream outputStream) throws IOException {
+        public void encode(Tuple2<Integer, Integer> modeldata, OutputStream outputStream)
+                throws IOException {
             Kryo kryo = new Kryo();
             Output output = new Output(outputStream);
             System.out.println("write " + modeldata);
@@ -45,9 +71,11 @@ public class OneHotEncoderModelData {
         }
     }
 
+    /** Decoder for the OneHotEncoder model data. */
     public static class ModelDataStreamFormat extends SimpleStreamFormat<Tuple2<Integer, Integer>> {
         @Override
-        public Reader<Tuple2<Integer, Integer>> createReader(Configuration config, FSDataInputStream stream) throws IOException {
+        public Reader<Tuple2<Integer, Integer>> createReader(
+                Configuration config, FSDataInputStream stream) throws IOException {
             return new Reader<Tuple2<Integer, Integer>>() {
                 private final Kryo kryo = new Kryo();
                 private final Input input = new Input(stream);
