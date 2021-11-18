@@ -25,4 +25,19 @@ public class Vectors {
     public static DenseVector dense(double... values) {
         return new DenseVector(values);
     }
+
+    /** Creates a sparse vector from its values. */
+    public static SparseVector sparse(int size) {
+        return new SparseVector(size);
+    }
+
+    /** Creates a sparse vector from its values. */
+    public static SparseVector sparse(int size, int index, double value) {
+        return new SparseVector(size, index, value);
+    }
+
+    /** Creates a sparse vector from its values. */
+    public static SparseVector sparse(int size, int[] indices, double[] values) {
+        return new SparseVector(size, indices, values);
+    }
 }
