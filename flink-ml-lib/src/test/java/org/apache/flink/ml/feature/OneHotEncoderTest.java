@@ -199,6 +199,36 @@ public class OneHotEncoderTest {
     }
 
     @Test
+    public void testSaveLoad2() throws Exception {
+        schema =
+                Schema.newBuilder()
+                        .column("f0", DataTypes.DOUBLE())
+                        .column("f1", DataTypes.DOUBLE())
+                        .columnByMetadata("rowtime", "TIMESTAMP_LTZ(3)")
+                        .watermark("rowtime", "SOURCE_WATERMARK()")
+                        .build();
+
+        trainData =
+                new Row[] {
+                    Row.of(0.0, 0.0), Row.of(1.0, 1.0), Row.of(2.0, 2.0), Row.of(0.0, 3.0),
+                };
+
+        expectedOutput =
+                new Row[] {
+                    Row.of(Vectors.sparse(2, 0, 1.0)),
+                    Row.of(Vectors.sparse(2, 1, 1.0)),
+                    Row.of(Vectors.sparse(2)),
+                    Row.of(Vectors.sparse(2, 0, 1.0)),
+                };
+
+        predictData = trainData;
+        inputCols = new String[] {"f0", "f1"};
+        outputCols = new String[] {"output_f0", "output_f1"};
+        isSaveLoad = true;
+        runAndCheck();
+    }
+
+    @Test
     public void testGetModelData() throws Exception {
         OneHotEncoderModel model = getModel();
         Tuple2<Integer, Integer> expected = new Tuple2<>(0, 2);

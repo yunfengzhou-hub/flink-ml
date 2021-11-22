@@ -26,17 +26,20 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.file.src.reader.SimpleStreamFormat;
 import org.apache.flink.core.fs.FSDataInputStream;
+import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
 
-import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.io.Input;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonFactory;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.MappingIterator;
+
 import com.esotericsoftware.kryo.io.Output;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Map;
 
 /** Provides classes to save/load model data. */
 public class OneHotEncoderModelData {
@@ -63,9 +66,9 @@ public class OneHotEncoderModelData {
         @Override
         public void encode(Tuple2<Integer, Integer> modeldata, OutputStream outputStream)
                 throws IOException {
-            Kryo kryo = new Kryo();
             Output output = new Output(outputStream);
-            kryo.writeObject(output, modeldata);
+            String modelDataString = ReadWriteUtils.OBJECT_MAPPER.writeValueAsString(modeldata);
+            output.write(modelDataString.getBytes());
             output.flush();
         }
     }
@@ -76,16 +79,17 @@ public class OneHotEncoderModelData {
         public Reader<Tuple2<Integer, Integer>> createReader(
                 Configuration config, FSDataInputStream stream) throws IOException {
             return new Reader<Tuple2<Integer, Integer>>() {
-                private final Kryo kryo = new Kryo();
-                private final Input input = new Input(stream);
+                private final MappingIterator<Map> iterator =
+                        ReadWriteUtils.OBJECT_MAPPER.readValues(
+                                new JsonFactory().createParser(stream), Map.class);
 
                 @Override
-                public Tuple2<Integer, Integer> read() {
-                    if (input.eof()) {
+                public Tuple2<Integer, Integer> read() throws IOException {
+                    if (!iterator.hasNext()) {
                         return null;
                     }
-                    Tuple2<Integer, Integer> modeldata = kryo.readObject(input, Tuple2.class);
-                    return modeldata;
+                    Map<String, ?> map = iterator.next();
+                    return new Tuple2<>((Integer) map.get("f0"), (Integer) map.get("f1"));
                 }
 
                 @Override
