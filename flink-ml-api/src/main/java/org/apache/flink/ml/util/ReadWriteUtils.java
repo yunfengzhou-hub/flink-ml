@@ -45,21 +45,13 @@ import java.util.Set;
 public class ReadWriteUtils {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    // A helper method that calls encodes the given parameter value to a json string. We can not
-    // call param.jsonEncode(value) directly because Param::jsonEncode(...) needs the actual type
-    // of the value.
-    private static <T> String jsonEncodeHelper(Param<T> param, Object value) throws IOException {
-        return param.jsonEncode((T) value);
-    }
-
     // Converts Map<Param<?>, Object> to Map<String, String> which maps the parameter name to the
     // string-encoded parameter value.
-    private static Map<String, String> jsonEncode(Map<Param<?>, Object> paramMap)
+    private static Map<String, Object> jsonEncode(Map<Param<?>, Object> paramMap)
             throws IOException {
-        Map<String, String> result = new HashMap<>(paramMap.size());
+        Map<String, Object> result = new HashMap<>(paramMap.size());
         for (Map.Entry<Param<?>, Object> entry : paramMap.entrySet()) {
-            String json = jsonEncodeHelper(entry.getKey(), entry.getValue());
-            result.put(entry.getKey().name, json);
+            result.put(entry.getKey().name, entry.getValue());
         }
         return result;
     }
@@ -258,7 +250,7 @@ public class ReadWriteUtils {
     public static <T extends Stage<T>> T loadStageParam(String path) throws IOException {
         Map<String, ?> metadata = loadMetadata(path, "");
         String className = (String) metadata.get("className");
-        Map<String, String> paramMap = (Map<String, String>) metadata.get("paramMap");
+        Map<String, ?> paramMap = (Map<String, String>) metadata.get("paramMap");
 
         try {
             Class<T> clazz = (Class<T>) Class.forName(className);
@@ -269,9 +261,42 @@ public class ReadWriteUtils {
                 nameToParam.put(param.name, param);
             }
 
-            for (Map.Entry<String, String> entry : paramMap.entrySet()) {
+            for (Map.Entry<String, ?> entry : paramMap.entrySet()) {
                 Param<?> param = nameToParam.get(entry.getKey());
-                setParam(instance, param, param.jsonDecode(entry.getValue()));
+                if (param.clazz.equals(Long.class)) {
+                    setParam(instance, param, ((Number) entry.getValue()).longValue());
+                } else if (param.clazz.equals(Float.class)) {
+                    setParam(instance, param, ((Number) entry.getValue()).floatValue());
+                } else if (param.clazz.equals(String[].class)) {
+                    setParam(
+                            instance, param, ((ArrayList) entry.getValue()).toArray(new String[0]));
+                } else if (param.clazz.equals(Float[].class)) {
+                    setParam(
+                            instance,
+                            param,
+                            ((ArrayList) entry.getValue())
+                                    .stream()
+                                            .map(o -> (Float) ((Number) o).floatValue())
+                                            .toArray(Float[]::new));
+                } else if (param.clazz.equals(Double[].class)) {
+                    setParam(
+                            instance, param, ((ArrayList) entry.getValue()).toArray(new Double[0]));
+                } else if (param.clazz.equals(Integer[].class)) {
+                    setParam(
+                            instance,
+                            param,
+                            ((ArrayList) entry.getValue()).toArray(new Integer[0]));
+                } else if (param.clazz.equals(Long[].class)) {
+                    setParam(
+                            instance,
+                            param,
+                            ((ArrayList) entry.getValue())
+                                    .stream()
+                                            .map(o -> (Long) ((Number) o).longValue())
+                                            .toArray(Long[]::new));
+                } else {
+                    setParam(instance, param, entry.getValue());
+                }
             }
             return instance;
         } catch (ClassNotFoundException e) {
