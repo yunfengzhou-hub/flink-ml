@@ -18,14 +18,19 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.flink.ml.common.param.HasDistanceMeasure;
-import org.apache.flink.ml.common.param.HasFeaturesCol;
-import org.apache.flink.ml.common.param.HasPredictionCol;
+import org.apache.flink.ml.common.param.HasBatchStrategy;
+import org.apache.flink.ml.common.param.HasDecayFactor;
+import org.apache.flink.ml.common.param.HasGlobalBatchSize;
+import org.apache.flink.ml.common.param.HasSeed;
 
 /**
- * Params of {@link KMeansModel} and {@link OnlineKMeansModel}.
+ * Params of {@link OnlineKMeans}.
  *
  * @param <T> The class type of this instance.
  */
-public interface KMeansModelParams<T>
-        extends HasDistanceMeasure<T>, HasFeaturesCol<T>, HasPredictionCol<T> {}
+public interface OnlineKMeansParams<T>
+        extends HasBatchStrategy<T>,
+                HasGlobalBatchSize<T>,
+                HasDecayFactor<T>,
+                HasSeed<T>,
+                KMeansModelParams<T> {}
