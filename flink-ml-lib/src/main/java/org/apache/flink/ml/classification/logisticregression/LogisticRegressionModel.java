@@ -43,6 +43,7 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -68,9 +69,9 @@ public class LogisticRegressionModel
     @Override
     public void save(String path) throws IOException {
         ReadWriteUtils.saveMetadata(this, path);
-        ReadWriteUtils.saveModelData(
+        ReadWriteUtils.saveDataStream(
                 LogisticRegressionModelData.getModelDataStream(modelDataTable),
-                path,
+                Paths.get(path, "modelData").toString(),
                 new LogisticRegressionModelData.ModelDataEncoder());
     }
 
@@ -79,8 +80,10 @@ public class LogisticRegressionModel
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         LogisticRegressionModel model = ReadWriteUtils.loadStageParam(path);
         DataStream<LogisticRegressionModelData> modelData =
-                ReadWriteUtils.loadModelData(
-                        env, path, new LogisticRegressionModelData.ModelDataDecoder());
+                ReadWriteUtils.loadBoundedStream(
+                        env,
+                        Paths.get(path, "modelData").toString(),
+                        new LogisticRegressionModelData.ModelDataDecoder());
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
 

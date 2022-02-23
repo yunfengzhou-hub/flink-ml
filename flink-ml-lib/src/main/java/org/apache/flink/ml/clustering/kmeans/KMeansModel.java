@@ -41,12 +41,14 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 /** A Model which clusters data into k clusters using the model data computed by {@link KMeans}. */
 public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeansModel> {
+    protected static final String BROADCAST_MODEL_KEY = "broadcastModelKey";
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table modelDataTable;
 
@@ -81,16 +83,15 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
                 new RowTypeInfo(
                         ArrayUtils.addAll(inputTypeInfo.getFieldTypes(), Types.INT),
                         ArrayUtils.addAll(inputTypeInfo.getFieldNames(), getPredictionCol()));
-        final String broadcastModelKey = "broadcastModelKey";
         DataStream<Row> predictionResult =
                 BroadcastUtils.withBroadcastStream(
                         Collections.singletonList(tEnv.toDataStream(inputs[0])),
-                        Collections.singletonMap(broadcastModelKey, modelDataStream),
+                        Collections.singletonMap(BROADCAST_MODEL_KEY, modelDataStream),
                         inputList -> {
                             DataStream inputData = inputList.get(0);
                             return inputData.map(
                                     new PredictLabelFunction(
-                                            broadcastModelKey,
+                                            BROADCAST_MODEL_KEY,
                                             getFeaturesCol(),
                                             DistanceMeasure.getInstance(getDistanceMeasure())),
                                     outputTypeInfo);
@@ -126,16 +127,7 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
                 centroids = modelData.centroids;
             }
             DenseVector point = (DenseVector) dataPoint.getField(featuresCol);
-            double minDistance = Double.MAX_VALUE;
-            int closestCentroidId = -1;
-            for (int i = 0; i < centroids.length; i++) {
-                DenseVector centroid = centroids[i];
-                double distance = distanceMeasure.distance(centroid, point);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    closestCentroidId = i;
-                }
-            }
+            int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
             return Row.join(dataPoint, Row.of(closestCentroidId));
         }
     }
@@ -147,9 +139,9 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
 
     @Override
     public void save(String path) throws IOException {
-        ReadWriteUtils.saveModelData(
+        ReadWriteUtils.saveDataStream(
                 KMeansModelData.getModelDataStream(modelDataTable),
-                path,
+                Paths.get(path, "modelData").toString(),
                 new KMeansModelData.ModelDataEncoder());
         ReadWriteUtils.saveMetadata(this, path);
     }
@@ -158,7 +150,8 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
     public static KMeansModel load(StreamExecutionEnvironment env, String path) throws IOException {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         DataStream<KMeansModelData> modelData =
-                ReadWriteUtils.loadModelData(env, path, new ModelDataDecoder());
+                ReadWriteUtils.loadBoundedStream(
+                        env, Paths.get(path, "modelData").toString(), new ModelDataDecoder());
         KMeansModel model = ReadWriteUtils.loadStageParam(path);
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
