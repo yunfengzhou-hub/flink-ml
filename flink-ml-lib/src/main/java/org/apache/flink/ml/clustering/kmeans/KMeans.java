@@ -36,6 +36,7 @@ import org.apache.flink.iteration.IterationConfig;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.Iterations;
 import org.apache.flink.iteration.ReplayableDataStreamList;
+import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.EndOfStreamWindows;
@@ -69,6 +70,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 
 /**
@@ -219,8 +221,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             implements ReduceFunction<Tuple3<Integer, DenseVector, Long>> {
         @Override
         public Tuple3<Integer, DenseVector, Long> reduce(
-                Tuple3<Integer, DenseVector, Long> v1, Tuple3<Integer, DenseVector, Long> v2)
-                throws Exception {
+                Tuple3<Integer, DenseVector, Long> v1, Tuple3<Integer, DenseVector, Long> v2) {
             for (int i = 0; i < v1.f1.size(); i++) {
                 v1.f1.values[i] += v2.f1.values[i];
             }
@@ -278,28 +279,14 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out)
                 throws Exception {
-            List<DenseVector[]> list = IteratorUtils.toList(centroids.get().iterator());
-            if (list.size() != 1) {
-                throw new RuntimeException(
-                        "The operator received "
-                                + list.size()
-                                + " list of centroids in this round");
-            }
-            DenseVector[] centroidValues = list.get(0);
+            DenseVector[] centroidValues =
+                    Objects.requireNonNull(
+                            OperatorStateUtils.getUniqueElement(centroids, "centroids")
+                                    .orElse(null));
 
             for (DenseVector point : points.get()) {
-                double minDistance = Double.MAX_VALUE;
-                int closestCentroidId = -1;
-
-                for (int i = 0; i < centroidValues.length; i++) {
-                    DenseVector centroid = centroidValues[i];
-                    double distance = distanceMeasure.distance(centroid, point);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCentroidId = i;
-                    }
-                }
-
+                int closestCentroidId =
+                        findClosestCentroidId(centroidValues, point, distanceMeasure);
                 output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId, point)));
             }
             centroids.clear();
@@ -310,6 +297,21 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                 Context context, Collector<Tuple2<Integer, DenseVector>> collector) {
             points.clear();
         }
+    }
+
+    protected static int findClosestCentroidId(
+            DenseVector[] centroids, DenseVector point, DistanceMeasure distanceMeasure) {
+        double minDistance = Double.MAX_VALUE;
+        int closestCentroidId = -1;
+        for (int i = 0; i < centroids.length; i++) {
+            DenseVector centroid = centroids[i];
+            double distance = distanceMeasure.distance(centroid, point);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestCentroidId = i;
+            }
+        }
+        return closestCentroidId;
     }
 
     public static DataStream<DenseVector[]> selectRandomCentroids(
