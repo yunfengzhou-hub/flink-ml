@@ -32,13 +32,14 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
+import org.apache.flink.util.Preconditions;
 
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
 
 /**
- * Model data of {@link KMeansModel}.
+ * Model data of {@link KMeansModel} and {@link OnlineKMeansModel}.
  *
  * <p>This class also provides methods to convert model data from Table to Datastream, and classes
  * to save/load model data.
@@ -47,8 +48,19 @@ public class KMeansModelData {
 
     public DenseVector[] centroids;
 
-    public KMeansModelData(DenseVector[] centroids) {
+    /**
+     * The weight of the centroids. It is used when updating the model data in online training
+     * process.
+     *
+     * <p>KMeansModelData objects generated during {@link KMeans#fit(Table...)} also contains this
+     * field, so that it can be used as the initial model data of the online training process.
+     */
+    public DenseVector weights;
+
+    public KMeansModelData(DenseVector[] centroids, DenseVector weights) {
+        Preconditions.checkArgument(centroids.length == weights.size());
         this.centroids = centroids;
+        this.weights = weights;
     }
 
     public KMeansModelData() {}
@@ -63,7 +75,11 @@ public class KMeansModelData {
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) modelData).getTableEnvironment();
         return tEnv.toDataStream(modelData)
-                .map(x -> new KMeansModelData((DenseVector[]) x.getField(0)));
+                .map(
+                        x ->
+                                new KMeansModelData(
+                                        (DenseVector[]) x.getField(0),
+                                        (DenseVector) x.getField(1)));
     }
 
     /** Data encoder for {@link KMeansModelData}. */
@@ -78,6 +94,8 @@ public class KMeansModelData {
                 DenseVectorSerializer.INSTANCE.serialize(
                         denseVector, new DataOutputViewStreamWrapper(outputStream));
             }
+            DenseVectorSerializer.INSTANCE.serialize(
+                    modelData.weights, new DataOutputViewStreamWrapper(outputStream));
         }
     }
 
@@ -101,7 +119,9 @@ public class KMeansModelData {
                                     DenseVectorSerializer.INSTANCE.deserialize(
                                             inputViewStreamWrapper);
                         }
-                        return new KMeansModelData(centroids);
+                        DenseVector weights =
+                                DenseVectorSerializer.INSTANCE.deserialize(inputViewStreamWrapper);
+                        return new KMeansModelData(centroids, weights);
                     } catch (EOFException e) {
                         return null;
                     }

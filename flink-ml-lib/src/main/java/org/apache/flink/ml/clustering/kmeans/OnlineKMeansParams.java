@@ -18,31 +18,37 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.flink.ml.common.param.HasMaxIter;
+import org.apache.flink.ml.common.param.HasBatchStrategy;
+import org.apache.flink.ml.common.param.HasDecayFactor;
+import org.apache.flink.ml.common.param.HasGlobalBatchSize;
 import org.apache.flink.ml.common.param.HasSeed;
+import org.apache.flink.ml.param.DoubleParam;
+import org.apache.flink.ml.param.IntParam;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.ParamValidators;
-import org.apache.flink.ml.param.StringParam;
 
 /**
- * Params of {@link KMeans}.
+ * Params of {@link OnlineKMeans}.
  *
  * @param <T> The class type of this instance.
  */
-public interface KMeansParams<T> extends HasSeed<T>, HasMaxIter<T>, KMeansModelParams<T> {
-    Param<String> INIT_MODE =
-            new StringParam(
-                    "initMode",
-                    "The initialization algorithm. Supported options: 'random'.",
-                    "random",
-                    ParamValidators.inArray("random"));
+public interface OnlineKMeansParams<T>
+        extends HasBatchStrategy<T>,
+                HasGlobalBatchSize<T>,
+                HasDecayFactor<T>,
+                HasSeed<T>,
+                KMeansModelParams<T> {
+    Param<Integer> DIM =
+            new IntParam(
+                    "dim",
+                    "The dimension of random centroids to create.",
+                    2,
+                    ParamValidators.gtEq(1));
 
-    default String getInitMode() {
-        return get(INIT_MODE);
-    }
-
-    default T setInitMode(String value) {
-        set(INIT_MODE, value);
-        return (T) this;
-    }
+    Param<Double> INIT_WEIGHT =
+            new DoubleParam(
+                    "initWeight",
+                    "The initial weight of random centroids to create.",
+                    0.,
+                    ParamValidators.gtEq(0));
 }

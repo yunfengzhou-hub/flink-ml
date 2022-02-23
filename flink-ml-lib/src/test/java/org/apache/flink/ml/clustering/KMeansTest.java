@@ -37,10 +37,10 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
-import org.apache.flink.util.CloseableIterator;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.IteratorUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -48,7 +48,6 @@ import org.junit.rules.TemporaryFolder;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -103,20 +102,19 @@ public class KMeansTest extends AbstractTestBase {
     }
 
     /**
-     * Executes a table and collects its results. Results are returned as a list of sets, where
-     * elements in the same set are features whose prediction results are the same.
+     * Aggregates feature by predictions. Results are returned as a list of sets, where elements in
+     * the same set are features whose prediction results are the same.
      *
-     * @param table A table to be executed and to have its result collected
-     * @param featureCol Name of the column in the table that contains the features
+     * @param rows A list of rows containing feature and prediction columns
+     * @param featuresCol Name of the column in the table that contains the features
      * @param predictionCol Name of the column in the table that contains the prediction result
      * @return A map containing the collected results
      */
-    private static List<Set<DenseVector>> executeAndCollect(
-            Table table, String featureCol, String predictionCol) {
+    protected static List<Set<DenseVector>> groupFeaturesByPrediction(
+            List<Row> rows, String featuresCol, String predictionCol) {
         Map<Integer, Set<DenseVector>> map = new HashMap<>();
-        for (CloseableIterator<Row> it = table.execute().collect(); it.hasNext(); ) {
-            Row row = it.next();
-            DenseVector vector = (DenseVector) row.getField(featureCol);
+        for (Row row : rows) {
+            DenseVector vector = (DenseVector) row.getField(featuresCol);
             int predict = (Integer) row.getField(predictionCol);
             map.putIfAbsent(predict, new HashSet<>());
             map.get(predict).add(vector);
@@ -160,8 +158,10 @@ public class KMeansTest extends AbstractTestBase {
         assertEquals(
                 Arrays.asList("test_feature", "test_prediction"),
                 output.getResolvedSchema().getColumnNames());
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -177,11 +177,20 @@ public class KMeansTest extends AbstractTestBase {
         KMeans kmeans = new KMeans().setK(2);
         KMeansModel model = kmeans.fit(input);
         Table output = model.transform(input)[0];
-        List<Set<DenseVector>> expectedGroups =
-                Collections.singletonList(Collections.singleton(Vectors.dense(0.0, 0.1)));
-        List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
-        assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
+
+        try {
+            output.execute().collect().next();
+            Assert.fail("Expected IllegalStateException");
+        } catch (Exception e) {
+            Throwable exception = e;
+            while (exception.getCause() != null) {
+                exception = exception.getCause();
+            }
+            assertEquals(IllegalStateException.class, exception.getClass());
+            assertEquals(
+                    "Generated model data has 1 centroids. Less than expected 2 centroids.",
+                    exception.getMessage());
+        }
     }
 
     @Test
@@ -193,8 +202,10 @@ public class KMeansTest extends AbstractTestBase {
         assertEquals(
                 Arrays.asList("features", "prediction"),
                 output.getResolvedSchema().getColumnNames());
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -208,14 +219,16 @@ public class KMeansTest extends AbstractTestBase {
                 StageTestUtils.saveAndReload(env, model, tempFolder.newFolder().getAbsolutePath());
         Table output = loadedModel.transform(dataTable)[0];
         assertEquals(
-                Collections.singletonList("centroids"),
+                Arrays.asList("centroids", "weights"),
                 loadedModel.getModelData()[0].getResolvedSchema().getColumnNames());
         assertEquals(
                 Arrays.asList("features", "prediction"),
                 output.getResolvedSchema().getColumnNames());
 
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -224,7 +237,7 @@ public class KMeansTest extends AbstractTestBase {
         KMeans kmeans = new KMeans().setMaxIter(2).setK(2);
         KMeansModel model = kmeans.fit(dataTable);
         assertEquals(
-                Collections.singletonList("centroids"),
+                Arrays.asList("centroids", "weights"),
                 model.getModelData()[0].getResolvedSchema().getColumnNames());
 
         DataStream<KMeansModelData> modelData =
@@ -247,8 +260,10 @@ public class KMeansTest extends AbstractTestBase {
         ReadWriteUtils.updateExistingParams(modelB, modelA.getParamMap());
 
         Table output = modelB.transform(dataTable)[0];
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 }
