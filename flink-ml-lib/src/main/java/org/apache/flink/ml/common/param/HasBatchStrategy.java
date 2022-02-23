@@ -16,32 +16,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.clustering.kmeans;
+package org.apache.flink.ml.common.param;
 
-import org.apache.flink.ml.common.param.HasDistanceMeasure;
-import org.apache.flink.ml.common.param.HasFeaturesCol;
-import org.apache.flink.ml.common.param.HasPredictionCol;
-import org.apache.flink.ml.param.IntParam;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.ParamValidators;
+import org.apache.flink.ml.param.StringParam;
+import org.apache.flink.ml.param.WithParams;
 
-/**
- * Params of {@link KMeansModel} and {@link OnlineKMeansModel}.
- *
- * @param <T> The class type of this instance.
- */
-public interface KMeansModelParams<T>
-        extends HasDistanceMeasure<T>, HasFeaturesCol<T>, HasPredictionCol<T> {
+/** Interface for the shared batch strategy param. */
+public interface HasBatchStrategy<T> extends WithParams<T> {
+    String COUNT_STRATEGY = "count";
 
-    Param<Integer> K =
-            new IntParam("k", "The number of clusters to create.", 2, ParamValidators.gt(1));
+    Param<String> BATCH_STRATEGY =
+            new StringParam(
+                    "batchStrategy",
+                    "Strategy to create mini batch from online train data.",
+                    COUNT_STRATEGY,
+                    ParamValidators.inArray(COUNT_STRATEGY));
 
-    default int getK() {
-        return get(K);
-    }
-
-    default T setK(int value) {
-        set(K, value);
-        return (T) this;
+    default String getBatchStrategy() {
+        return get(BATCH_STRATEGY);
     }
 }
