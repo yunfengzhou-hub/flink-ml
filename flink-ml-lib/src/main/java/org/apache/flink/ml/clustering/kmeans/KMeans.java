@@ -219,8 +219,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             implements ReduceFunction<Tuple3<Integer, DenseVector, Long>> {
         @Override
         public Tuple3<Integer, DenseVector, Long> reduce(
-                Tuple3<Integer, DenseVector, Long> v1, Tuple3<Integer, DenseVector, Long> v2)
-                throws Exception {
+                Tuple3<Integer, DenseVector, Long> v1, Tuple3<Integer, DenseVector, Long> v2) {
             for (int i = 0; i < v1.f1.size(); i++) {
                 v1.f1.values[i] += v2.f1.values[i];
             }
@@ -288,18 +287,8 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             DenseVector[] centroidValues = list.get(0);
 
             for (DenseVector point : points.get()) {
-                double minDistance = Double.MAX_VALUE;
-                int closestCentroidId = -1;
-
-                for (int i = 0; i < centroidValues.length; i++) {
-                    DenseVector centroid = centroidValues[i];
-                    double distance = distanceMeasure.distance(centroid, point);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCentroidId = i;
-                    }
-                }
-
+                int closestCentroidId =
+                        findClosestCentroidId(centroidValues, point, distanceMeasure);
                 output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId, point)));
             }
             centroids.clear();
@@ -310,6 +299,21 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                 Context context, Collector<Tuple2<Integer, DenseVector>> collector) {
             points.clear();
         }
+    }
+
+    protected static int findClosestCentroidId(
+            DenseVector[] centroids, DenseVector point, DistanceMeasure distanceMeasure) {
+        double minDistance = Double.MAX_VALUE;
+        int closestCentroidId = -1;
+        for (int i = 0; i < centroids.length; i++) {
+            DenseVector centroid = centroids[i];
+            double distance = distanceMeasure.distance(centroid, point);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestCentroidId = i;
+            }
+        }
+        return closestCentroidId;
     }
 
     public static DataStream<DenseVector[]> selectRandomCentroids(

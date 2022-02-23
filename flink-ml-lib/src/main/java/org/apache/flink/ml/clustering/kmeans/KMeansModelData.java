@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
@@ -32,6 +33,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
+import org.apache.flink.types.Row;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -51,8 +53,6 @@ public class KMeansModelData {
         this.centroids = centroids;
     }
 
-    public KMeansModelData() {}
-
     /**
      * Converts the table model to a data stream.
      *
@@ -63,7 +63,7 @@ public class KMeansModelData {
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) modelData).getTableEnvironment();
         return tEnv.toDataStream(modelData)
-                .map(x -> new KMeansModelData((DenseVector[]) x.getField(0)));
+                .map((MapFunction<Row, KMeansModelData>) x -> (KMeansModelData) x.getField(0));
     }
 
     /** Data encoder for {@link KMeansModelData}. */

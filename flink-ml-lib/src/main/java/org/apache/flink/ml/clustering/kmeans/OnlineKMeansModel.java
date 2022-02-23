@@ -18,12 +18,11 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Gauge;
 import org.apache.flink.ml.api.Model;
-import org.apache.flink.ml.clustering.kmeans.KMeansModelData.ModelDataDecoder;
-import org.apache.flink.ml.common.broadcast.BroadcastUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
@@ -32,30 +31,37 @@ import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
+import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-/** A Model which clusters data into k clusters using the model data computed by {@link KMeans}. */
-public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeansModel> {
+/**
+ * OnlineKMeansModel can be regarded as an advanced {@link KMeansModel} operator which can update
+ * model data in a streaming format, using the model data provided by {@link OnlineKMeans}.
+ */
+public class OnlineKMeansModel
+        implements Model<OnlineKMeansModel>, KMeansModelParams<OnlineKMeansModel> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table modelDataTable;
 
-    public KMeansModel() {
+    public OnlineKMeansModel() {
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
     }
 
     @Override
-    public KMeansModel setModelData(Table... inputs) {
+    public OnlineKMeansModel setModelData(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
         modelDataTable = inputs[0];
         return this;
@@ -67,67 +73,88 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Table[] transform(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
 
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
-        DataStream<KMeansModelData> modelDataStream =
-                KMeansModelData.getModelDataStream(modelDataTable);
 
         RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
         RowTypeInfo outputTypeInfo =
                 new RowTypeInfo(
                         ArrayUtils.addAll(inputTypeInfo.getFieldTypes(), Types.INT),
                         ArrayUtils.addAll(inputTypeInfo.getFieldNames(), getPredictionCol()));
-        final String broadcastModelKey = "broadcastModelKey";
+
         DataStream<Row> predictionResult =
-                BroadcastUtils.withBroadcastStream(
-                        Collections.singletonList(tEnv.toDataStream(inputs[0])),
-                        Collections.singletonMap(broadcastModelKey, modelDataStream),
-                        inputList -> {
-                            DataStream inputData = inputList.get(0);
-                            return inputData.map(
-                                    new PredictLabelFunction(
-                                            broadcastModelKey,
-                                            getFeaturesCol(),
-                                            DistanceMeasure.getInstance(getDistanceMeasure())),
-                                    outputTypeInfo);
-                        });
+                KMeansModelData.getModelDataStream(modelDataTable)
+                        .broadcast()
+                        .connect(tEnv.toDataStream(inputs[0]))
+                        .process(
+                                new PredictLabelFunction(
+                                        getFeaturesCol(),
+                                        DistanceMeasure.getInstance(getDistanceMeasure())),
+                                outputTypeInfo);
 
         return new Table[] {tEnv.fromDataStream(predictionResult)};
     }
 
     /** A utility function used for prediction. */
-    private static class PredictLabelFunction extends RichMapFunction<Row, Row> {
-
-        private final String broadcastModelKey;
-
+    private static class PredictLabelFunction extends CoProcessFunction<KMeansModelData, Row, Row> {
         private final String featuresCol;
 
         private final DistanceMeasure distanceMeasure;
 
         private DenseVector[] centroids;
 
-        public PredictLabelFunction(
-                String broadcastModelKey, String featuresCol, DistanceMeasure distanceMeasure) {
-            this.broadcastModelKey = broadcastModelKey;
+        // TODO: replace this with a complete solution of reading first model data from unbounded
+        // model data stream before processing the first predict data.
+        private final List<Row> cache = new ArrayList<>();
+
+        // TODO: replace this simple implementation of model data version with the formal API to
+        // track model version after its design is settled.
+        private int modelDataVersion;
+
+        public PredictLabelFunction(String featuresCol, DistanceMeasure distanceMeasure) {
             this.featuresCol = featuresCol;
             this.distanceMeasure = distanceMeasure;
         }
 
         @Override
-        public Row map(Row dataPoint) {
+        public void open(Configuration parameters) throws Exception {
+            super.open(parameters);
+
+            getRuntimeContext()
+                    .getMetricGroup()
+                    .gauge(
+                            "modelDataVersion",
+                            (Gauge<String>) () -> Integer.toString(modelDataVersion));
+        }
+
+        @Override
+        public void processElement1(
+                KMeansModelData modelData,
+                CoProcessFunction<KMeansModelData, Row, Row>.Context context,
+                Collector<Row> collector) {
+            centroids = modelData.centroids;
+            modelDataVersion++;
+            for (Row dataPoint : cache) {
+                processElement2(dataPoint, context, collector);
+            }
+            cache.clear();
+        }
+
+        @Override
+        public void processElement2(
+                Row dataPoint,
+                CoProcessFunction<KMeansModelData, Row, Row>.Context context,
+                Collector<Row> collector) {
             if (centroids == null) {
-                KMeansModelData modelData =
-                        (KMeansModelData)
-                                getRuntimeContext().getBroadcastVariable(broadcastModelKey).get(0);
-                centroids = modelData.centroids;
+                cache.add(dataPoint);
+                return;
             }
             DenseVector point = (DenseVector) dataPoint.getField(featuresCol);
             int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
-            return Row.join(dataPoint, Row.of(closestCentroidId));
+            collector.collect(Row.join(dataPoint, Row.of(closestCentroidId)));
         }
     }
 
@@ -138,19 +165,12 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
 
     @Override
     public void save(String path) throws IOException {
-        ReadWriteUtils.saveModelData(
-                KMeansModelData.getModelDataStream(modelDataTable),
-                path,
-                new KMeansModelData.ModelDataEncoder());
         ReadWriteUtils.saveMetadata(this, path);
     }
 
     // TODO: Add INFO level logging.
-    public static KMeansModel load(StreamExecutionEnvironment env, String path) throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-        DataStream<KMeansModelData> modelData =
-                ReadWriteUtils.loadModelData(env, path, new ModelDataDecoder());
-        KMeansModel model = ReadWriteUtils.loadStageParam(path);
-        return model.setModelData(tEnv.fromDataStream(modelData));
+    public static OnlineKMeansModel load(StreamExecutionEnvironment env, String path)
+            throws IOException {
+        return ReadWriteUtils.loadStageParam(path);
     }
 }
