@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.ml.api.Model;
@@ -29,13 +30,16 @@ import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
+import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
@@ -48,7 +52,9 @@ import java.util.Map;
 /** A Model which clusters data into k clusters using the model data computed by {@link KMeans}. */
 public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeansModel> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
+    private final OutputTag<DenseVector[]> outputTag = new OutputTag<DenseVector[]>("latest-model-data"){};
     private Table modelDataTable;
+    private DataStream<DenseVector[]> latestModelData;
 
     public KMeansModel() {
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
@@ -84,33 +90,68 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
 
         final String broadcastModelKey = "broadcastModelKey";
 
-        DataStream<Row> predictionResult =
+        SingleOutputStreamOperator<Row> predictionResult =
                 modelDataStream
                         .broadcast()
                         .connect(tEnv.toDataStream(inputs[0]))
-                        .flatMap(
-                                new PredictLabelFunction(
+                        .process(new PredictLabelFunction2(
                                         broadcastModelKey,
                                         getFeaturesCol(),
                                         DistanceMeasure.getInstance(getDistanceMeasure())),
                                 outputTypeInfo);
 
-        //        DataStream<Row> predictionResult =
-        //                BroadcastUtils.withBroadcastStream(
-        //                        Collections.singletonList(tEnv.toDataStream(inputs[0])),
-        //                        Collections.singletonMap(broadcastModelKey, modelDataStream),
-        //                        inputList -> {
-        //                            DataStream inputData = inputList.get(0);
-        //                            return inputData.map(
-        //                                    new PredictLabelFunction(
-        //                                            broadcastModelKey,
-        //                                            getFeaturesCol(),
-        //
-        // DistanceMeasure.getInstance(getDistanceMeasure())),
-        //                                    outputTypeInfo);
-        //                        });
+        latestModelData = predictionResult.getSideOutput(outputTag);
 
         return new Table[] {tEnv.fromDataStream(predictionResult)};
+    }
+
+    @VisibleForTesting
+    public DataStream<DenseVector[]> getLatestModelData() {
+        return latestModelData;
+    }
+
+    private static class PredictLabelFunction2 extends CoProcessFunction<KMeansModelData, Row, Row> {
+        private final OutputTag<DenseVector[]> outputTag = new OutputTag<DenseVector[]>("latest-model-data"){};
+
+        private final String broadcastModelKey;
+
+        private final String featuresCol;
+
+        private final DistanceMeasure distanceMeasure;
+
+        private DenseVector[] centroids = new DenseVector[0];
+
+        public PredictLabelFunction2(
+                String broadcastModelKey, String featuresCol, DistanceMeasure distanceMeasure) {
+            this.broadcastModelKey = broadcastModelKey;
+            this.featuresCol = featuresCol;
+            this.distanceMeasure = distanceMeasure;
+        }
+
+        @Override
+        public void processElement1(KMeansModelData modelData, CoProcessFunction<KMeansModelData, Row, Row>.Context ctx, Collector<Row> collector) throws Exception {
+
+            centroids = modelData.centroids;
+            System.out.println("KMeansModel received model data " + Arrays.toString(centroids));
+            ctx.output(outputTag, centroids);
+        }
+
+        @Override
+        public void processElement2(Row dataPoint, CoProcessFunction<KMeansModelData, Row, Row>.Context ctx, Collector<Row> collector) throws Exception {
+
+            DenseVector point = (DenseVector) dataPoint.getField(featuresCol);
+            double minDistance = Double.MAX_VALUE;
+            int closestCentroidId = -1;
+            for (int i = 0; i < centroids.length; i++) {
+                DenseVector centroid = centroids[i];
+                double distance = distanceMeasure.distance(centroid, point);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestCentroidId = i;
+                }
+            }
+            collector.collect(Row.join(dataPoint, Row.of(closestCentroidId)));
+        }
     }
 
     /** A utility function used for prediction. */
@@ -136,6 +177,7 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
         public void flatMap1(KMeansModelData modelData, Collector<Row> collector) throws Exception {
             centroids = modelData.centroids;
             System.out.println("KMeansModel received model data " + Arrays.toString(centroids));
+
         }
 
         @Override
