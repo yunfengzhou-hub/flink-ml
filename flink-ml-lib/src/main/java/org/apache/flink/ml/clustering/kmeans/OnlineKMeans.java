@@ -1,12 +1,16 @@
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.flink.api.common.functions.*;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.iteration.*;
+import org.apache.flink.api.common.functions.AggregateFunction;
+import org.apache.flink.api.common.functions.FlatMapFunction;
+import org.apache.flink.api.common.functions.MapPartitionFunction;
+import org.apache.flink.iteration.DataStreamList;
+import org.apache.flink.iteration.IterationBody;
+import org.apache.flink.iteration.IterationBodyResult;
+import org.apache.flink.iteration.Iterations;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
+import org.apache.flink.ml.common.param.HasBatchStrategy;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
@@ -16,17 +20,18 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class OnlineKMeans
-        implements Estimator<OnlineKMeans, KMeansModel>, KMeansParams<OnlineKMeans> {
+        implements Estimator<OnlineKMeans, KMeansModel>, OnlineKMeansParams<OnlineKMeans> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
+    private transient DataStream<DenseVector[]> initCentroids;
 
     public OnlineKMeans() {
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
@@ -35,17 +40,24 @@ public class OnlineKMeans
     @Override
     public KMeansModel fit(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
+        Preconditions.checkArgument(HasBatchStrategy.COUNT_STRATEGY.equals(getBatchStrategy()));
+        Preconditions.checkArgument(initCentroids != null || getInitRandomCentroids(),
+                "Initial model data needs to be explicitly set or randomly created.");
 
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
+        StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
+
         DataStream<DenseVector> points =
                 tEnv.toDataStream(inputs[0])
                         .map(row -> (DenseVector) row.getField(getFeaturesCol()));
 
-        DataStream<DenseVector[]> initCentroids = selectRandomCentroids(points, getK(), getSeed());
+        if (getInitRandomCentroids()) {
+            initCentroids = createRandomCentroids(env, getDims(), getK(), getSeed());
+        }
 
         IterationBody body =
-                new KMeansIterationBody(DistanceMeasure.getInstance(getDistanceMeasure()));
+                new KMeansIterationBody(DistanceMeasure.getInstance(getDistanceMeasure()), getMaxIter(), getBatchSize(), getK());
 
         DataStream<DenseVector[]> finalCentroids =
                 Iterations.iterateUnboundedStreams(
@@ -75,177 +87,149 @@ public class OnlineKMeans
 
     private static class KMeansIterationBody implements IterationBody {
         private final DistanceMeasure distanceMeasure;
+        private final int maxIter;
+        private final int batchSize;
+        private final int K;
 
-        public KMeansIterationBody(DistanceMeasure distanceMeasure) {
+        public KMeansIterationBody(DistanceMeasure distanceMeasure, int maxIter, int batchSize, int k) {
             this.distanceMeasure = distanceMeasure;
+            this.maxIter = maxIter;
+            this.batchSize = batchSize;
+            K = k;
         }
 
         @Override
         public IterationBodyResult process(
                 DataStreamList variableStreams, DataStreamList dataStreams) {
-            DataStream<DenseVector[]> centroids = variableStreams.get(0);
+            DataStream<DenseVector[]> centroidsWithIter = variableStreams.get(0);
             DataStream<DenseVector> points = dataStreams.get(0);
 
             DataStream<DenseVector[]> newCentroids =
-                    points.connect(centroids.broadcast())
-                            .flatMap(new SelectNearestCentroidOperator(distanceMeasure))
-                            .map(new CountAppender())
-                            .map(new CentroidAccumulator())
-                            .map(new CentroidAverager());
-
-            DataStream<DenseVector[]> finalCentroids =
-                    newCentroids.filter(new ModelEvaluationFunction());
+                    points.countWindowAll(batchSize)
+                            .aggregate(new MiniBatchCreator())
+                            .connect(centroidsWithIter.broadcast())
+                            .flatMap(new SelectNearestCentroidOperator(distanceMeasure, maxIter, K));
 
             return new IterationBodyResult(
-                    DataStreamList.of(newCentroids), DataStreamList.of(finalCentroids));
-        }
-    }
-
-    private static class CentroidAverager
-            implements MapFunction<List<Tuple3<Integer, DenseVector, Long>>, DenseVector[]> {
-        @Override
-        public DenseVector[] map(List<Tuple3<Integer, DenseVector, Long>> values) {
-            for (Tuple3<Integer, DenseVector, Long> value : values) {
-                for (int i = 0; i < value.f1.size(); i++) {
-                    value.f1.values[i] /= value.f2;
-                }
-            }
-
-            return values.stream().map(x -> x.f1).toArray(DenseVector[]::new);
-        }
-    }
-
-    private static class CentroidAccumulator
-            implements MapFunction<
-                    List<Tuple3<Integer, DenseVector, Long>>,
-                    List<Tuple3<Integer, DenseVector, Long>>> {
-        @Override
-        public List<Tuple3<Integer, DenseVector, Long>> map(
-                List<Tuple3<Integer, DenseVector, Long>> tuple3s) throws Exception {
-            Map<Integer, DenseVector> map1 = new HashMap<>();
-            Map<Integer, Long> map2 = new HashMap<>();
-            for (Tuple3<Integer, DenseVector, Long> tuple3 : tuple3s) {
-                DenseVector vector =
-                        map1.getOrDefault(tuple3.f0, new DenseVector(tuple3.f1.size()));
-                long count = map2.getOrDefault(tuple3.f0, 0L);
-
-                for (int i = 0; i < tuple3.f1.size(); i++) {
-                    vector.values[i] += tuple3.f1.values[i];
-                }
-                count += tuple3.f2;
-
-                map1.put(tuple3.f0, vector);
-                map2.put(tuple3.f0, count);
-            }
-
-            List<Tuple3<Integer, DenseVector, Long>> list = new ArrayList<>();
-            for (Integer key : map1.keySet()) {
-                list.add(new Tuple3<>(key, map1.get(key), map2.get(key)));
-            }
-            return list;
-        }
-    }
-
-    private static class CountAppender
-            implements MapFunction<
-                    List<Tuple2<Integer, DenseVector>>, List<Tuple3<Integer, DenseVector, Long>>> {
-        @Override
-        public List<Tuple3<Integer, DenseVector, Long>> map(
-                List<Tuple2<Integer, DenseVector>> value) {
-            return value.stream().map(x -> Tuple3.of(x.f0, x.f1, 1L)).collect(Collectors.toList());
+                    DataStreamList.of(newCentroids), DataStreamList.of(newCentroids));
         }
     }
 
     private static class SelectNearestCentroidOperator
             implements CoFlatMapFunction<
-                    DenseVector, DenseVector[], List<Tuple2<Integer, DenseVector>>> {
+                    DenseVector[], DenseVector[], DenseVector[]> {
         private final DistanceMeasure distanceMeasure;
-        private DenseVector[] centroidValues;
-        List<DenseVector> points = new ArrayList<>();
-        List<DenseVector> pointsBuffer = new ArrayList<>();
+        private final int maxIter;
+        private final int K;
+        private DenseVector[] currentCentroids;
+        Queue<DenseVector[]> pointsBuffer = new ArrayDeque<>();
 
-        public SelectNearestCentroidOperator(DistanceMeasure distanceMeasure) {
+        public SelectNearestCentroidOperator(DistanceMeasure distanceMeasure, int maxIter, int k) {
             this.distanceMeasure = distanceMeasure;
+            this.maxIter = maxIter;
+            K = k;
         }
 
         @Override
         public void flatMap1(
-                DenseVector point, Collector<List<Tuple2<Integer, DenseVector>>> output)
+                DenseVector[] points, Collector<DenseVector[]> output)
                 throws Exception {
             System.out.println("point");
-            points.add(point);
+            pointsBuffer.add(points);
             flatMap(output);
         }
 
         @Override
         public void flatMap2(
-                DenseVector[] centroids, Collector<List<Tuple2<Integer, DenseVector>>> output)
+                DenseVector[] centroids, Collector<DenseVector[]> output)
                 throws Exception {
-            System.out.println("centroidValues");
-            centroidValues = centroids;
+            System.out.println("centroidValues ");
+            currentCentroids = centroids;
+
             flatMap(output);
         }
 
-        private void flatMap(Collector<List<Tuple2<Integer, DenseVector>>> output) {
-            if (centroidValues == null || points.size() < 6) {
+        private void flatMap(Collector<DenseVector[]> output) {
+            if (currentCentroids == null || pointsBuffer.isEmpty()) {
                 return;
             }
 
-            List<Tuple2<Integer, DenseVector>> results = new ArrayList<>();
-            for (DenseVector point : points) {
-                double minDistance = Double.MAX_VALUE;
-                int closestCentroidId = -1;
+            DenseVector[] points = pointsBuffer.poll();
+            DenseVector[] newCentroids = new DenseVector[K];
+            int dims = currentCentroids[0].size();
+            int[] counts = new int[K];
+            int currentIter = 0;
+            do {
+                for (int i = 0; i < K; i++) {
+                    newCentroids[i] = new DenseVector(dims);
+                    counts[i] = 0;
+                }
+                for (DenseVector point : points) {
+                    double minDistance = Double.MAX_VALUE;
+                    int closestCentroidId = -1;
 
-                for (int i = 0; i < centroidValues.length; i++) {
-                    DenseVector centroid = centroidValues[i];
-                    double distance = distanceMeasure.distance(centroid, point);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCentroidId = i;
+                    for (int j = 0; j < currentCentroids.length; j++) {
+                        DenseVector centroid = currentCentroids[j];
+                        double distance = distanceMeasure.distance(centroid, point);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            closestCentroidId = j;
+                        }
+                    }
+                    counts[closestCentroidId]++;
+                    for (int j = 0; j < dims; j++) {
+                        newCentroids[closestCentroidId].values[j] += point.values[j];
                     }
                 }
-                results.add(Tuple2.of(closestCentroidId, point));
-            }
-            output.collect(results);
+                for (int i = 0; i < K; i++) {
+                    if (counts[i] == 0) continue;
+                    for (int j = 0; j < dims; j++) {
+                        newCentroids[i].values[j] /= counts[i];
+                    }
+                }
 
-            points.clear();
-            centroidValues = null;
+                currentIter++;
+            } while (currentIter < maxIter);
+
+
+            output.collect(newCentroids);
+            currentCentroids = null;
         }
     }
 
-    private static class ModelEvaluationFunction implements FilterFunction<DenseVector[]> {
+    private static class MiniBatchCreator implements AggregateFunction<DenseVector, List<DenseVector>, DenseVector[]> {
         @Override
-        public boolean filter(DenseVector[] denseVectors) throws Exception {
-            System.out.println(Arrays.toString(denseVectors));
-            return true;
+        public List<DenseVector> createAccumulator() {
+            return new ArrayList<>();
+        }
+
+        @Override
+        public List<DenseVector> add(DenseVector value, List<DenseVector> acc) {
+            acc.add(value);
+            return acc;
+        }
+
+        @Override
+        public DenseVector[] getResult(List<DenseVector> acc) {
+            return acc.toArray(new DenseVector[0]);
+        }
+
+        @Override
+        public List<DenseVector> merge(List<DenseVector> acc, List<DenseVector> acc1) {
+            acc.addAll(acc1);
+            return acc;
         }
     }
 
-    public static DataStream<DenseVector[]> selectRandomCentroids(
-            DataStream<DenseVector> data, int k, long seed) {
-
-        DataStream<DenseVector[]> resultStream =
-                data.flatMap(new FlatMapFunction<DenseVector, DenseVector[]>() {
-            boolean isSent = false;
-
-            @Override
-            public void flatMap(DenseVector denseVector, Collector<DenseVector[]> out) throws Exception {
-                if (isSent) return;
-                isSent = true;
-                int size = denseVector.size();
-                List<DenseVector> vectors = new ArrayList<>();
-                Random random = new Random(seed);
-                for (int i = 0; i < k; i ++) {
-                    DenseVector vector = new DenseVector(size);
-                    for (int j = 0; j < size; j ++) {
-                        vector.values[j] = random.nextDouble();
-                    }
-                    vectors.add(vector);
-                }
-                Collections.shuffle(vectors, new Random(seed));
-                out.collect(vectors.subList(0, k).toArray(new DenseVector[0]));
+    private static DataStream<DenseVector[]> createRandomCentroids(StreamExecutionEnvironment env, int dims, int k, long seed) {
+        DenseVector[] centroids = new DenseVector[k];
+        Random random = new Random(seed);
+        for (int i = 0; i < k; i ++) {
+            centroids[i] = new DenseVector(dims);
+            for (int j = 0; j < dims; j ++) {
+                centroids[i].values[j] = random.nextDouble();
             }
-        }).setParallelism(1);
-        return resultStream;
+        }
+        return env.fromCollection(Collections.singletonList(centroids));
     }
 }

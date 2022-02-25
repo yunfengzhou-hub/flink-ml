@@ -91,6 +91,9 @@ public class OnlineKmeansTest {
     public void testFeaturePredictionParam() throws Exception {
         OnlineKMeans kmeans =
                 new OnlineKMeans()
+                        .setInitRandomCentroids(true)
+                        .setDims(2)
+                        .setBatchSize(6)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
         KMeansModel model = kmeans.fit(trainTable);
@@ -140,10 +143,10 @@ public class OnlineKmeansTest {
 
         pushVectors(
                 predictId,
-                Vectors.dense(1.0, -5.0),
-                Vectors.dense(1.0, 5.0),
-                Vectors.dense(1.0, -5.0),
-                Vectors.dense(1.0, 5.0)
+                Vectors.dense(1.0, -15.0),
+                Vectors.dense(1.0, 15.0),
+                Vectors.dense(0.0, 105.0),
+                Vectors.dense(9.6, -105.0)
         );
 
         row1 = iterator.next();
