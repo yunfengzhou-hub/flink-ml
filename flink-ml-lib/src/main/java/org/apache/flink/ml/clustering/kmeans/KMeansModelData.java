@@ -47,6 +47,16 @@ public class KMeansModelData {
 
     public DenseVector[] centroids;
 
+    /**
+     * Current weight of centroids. Only required for online KMeans algorithm.
+     */
+    public DenseVector weights;
+
+    public KMeansModelData(DenseVector[] centroids, DenseVector weights) {
+        this.centroids = centroids;
+        this.weights = weights;
+    }
+
     public KMeansModelData(DenseVector[] centroids) {
         this.centroids = centroids;
     }
