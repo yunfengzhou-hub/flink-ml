@@ -3,7 +3,6 @@ package org.apache.flink.ml.clustering.kmeans;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Source;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.connector.file.src.FileSource;
@@ -24,10 +23,6 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.BasePathBucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy;
-import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
-import org.apache.flink.streaming.api.operators.BoundedOneInput;
-import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
@@ -40,30 +35,30 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.*;
 
-public class OnlineKMeans
-        implements Estimator<OnlineKMeans, OnlineKMeansModel>, OnlineKMeansParams<OnlineKMeans> {
+public class StreamingKMeans
+        implements Estimator<StreamingKMeans, StreamingKMeansModel>, StreamingKMeansParams<StreamingKMeans> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table initModelDataTable;
 
-    public OnlineKMeans() {
+    public StreamingKMeans() {
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
     }
 
-    public OnlineKMeans(Table... initModelDataTables) {
+    public StreamingKMeans(Table... initModelDataTables) {
         Preconditions.checkArgument(initModelDataTables.length == 1);
         this.initModelDataTable = initModelDataTables[0];
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
+        setInitMode("direct");
     }
 
     @Override
-    public OnlineKMeansModel fit(Table... inputs) {
+    public StreamingKMeansModel fit(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
         Preconditions.checkArgument(HasBatchStrategy.COUNT_STRATEGY.equals(getBatchStrategy()));
-        Preconditions.checkArgument(initModelDataTable != null || getInitRandomCentroids(),
-                "Initial model data needs to be explicitly set or randomly created.");
+        Preconditions.checkArgument(initModelDataTable != null || getInitMode().equals("random"),
+                "Initial model data needs to be directly set or randomly created.");
 
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
@@ -74,16 +69,14 @@ public class OnlineKMeans
                         .map(new FeaturesExtractor(getFeaturesCol()));
 
         DataStream<KMeansModelData> initCentroids;
-        if (getInitRandomCentroids()) {
+        if (getInitMode().equals("random")) {
             initCentroids = createRandomCentroids(env, getDims(), getK(), getSeed());
         } else {
             initCentroids = KMeansModelData.getModelDataStream(initModelDataTable);
         }
 
-        initCentroids = initCentroids.transform("printoperator", TypeInformation.of(KMeansModelData.class), new PrintOperator());
-
         IterationBody body =
-                new KMeansIterationBody(DistanceMeasure.getInstance(getDistanceMeasure()), getDecayFactor(), getTimeUnit(), getMaxIter(), getBatchSize(), getK());
+                new StreamingKMeansIterationBody(DistanceMeasure.getInstance(getDistanceMeasure()), getDecayFactor(), getTimeUnit(), getBatchSize(), getK());
 
         DataStream<DenseVector[]> finalCentroids =
                 Iterations.iterateUnboundedStreams(
@@ -91,30 +84,14 @@ public class OnlineKMeans
                         .get(0);
 
         Table finalCentroidsTable = tEnv.fromDataStream(finalCentroids);
-        OnlineKMeansModel model = new OnlineKMeansModel(tEnv.fromDataStream(initCentroids)).setModelData(finalCentroidsTable);
+        StreamingKMeansModel model = new StreamingKMeansModel(tEnv.fromDataStream(initCentroids)).setModelData(finalCentroidsTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;
-    }
-
-    public static class PrintOperator extends AbstractStreamOperator<KMeansModelData>
-            implements OneInputStreamOperator<KMeansModelData, KMeansModelData>, BoundedOneInput {
-
-        @Override
-        public void endInput() throws Exception {
-            System.out.println("init model data end input.");
-        }
-
-        @Override
-        public void processElement(StreamRecord<KMeansModelData> streamRecord) throws Exception {
-            System.out.println("offline Kmeans offered model data " + Arrays.toString(streamRecord.getValue().centroids));
-            output.collect(streamRecord);
-        }
     }
 
     @Override
     public void save(String path) throws IOException {
         if (initModelDataTable != null) {
-            System.out.println("Saving init model data for onlineKMeans");
             String initModelDataPath = Paths.get(path, "initModelData").toString();
             FileSink<KMeansModelData> initModelDataSink =
                     FileSink.forRowFormat(
@@ -129,15 +106,12 @@ public class OnlineKMeans
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static OnlineKMeans load(StreamExecutionEnvironment env, String path)
+    public static StreamingKMeans load(StreamExecutionEnvironment env, String path)
             throws IOException {
-        OnlineKMeans kMeans = ReadWriteUtils.loadStageParam(path);
+        StreamingKMeans kMeans = ReadWriteUtils.loadStageParam(path);
 
         Path initModelDataPath = Paths.get(path, "initModelData");
-
-        System.out.println(Arrays.toString(OnlineKMeansModel.getDataPaths(initModelDataPath.toString())));
         if (Files.exists(initModelDataPath)) {
-            System.out.println("Loading init model data for onlineKMeans");
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
             Source<KMeansModelData, ?, ?> initModelDataSource =
@@ -146,6 +120,7 @@ public class OnlineKMeans
             DataStream<KMeansModelData> initModelDataStream = env.fromSource(initModelDataSource, WatermarkStrategy.noWatermarks(), "initModelData");
 
             kMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
+            kMeans.setInitMode("direct");
         }
 
         return kMeans;
@@ -156,19 +131,17 @@ public class OnlineKMeans
         return paramMap;
     }
 
-    private static class KMeansIterationBody implements IterationBody {
+    private static class StreamingKMeansIterationBody implements IterationBody {
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
         private final String timeUnit;
-        private final int maxIter;
         private final int batchSize;
         private final int K;
 
-        public KMeansIterationBody(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int maxIter, int batchSize, int k) {
+        public StreamingKMeansIterationBody(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int batchSize, int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.timeUnit = timeUnit;
-            this.maxIter = maxIter;
             this.batchSize = batchSize;
             K = k;
         }
@@ -183,7 +156,7 @@ public class OnlineKMeans
                     points.countWindowAll(batchSize)
                             .aggregate(new MiniBatchCreator())
                             .connect(modelData.broadcast())
-                            .flatMap(new UpdateModelDataOperator(distanceMeasure, decayFactor, timeUnit, maxIter, K));
+                            .flatMap(new UpdateModelDataOperator(distanceMeasure, decayFactor, timeUnit, K));
 
             return new IterationBodyResult(
                     DataStreamList.of(newCentroids), DataStreamList.of(newCentroids));
@@ -196,64 +169,53 @@ public class OnlineKMeans
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
         private final String timeUnit;
-        private final int maxIter;
         private final int K;
-//        private DenseVector[] currentCentroids;
-        private KMeansModelData currentModelData;
+        private KMeansModelData modelData;
         Queue<DenseVector[]> pointsBuffer = new ArrayDeque<>();
 
-        public UpdateModelDataOperator(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int maxIter, int k) {
+        public UpdateModelDataOperator(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.timeUnit = timeUnit;
-            this.maxIter = maxIter;
             K = k;
         }
 
         @Override
         public void flatMap1(
-                DenseVector[] points, Collector<KMeansModelData> output)
-                throws Exception {
-            System.out.println("SelectNearestCentroidOperator.flatMap1");
+                DenseVector[] points, Collector<KMeansModelData> output) {
             pointsBuffer.add(points);
             flatMap(output);
         }
 
         @Override
         public void flatMap2(
-                KMeansModelData modelData, Collector<KMeansModelData> output)
-                throws Exception {
-            System.out.println("SelectNearestCentroidOperator.flatMap2");
-            currentModelData = modelData;
-
+                KMeansModelData modelData, Collector<KMeansModelData> output) {
+            this.modelData = modelData;
             flatMap(output);
         }
 
         private void flatMap(Collector<KMeansModelData> output) {
-            if (currentModelData == null || pointsBuffer.isEmpty()) {
+            if (modelData == null || pointsBuffer.isEmpty()) {
                 return;
             }
-            System.out.println("SelectNearestCentroidOperator.flatMap");
 
-            DenseVector[] currentCentroids = currentModelData.centroids;
-            DenseVector currentWeights = currentModelData.weights;
+            DenseVector[] centroids = modelData.centroids;
+            DenseVector weights = modelData.weights;
             DenseVector[] points = pointsBuffer.poll();
             DenseVector[] sums = new DenseVector[K];
-            int dims = currentCentroids[0].size();
+            int dims = centroids[0].size();
             int[] counts = new int[K];
 
-            System.out.println("SelectNearestCentroidOperator.flatMap 1");
             for (int i = 0; i < K; i++) {
                 sums[i] = new DenseVector(dims);
                 counts[i] = 0;
             }
-            System.out.println("SelectNearestCentroidOperator.flatMap 2");
             for (DenseVector point : points) {
                 double minDistance = Double.MAX_VALUE;
                 int closestCentroidId = -1;
 
-                for (int j = 0; j < currentCentroids.length; j++) {
-                    DenseVector centroid = currentCentroids[j];
+                for (int j = 0; j < centroids.length; j++) {
+                    DenseVector centroid = centroids[j];
                     double distance = distanceMeasure.distance(centroid, point);
                     if (distance < minDistance) {
                         minDistance = distance;
@@ -265,39 +227,26 @@ public class OnlineKMeans
                     sums[closestCentroidId].values[j] += point.values[j];
                 }
             }
-            System.out.println("SelectNearestCentroidOperator.flatMap 3");
 
             double discount = decayFactor;
             if (timeUnit.equals(POINT_UNIT)) {
                 discount = Math.pow(decayFactor, points.length);
             }
-            System.out.println("SelectNearestCentroidOperator.flatMap 4");
-            System.out.println(discount);
-            System.out.println(currentWeights);
 
-            BLAS.scal(discount, currentWeights);
-            System.out.println("SelectNearestCentroidOperator.flatMap 4.5");
+            BLAS.scal(discount, weights);
             for (int i =0; i < K; i ++) {
-                System.out.println("SelectNearestCentroidOperator.flatMap 4 0");
-                DenseVector centroid = currentCentroids[i];
+                DenseVector centroid = centroids[i];
 
-                double updatedWeight = currentWeights.values[i] + counts[i];
+                double updatedWeight = weights.values[i] + counts[i];
                 double lambda = counts[i] / Math.max(updatedWeight, 1e-16);
-                System.out.println("SelectNearestCentroidOperator.flatMap 4 1");
 
-                currentWeights.values[i] = updatedWeight;
-                System.out.println("SelectNearestCentroidOperator.flatMap 4 2");
+                weights.values[i] = updatedWeight;
                 BLAS.scal(1.0 - lambda, centroid);
-                System.out.println("SelectNearestCentroidOperator.flatMap 4 3");
                 BLAS.axpy(lambda / counts[i], sums[i], centroid);
-                System.out.println("SelectNearestCentroidOperator.flatMap 4 4");
             }
-            System.out.println("SelectNearestCentroidOperator.flatMap 5");
 
-            output.collect(new KMeansModelData(currentCentroids, currentWeights));
-            currentModelData = null;
-
-            System.out.println("SelectNearestCentroidOperator.flatMap ends");
+            output.collect(new KMeansModelData(centroids, weights));
+            modelData = null;
         }
     }
 

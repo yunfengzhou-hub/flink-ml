@@ -49,6 +49,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.*;
 
 /** Utility methods for reading and writing stages. */
@@ -428,6 +429,34 @@ public class ReadWriteUtils {
             StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> modelDecoder) {
         Source<T, ?, ?> source =
                 FileSource.forRecordStreamFormat(modelDecoder, new org.apache.flink.core.fs.Path(getDataPath(path))).build();
+        return env.fromSource(source, WatermarkStrategy.noWatermarks(), "modelData");
+    }
+
+    public static <T> void saveDataStream(
+            DataStream<T> model, String path, Encoder<T> modelEncoder) {
+        new File(path).mkdirs();
+        FileSink<T> initModelDataSink =
+                FileSink.forRowFormat(
+                                new org.apache.flink.core.fs.Path(path),
+                                modelEncoder)
+                        .withRollingPolicy(OnCheckpointRollingPolicy.build())
+                        .withBucketAssigner(new BasePathBucketAssigner<>())
+                        .build();
+        model.sinkTo(initModelDataSink);
+    }
+
+    public static <T> DataStream<T> loadBoundedDataStream(
+            StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> modelDecoder) {
+        Source<T, ?, ?> source =
+                FileSource.forRecordStreamFormat(modelDecoder, new org.apache.flink.core.fs.Path(path)).build();
+        return env.fromSource(source, WatermarkStrategy.noWatermarks(), "modelData");
+    }
+
+    public static <T> DataStream<T> loadUnboundedDataStream(
+            StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> modelDecoder) {
+        Source<T, ?, ?> source =
+                FileSource.forRecordStreamFormat(modelDecoder, new org.apache.flink.core.fs.Path(path))
+                        .monitorContinuously(Duration.ofMillis(1000)).build();
         return env.fromSource(source, WatermarkStrategy.noWatermarks(), "modelData");
     }
 }

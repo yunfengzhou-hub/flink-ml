@@ -27,7 +27,7 @@ import java.util.*;
 
 import static org.junit.Assert.*;
 
-public class OnlineKMeansTest {
+public class StreamingKMeansTest {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
     public static final DenseVector[] trainData1 =
@@ -125,38 +125,37 @@ public class OnlineKMeansTest {
                 new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
         KMeansModel offlineModel = offlineKMeans.fit(offlineTrainTable);
 
-        OnlineKMeans onlineKMeans =
-                new OnlineKMeans(offlineModel.getModelData())
+        StreamingKMeans streamingKMeans =
+                new StreamingKMeans(offlineModel.getModelData())
                         .setDims(2)
                         .setBatchSize(6);
-        ReadWriteUtils.updateExistingParams(onlineKMeans, offlineKMeans.getParamMap());
-        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
-        Table outputTable = onlineModel.transform(predictTable)[0];
+        ReadWriteUtils.updateExistingParams(streamingKMeans, offlineKMeans.getParamMap());
+        StreamingKMeansModel streamingModel = streamingKMeans.fit(trainTable);
+        Table outputTable = streamingModel.transform(predictTable)[0];
 
         DataStream<Row> output = tEnv.toDataStream(outputTable);
         output.addSink(new MockBlockingQueueSinkFunction<>(outputId));
 
-        DataStream<DenseVector[]> modelDataStream = onlineModel.getLatestModelData();
+        DataStream<DenseVector[]> modelDataStream = streamingModel.getLatestModelData();
         modelDataStream.addSink(new MockBlockingQueueSinkFunction<>(modelDataId));
 
         JobClient client = env.executeAsync();
 
         Thread.sleep(5000);
 
-        System.out.println("1");
         TestBlockingQueueManager.offerAll(predictId, predictData);
-        System.out.println("2");
         TestBlockingQueueManager.poll(modelDataId);
-        System.out.println("3");
-        TestBlockingQueueManager.poll(outputId, predictData.length);
-        System.out.println("4");
+
+        List<Row> rawResult1 = TestBlockingQueueManager.poll(outputId, predictData.length);
+        List<Set<DenseVector>> actualGroups1 = groupFeaturesByPrediction(rawResult1, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        assertTrue(CollectionUtils.isEqualCollection(expectedGroups1, actualGroups1));
 
         TestBlockingQueueManager.offerAll(trainId, trainData2);
         TestBlockingQueueManager.poll(modelDataId);
         TestBlockingQueueManager.offerAll(predictId, predictData);
 
         List<Row> rawResult2 = TestBlockingQueueManager.poll(outputId, predictData.length);
-        List<Set<DenseVector>> actualGroups2 = groupFeaturesByPrediction(rawResult2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
+        List<Set<DenseVector>> actualGroups2 = groupFeaturesByPrediction(rawResult2, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups2, actualGroups2));
 
         client.cancel();
@@ -168,26 +167,25 @@ public class OnlineKMeansTest {
                 new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
         KMeansModel offlineModel = offlineKMeans.fit(offlineTrainTable);
 
-        OnlineKMeans onlineKMeans =
-                new OnlineKMeans(offlineModel.getModelData())
+        StreamingKMeans streamingKMeans =
+                new StreamingKMeans(offlineModel.getModelData())
                         .setDims(2)
                         .setBatchSize(6);
-        ReadWriteUtils.updateExistingParams(onlineKMeans, offlineKMeans.getParamMap());
+        ReadWriteUtils.updateExistingParams(streamingKMeans, offlineKMeans.getParamMap());
 
         String kMeansSavePath = tempFolder.newFolder().getAbsolutePath();
-        onlineKMeans.save(kMeansSavePath);
+        streamingKMeans.save(kMeansSavePath);
         JobClient client1 = env.executeAsync();
         Thread.sleep(5000);
-        System.out.println(Arrays.toString(OnlineKMeansModel.getDataPaths(kMeansSavePath)));
-        OnlineKMeans loadedKMeans = OnlineKMeans.load(env, kMeansSavePath);
+        StreamingKMeans loadedKMeans = StreamingKMeans.load(env, kMeansSavePath);
 
-        OnlineKMeansModel onlineModel = loadedKMeans.fit(trainTable);
+        StreamingKMeansModel streamingModel = loadedKMeans.fit(trainTable);
 
         String modelSavePath = tempFolder.newFolder().getAbsolutePath();
-        onlineModel.save(modelSavePath);
+        streamingModel.save(modelSavePath);
         JobClient client2 = env.executeAsync();
         Thread.sleep(2000);
-        OnlineKMeansModel loadedModel = OnlineKMeansModel.load(env, modelSavePath);
+        StreamingKMeansModel loadedModel = StreamingKMeansModel.load(env, modelSavePath);
 
         Table outputTable = loadedModel.transform(predictTable)[0];
 
@@ -210,7 +208,7 @@ public class OnlineKMeansTest {
         TestBlockingQueueManager.offerAll(predictId, predictData);
 
         List<Row> rawResult2 = TestBlockingQueueManager.poll(outputId, predictData.length);
-        List<Set<DenseVector>> actualGroups2 = groupFeaturesByPrediction(rawResult2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
+        List<Set<DenseVector>> actualGroups2 = groupFeaturesByPrediction(rawResult2, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups2, actualGroups2));
 
         try {

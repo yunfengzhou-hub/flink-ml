@@ -47,6 +47,7 @@ import java.util.Map;
 
 /** A Model which clusters data into k clusters using the model data computed by {@link KMeans}. */
 public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeansModel> {
+    protected static final String broadcastModelKey = "broadcastModelKey";
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table modelDataTable;
 
@@ -81,7 +82,6 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
                 new RowTypeInfo(
                         ArrayUtils.addAll(inputTypeInfo.getFieldTypes(), Types.INT),
                         ArrayUtils.addAll(inputTypeInfo.getFieldNames(), getPredictionCol()));
-        final String broadcastModelKey = "broadcastModelKey";
         DataStream<Row> predictionResult =
                 BroadcastUtils.withBroadcastStream(
                         Collections.singletonList(tEnv.toDataStream(inputs[0])),
@@ -126,16 +126,7 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
                 centroids = modelData.centroids;
             }
             DenseVector point = (DenseVector) dataPoint.getField(featuresCol);
-            double minDistance = Double.MAX_VALUE;
-            int closestCentroidId = -1;
-            for (int i = 0; i < centroids.length; i++) {
-                DenseVector centroid = centroids[i];
-                double distance = distanceMeasure.distance(centroid, point);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    closestCentroidId = i;
-                }
-            }
+            int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
             return Row.join(dataPoint, Row.of(closestCentroidId));
         }
     }
