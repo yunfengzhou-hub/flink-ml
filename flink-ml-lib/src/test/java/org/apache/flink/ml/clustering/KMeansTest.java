@@ -208,9 +208,6 @@ public class KMeansTest extends AbstractTestBase {
                 StageTestUtils.saveAndReload(env, model, tempFolder.newFolder().getAbsolutePath());
         Table output = loadedModel.transform(dataTable)[0];
         assertEquals(
-                Collections.singletonList("centroids"),
-                loadedModel.getModelData()[0].getResolvedSchema().getColumnNames());
-        assertEquals(
                 Arrays.asList("features", "prediction"),
                 output.getResolvedSchema().getColumnNames());
 
@@ -223,9 +220,6 @@ public class KMeansTest extends AbstractTestBase {
     public void testGetModelData() throws Exception {
         KMeans kmeans = new KMeans().setMaxIter(2).setK(2);
         KMeansModel model = kmeans.fit(dataTable);
-        assertEquals(
-                Collections.singletonList("centroids"),
-                model.getModelData()[0].getResolvedSchema().getColumnNames());
 
         DataStream<KMeansModelData> modelData =
                 KMeansModelData.getModelDataStream(model.getModelData()[0]);

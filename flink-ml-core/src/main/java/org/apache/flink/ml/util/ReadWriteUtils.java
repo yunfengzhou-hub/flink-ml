@@ -49,12 +49,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /** Utility methods for reading and writing stages. */
 public class ReadWriteUtils {
@@ -432,7 +427,7 @@ public class ReadWriteUtils {
     public static <T> DataStream<T> loadModelData(
             StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> modelDecoder) {
         Source<T, ?, ?> source =
-                FileSource.forRecordStreamFormat(modelDecoder, getDataPaths(path)).build();
+                FileSource.forRecordStreamFormat(modelDecoder, new org.apache.flink.core.fs.Path(getDataPath(path))).build();
         return env.fromSource(source, WatermarkStrategy.noWatermarks(), "modelData");
     }
 }
