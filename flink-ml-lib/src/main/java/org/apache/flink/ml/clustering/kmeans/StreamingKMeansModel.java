@@ -8,13 +8,13 @@ import org.apache.flink.ml.api.Model;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData.ModelDataDecoder;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData.ModelDataEncoder;
 import org.apache.flink.ml.common.broadcast.BroadcastUtils;
+import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
-import org.apache.flink.ml.util.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
@@ -97,8 +97,7 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
                             return prediction;
                         });
 
-        SingleOutputStreamOperator<Row> operator = new SingleOutputStreamOperator<>(env, predictionResult.getTransformation());
-        latestModelData = operator.getSideOutput(outputTag);
+        latestModelData = DataStreamUtils.getSideOutput(predictionResult, outputTag);
 
         return new Table[] {tEnv.fromDataStream(predictionResult)};
     }

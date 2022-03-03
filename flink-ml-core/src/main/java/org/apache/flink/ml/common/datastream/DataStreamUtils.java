@@ -22,14 +22,18 @@ import org.apache.flink.api.common.functions.MapPartitionFunction;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.util.OutputTag;
 
 /** Provides utility functions for {@link DataStream}. */
 public class DataStreamUtils {
@@ -48,6 +52,20 @@ public class DataStreamUtils {
      */
     public static DataStream<double[]> allReduceSum(DataStream<double[]> input) {
         return AllReduceImpl.allReduceSum(input);
+    }
+
+    public static <OUT1, OUT2> DataStream<OUT2> getSideOutput(DataStream<OUT1> input, OutputTag<OUT2> outputTag) {
+        SingleOutputStreamOperator<OUT1> operator = new MockSingleOutputStreamOperator<>(input.getExecutionEnvironment(), input.getTransformation());
+        return operator.getSideOutput(outputTag);
+    }
+
+    /**
+     * Helper class to make {@link SingleOutputStreamOperator}'s constructor public.
+     */
+    private static class MockSingleOutputStreamOperator<T> extends SingleOutputStreamOperator<T> {
+        public MockSingleOutputStreamOperator(StreamExecutionEnvironment environment, Transformation<T> transformation) {
+            super(environment, transformation);
+        }
     }
 
     /**

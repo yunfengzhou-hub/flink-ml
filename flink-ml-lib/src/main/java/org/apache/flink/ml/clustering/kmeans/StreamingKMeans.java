@@ -1,9 +1,14 @@
 package org.apache.flink.ml.clustering.kmeans;
 
+import org.apache.commons.collections.IteratorUtils;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.state.ListState;
+import org.apache.flink.api.common.state.ListStateDescriptor;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Source;
+import org.apache.flink.api.java.typeutils.ObjectArrayTypeInfo;
 import org.apache.flink.connector.file.sink.FileSink;
 import org.apache.flink.connector.file.src.FileSource;
 import org.apache.flink.iteration.DataStreamList;
@@ -15,20 +20,24 @@ import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.common.param.HasBatchStrategy;
 import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.DenseVector;
+import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.co.CoFlatMapFunction;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.BasePathBucketAssigner;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
-import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
@@ -156,52 +165,82 @@ public class StreamingKMeans
                     points.countWindowAll(batchSize)
                             .aggregate(new MiniBatchCreator())
                             .connect(modelData.broadcast())
-                            .flatMap(new UpdateModelDataOperator(distanceMeasure, decayFactor, timeUnit, K));
+                            .transform(
+                                    "UpdateModelData",
+                                    TypeInformation.of(KMeansModelData.class),
+                                    new UpdateModelDataOperator(distanceMeasure, decayFactor, timeUnit, K)
+                            );
 
             return new IterationBodyResult(
                     DataStreamList.of(newCentroids), DataStreamList.of(newCentroids));
         }
     }
 
-    private static class UpdateModelDataOperator
-            implements CoFlatMapFunction<
-                    DenseVector[], KMeansModelData, KMeansModelData> {
+    private static class UpdateModelDataOperator extends AbstractStreamOperator<KMeansModelData>
+            implements TwoInputStreamOperator<DenseVector[], KMeansModelData, KMeansModelData> {
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
         private final String timeUnit;
         private final int K;
-        private KMeansModelData modelData;
-        Queue<DenseVector[]> pointsBuffer = new ArrayDeque<>();
+        private ListState<DenseVector[]> miniBatchState;
+        private ListState<KMeansModelData> modelDataState;
 
-        public UpdateModelDataOperator(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int k) {
+        public UpdateModelDataOperator(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int K) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.timeUnit = timeUnit;
-            K = k;
+            this.K = K;
         }
 
         @Override
-        public void flatMap1(
-                DenseVector[] points, Collector<KMeansModelData> output) {
-            pointsBuffer.add(points);
-            flatMap(output);
+        public void initializeState(StateInitializationContext context) throws Exception {
+            super.initializeState(context);
+
+            TypeInformation<DenseVector[]> type =
+                    ObjectArrayTypeInfo.getInfoFor(DenseVectorTypeInfo.INSTANCE);
+            miniBatchState =
+                    context.getOperatorStateStore()
+                            .getListState(new ListStateDescriptor<>("miniBatch", type));
+
+            modelDataState =
+                    context.getOperatorStateStore()
+                            .getListState(new ListStateDescriptor<>("modelData", KMeansModelData.class));
         }
 
         @Override
-        public void flatMap2(
-                KMeansModelData modelData, Collector<KMeansModelData> output) {
-            this.modelData = modelData;
-            flatMap(output);
+        public void processElement1(StreamRecord<DenseVector[]> streamRecord) throws Exception {
+            miniBatchState.add(streamRecord.getValue());
+            processElement(output);
         }
 
-        private void flatMap(Collector<KMeansModelData> output) {
-            if (modelData == null || pointsBuffer.isEmpty()) {
+        @Override
+        public void processElement2(StreamRecord<KMeansModelData> streamRecord) throws Exception {
+            modelDataState.add(streamRecord.getValue());
+            processElement(output);
+        }
+
+        private void processElement(Output<StreamRecord<KMeansModelData>> output) throws Exception {
+            if (!modelDataState.get().iterator().hasNext() || !miniBatchState.get().iterator().hasNext()) {
                 return;
             }
 
-            DenseVector[] centroids = modelData.centroids;
-            DenseVector weights = modelData.weights;
-            DenseVector[] points = pointsBuffer.poll();
+            List<KMeansModelData> modelDataList = IteratorUtils.toList(modelDataState.get().iterator());
+            if (modelDataList.size() != 1) {
+                throw new RuntimeException(
+                        "The operator received "
+                                + modelDataList.size()
+                                + " list of centroids in this round");
+            }
+            DenseVector[] centroids = modelDataList.get(0).centroids;
+            DenseVector weights = modelDataList.get(0).weights;
+            modelDataState.clear();
+
+            List<DenseVector[]> pointsList = IteratorUtils.toList(miniBatchState.get().iterator());
+            DenseVector[] points = pointsList.get(0);
+            pointsList.remove(0);
+            miniBatchState.clear();
+            miniBatchState.addAll(pointsList);
+
             DenseVector[] sums = new DenseVector[K];
             int dims = centroids[0].size();
             int[] counts = new int[K];
@@ -211,17 +250,7 @@ public class StreamingKMeans
                 counts[i] = 0;
             }
             for (DenseVector point : points) {
-                double minDistance = Double.MAX_VALUE;
-                int closestCentroidId = -1;
-
-                for (int j = 0; j < centroids.length; j++) {
-                    DenseVector centroid = centroids[j];
-                    double distance = distanceMeasure.distance(centroid, point);
-                    if (distance < minDistance) {
-                        minDistance = distance;
-                        closestCentroidId = j;
-                    }
-                }
+                int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
                 counts[closestCentroidId]++;
                 for (int j = 0; j < dims; j++) {
                     sums[closestCentroidId].values[j] += point.values[j];
@@ -245,8 +274,7 @@ public class StreamingKMeans
                 BLAS.axpy(lambda / counts[i], sums[i], centroid);
             }
 
-            output.collect(new KMeansModelData(centroids, weights));
-            modelData = null;
+            output.collect(new StreamRecord<>(new KMeansModelData(centroids, weights)));
         }
     }
 

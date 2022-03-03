@@ -18,6 +18,8 @@
 
 package org.apache.flink.ml.clustering;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.IteratorUtils;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
@@ -37,28 +39,14 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
-import org.apache.flink.util.CloseableIterator;
-
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.IteratorUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 /** Tests {@link KMeans} and {@link KMeansModel}. */
 public class KMeansTest extends AbstractTestBase {
@@ -102,20 +90,20 @@ public class KMeansTest extends AbstractTestBase {
         dataTable = tEnv.fromDataStream(env.fromCollection(DATA), schema).as("features");
     }
 
+
     /**
-     * Executes a table and collects its results. Results are returned as a list of sets, where
+     * Aggregates feature by predictions. Results are returned as a list of sets, where
      * elements in the same set are features whose prediction results are the same.
      *
-     * @param table A table to be executed and to have its result collected
+     * @param rows A list of rows containing feature and prediction columns
      * @param featureCol Name of the column in the table that contains the features
      * @param predictionCol Name of the column in the table that contains the prediction result
      * @return A map containing the collected results
      */
-    private static List<Set<DenseVector>> executeAndCollect(
-            Table table, String featureCol, String predictionCol) {
+    protected static List<Set<DenseVector>> groupFeaturesByPrediction(
+            List<Row> rows, String featureCol, String predictionCol) {
         Map<Integer, Set<DenseVector>> map = new HashMap<>();
-        for (CloseableIterator<Row> it = table.execute().collect(); it.hasNext(); ) {
-            Row row = it.next();
+        for (Row row: rows) {
             DenseVector vector = (DenseVector) row.getField(featureCol);
             int predict = (Integer) row.getField(predictionCol);
             map.putIfAbsent(predict, new HashSet<>());
@@ -160,8 +148,9 @@ public class KMeansTest extends AbstractTestBase {
         assertEquals(
                 Arrays.asList("test_feature", "test_prediction"),
                 output.getResolvedSchema().getColumnNames());
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -179,8 +168,9 @@ public class KMeansTest extends AbstractTestBase {
         Table output = model.transform(input)[0];
         List<Set<DenseVector>> expectedGroups =
                 Collections.singletonList(Collections.singleton(Vectors.dense(0.0, 0.1)));
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -193,8 +183,9 @@ public class KMeansTest extends AbstractTestBase {
         assertEquals(
                 Arrays.asList("features", "prediction"),
                 output.getResolvedSchema().getColumnNames());
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -211,8 +202,9 @@ public class KMeansTest extends AbstractTestBase {
                 Arrays.asList("features", "prediction"),
                 output.getResolvedSchema().getColumnNames());
 
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -241,8 +233,9 @@ public class KMeansTest extends AbstractTestBase {
         ReadWriteUtils.updateExistingParams(modelB, modelA.getParamMap());
 
         Table output = modelB.transform(dataTable)[0];
+        List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                executeAndCollect(output, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 }

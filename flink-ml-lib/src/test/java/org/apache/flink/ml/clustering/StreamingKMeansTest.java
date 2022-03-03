@@ -25,6 +25,7 @@ import org.junit.rules.TemporaryFolder;
 
 import java.util.*;
 
+import static org.apache.flink.ml.clustering.KMeansTest.groupFeaturesByPrediction;
 import static org.junit.Assert.*;
 
 public class StreamingKMeansTest {
@@ -105,18 +106,6 @@ public class StreamingKMeansTest {
                                         DenseVectorTypeInfo.INSTANCE),
                                 schema)
                         .as("features");
-    }
-
-    private static List<Set<DenseVector>> groupFeaturesByPrediction(
-            List<Row> rows, String featureCol, String predictionCol) {
-        Map<Integer, Set<DenseVector>> map = new HashMap<>();
-        for (Row row: rows) {
-            DenseVector vector = (DenseVector) row.getField(featureCol);
-            int predict = (Integer) row.getField(predictionCol);
-            map.putIfAbsent(predict, new HashSet<>());
-            map.get(predict).add(vector);
-        }
-        return new ArrayList<>(map.values());
     }
 
     @Test
