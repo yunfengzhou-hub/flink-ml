@@ -2,6 +2,7 @@ package org.apache.flink.ml.common.param;
 
 import org.apache.flink.ml.param.*;
 
+/** Interface for the shared batch strategy param. */
 @SuppressWarnings("unchecked")
 public interface HasBatchStrategy<T> extends WithParams<T> {
     String COUNT_STRATEGY = "count";

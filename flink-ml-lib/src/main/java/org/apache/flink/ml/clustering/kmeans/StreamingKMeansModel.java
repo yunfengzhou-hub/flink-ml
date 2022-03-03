@@ -1,3 +1,21 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.flink.ml.clustering.kmeans;
 
 import org.apache.commons.lang3.ArrayUtils;
@@ -20,7 +38,6 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Collector;
@@ -34,12 +51,16 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * StreamingKMeansModel can be regarded as an advanced {@link KMeansModel} operator which can update model data in a
+ * streaming format, using the model data provided by {@link StreamingKMeans}.
+ */
 public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeansModelParams<StreamingKMeansModel> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
-    private static final OutputTag<DenseVector[]> outputTag = new OutputTag<DenseVector[]>("latest-model-data"){};
+    private static final OutputTag<KMeansModelData> outputTag = new OutputTag<KMeansModelData>("latest-model-data"){};
     private Table initModelDataTable;
     private Table modelDataTable;
-    private DataStream<DenseVector[]> latestModelData;
+    private DataStream<KMeansModelData> latestModelData;
 
     public StreamingKMeansModel() {
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
@@ -67,11 +88,9 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
     @SuppressWarnings("unchecked")
     public Table[] transform(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
-        Preconditions.checkNotNull(initModelDataTable);
 
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
-        StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
 
         RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
         RowTypeInfo outputTypeInfo =
@@ -86,15 +105,13 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
                         inputList -> {
                             DataStream inputData = inputList.get(0);
                             DataStream modelData = inputList.get(1);
-                            DataStream<Row> prediction =
-                                    modelData
-                                            .broadcast()
-                                            .connect(inputData)
-                                            .process(new PredictLabelFunction(
-                                                            getFeaturesCol(),
-                                                            DistanceMeasure.getInstance(getDistanceMeasure())),
-                                                    outputTypeInfo);
-                            return prediction;
+                            return modelData
+                                    .broadcast()
+                                    .connect(inputData)
+                                    .process(new PredictLabelFunction(
+                                                    getFeaturesCol(),
+                                                    DistanceMeasure.getInstance(getDistanceMeasure())),
+                                            outputTypeInfo);
                         });
 
         latestModelData = DataStreamUtils.getSideOutput(predictionResult, outputTag);
@@ -102,8 +119,14 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
         return new Table[] {tEnv.fromDataStream(predictionResult)};
     }
 
+    /**
+     * Gets the data stream containing the latest model data used in this Model. The "latest" means that
+     * If a model data is observed in this stream, the model data would have come into effect in this model.
+     * Thus predict data arrived afterwards will be served
+     * by this model data, or a later model data. It won't be served by any earlier model data.
+     */
     @VisibleForTesting
-    public DataStream<DenseVector[]> getLatestModelData() {
+    public DataStream<KMeansModelData> getLatestModelData() {
         return latestModelData;
     }
 
@@ -124,7 +147,7 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
         @Override
         public void processElement1(KMeansModelData modelData, CoProcessFunction<KMeansModelData, Row, Row>.Context ctx, Collector<Row> collector) {
             centroids = modelData.centroids;
-            ctx.output(outputTag, centroids);
+            ctx.output(outputTag, modelData);
         }
 
         @Override

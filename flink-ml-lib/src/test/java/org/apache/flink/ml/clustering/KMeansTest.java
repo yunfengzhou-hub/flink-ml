@@ -96,15 +96,15 @@ public class KMeansTest extends AbstractTestBase {
      * elements in the same set are features whose prediction results are the same.
      *
      * @param rows A list of rows containing feature and prediction columns
-     * @param featureCol Name of the column in the table that contains the features
+     * @param featuresCol Name of the column in the table that contains the features
      * @param predictionCol Name of the column in the table that contains the prediction result
      * @return A map containing the collected results
      */
     protected static List<Set<DenseVector>> groupFeaturesByPrediction(
-            List<Row> rows, String featureCol, String predictionCol) {
+            List<Row> rows, String featuresCol, String predictionCol) {
         Map<Integer, Set<DenseVector>> map = new HashMap<>();
         for (Row row: rows) {
-            DenseVector vector = (DenseVector) row.getField(featureCol);
+            DenseVector vector = (DenseVector) row.getField(featuresCol);
             int predict = (Integer) row.getField(predictionCol);
             map.putIfAbsent(predict, new HashSet<>());
             map.get(predict).add(vector);

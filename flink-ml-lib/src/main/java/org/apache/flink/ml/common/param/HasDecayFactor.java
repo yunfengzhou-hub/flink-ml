@@ -2,6 +2,7 @@ package org.apache.flink.ml.common.param;
 
 import org.apache.flink.ml.param.*;
 
+/** Interface for the shared decay factor param. */
 @SuppressWarnings("unchecked")
 public interface HasDecayFactor<T> extends WithParams<T> {
     String BATCH_UNIT = "batches";
