@@ -63,7 +63,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 /**
  * StreamingKMeans extends the function of {@link KMeans}, supporting to train a K-Means model
@@ -120,6 +124,7 @@ public class StreamingKMeans
                 Iterations.iterateUnboundedStreams(
                                 DataStreamList.of(initCentroids), DataStreamList.of(points), body)
                         .get(0);
+        finalCentroids.getTransformation().setParallelism(1);
 
         Table finalCentroidsTable = tEnv.fromDataStream(finalCentroids);
         StreamingKMeansModel model =
@@ -180,7 +185,7 @@ public class StreamingKMeans
         private final double decayFactor;
         private final String timeUnit;
         private final int batchSize;
-        private final int K;
+        private final int k;
 
         public StreamingKMeansIterationBody(
                 DistanceMeasure distanceMeasure,
@@ -192,7 +197,7 @@ public class StreamingKMeans
             this.decayFactor = decayFactor;
             this.timeUnit = timeUnit;
             this.batchSize = batchSize;
-            K = k;
+            this.k = k;
         }
 
         @Override
@@ -209,7 +214,8 @@ public class StreamingKMeans
                                     "UpdateModelData",
                                     TypeInformation.of(KMeansModelData.class),
                                     new UpdateModelDataOperator(
-                                            distanceMeasure, decayFactor, timeUnit, K));
+                                            distanceMeasure, decayFactor, timeUnit, k))
+                            .setParallelism(1);
 
             return new IterationBodyResult(
                     DataStreamList.of(newCentroids), DataStreamList.of(newCentroids));
@@ -221,16 +227,16 @@ public class StreamingKMeans
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
         private final String timeUnit;
-        private final int K;
+        private final int k;
         private ListState<DenseVector[]> miniBatchState;
         private ListState<KMeansModelData> modelDataState;
 
         public UpdateModelDataOperator(
-                DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int K) {
+                DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.timeUnit = timeUnit;
-            this.K = K;
+            this.k = k;
         }
 
         @Override
@@ -285,11 +291,11 @@ public class StreamingKMeans
             miniBatchState.clear();
             miniBatchState.addAll(pointsList);
 
-            DenseVector[] sums = new DenseVector[K];
+            DenseVector[] sums = new DenseVector[k];
             int dims = centroids[0].size();
-            int[] counts = new int[K];
+            int[] counts = new int[k];
 
-            for (int i = 0; i < K; i++) {
+            for (int i = 0; i < k; i++) {
                 sums[i] = new DenseVector(dims);
                 counts[i] = 0;
             }
@@ -308,7 +314,7 @@ public class StreamingKMeans
             }
 
             BLAS.scal(discount, weights);
-            for (int i = 0; i < K; i++) {
+            for (int i = 0; i < k; i++) {
                 DenseVector centroid = centroids[i];
 
                 double updatedWeight = weights.values[i] + counts[i];

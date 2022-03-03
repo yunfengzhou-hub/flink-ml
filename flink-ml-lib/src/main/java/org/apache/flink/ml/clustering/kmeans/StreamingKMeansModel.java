@@ -105,9 +105,9 @@ public class StreamingKMeansModel
                 BroadcastUtils.withBroadcastStream(
                         Arrays.asList(
                                 tEnv.toDataStream(inputs[0]),
-                                KMeansModelData.getModelDataStream(modelDataTable)),
+                                KMeansModelData.getModelDataStream(modelDataTable).broadcast()),
                         Collections.singletonMap(
-                                KMeansModel.broadcastModelKey,
+                                KMeansModel.BROADCAST_MODEL_KEY,
                                 KMeansModelData.getModelDataStream(initModelDataTable)),
                         inputList -> {
                             DataStream inputData = inputList.get(0);
@@ -170,7 +170,7 @@ public class StreamingKMeansModel
                 KMeansModelData modelData =
                         (KMeansModelData)
                                 getRuntimeContext()
-                                        .getBroadcastVariable(KMeansModel.broadcastModelKey)
+                                        .getBroadcastVariable(KMeansModel.BROADCAST_MODEL_KEY)
                                         .get(0);
                 processElement1(modelData, ctx, collector);
             }

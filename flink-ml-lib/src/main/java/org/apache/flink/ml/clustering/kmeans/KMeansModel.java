@@ -48,7 +48,7 @@ import java.util.Map;
 
 /** A Model which clusters data into k clusters using the model data computed by {@link KMeans}. */
 public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeansModel> {
-    protected static final String broadcastModelKey = "broadcastModelKey";
+    protected static final String BROADCAST_MODEL_KEY = "broadcastModelKey";
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table modelDataTable;
 
@@ -86,12 +86,12 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
         DataStream<Row> predictionResult =
                 BroadcastUtils.withBroadcastStream(
                         Collections.singletonList(tEnv.toDataStream(inputs[0])),
-                        Collections.singletonMap(broadcastModelKey, modelDataStream),
+                        Collections.singletonMap(BROADCAST_MODEL_KEY, modelDataStream),
                         inputList -> {
                             DataStream inputData = inputList.get(0);
                             return inputData.map(
                                     new PredictLabelFunction(
-                                            broadcastModelKey,
+                                            BROADCAST_MODEL_KEY,
                                             getFeaturesCol(),
                                             DistanceMeasure.getInstance(getDistanceMeasure())),
                                     outputTypeInfo);

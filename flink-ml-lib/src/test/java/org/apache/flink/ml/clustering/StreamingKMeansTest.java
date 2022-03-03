@@ -22,7 +22,11 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.execution.JobClient;
-import org.apache.flink.ml.clustering.kmeans.*;
+import org.apache.flink.ml.clustering.kmeans.KMeans;
+import org.apache.flink.ml.clustering.kmeans.KMeansModel;
+import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
+import org.apache.flink.ml.clustering.kmeans.StreamingKMeans;
+import org.apache.flink.ml.clustering.kmeans.StreamingKMeansModel;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.common.param.HasDecayFactor;
 import org.apache.flink.ml.linalg.DenseVector;
@@ -43,21 +47,26 @@ import org.apache.flink.types.Row;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import static org.apache.flink.ml.clustering.KMeansTest.groupFeaturesByPrediction;
-import static org.junit.Assert.*;
 
 /** Tests {@link StreamingKMeans} and {@link StreamingKMeansModel}. */
 public class StreamingKMeansTest {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
-    public static final DenseVector[] trainData1 =
+    private static final DenseVector[] trainData1 =
             new DenseVector[] {
                 Vectors.dense(10.0, 0.0),
                 Vectors.dense(10.0, 0.3),
@@ -66,7 +75,7 @@ public class StreamingKMeansTest {
                 Vectors.dense(-10.0, 0.6),
                 Vectors.dense(-10.6, 0.0)
             };
-    public static final DenseVector[] trainData2 =
+    private static final DenseVector[] trainData2 =
             new DenseVector[] {
                 Vectors.dense(10.0, 100.0),
                 Vectors.dense(10.0, 100.3),
@@ -75,7 +84,7 @@ public class StreamingKMeansTest {
                 Vectors.dense(-10.0, -100.6),
                 Vectors.dense(-10.6, -100.0)
             };
-    public static final DenseVector[] predictData =
+    private static final DenseVector[] predictData =
             new DenseVector[] {
                 Vectors.dense(10.0, 10.0),
                 Vectors.dense(10.3, 10.0),
@@ -84,7 +93,7 @@ public class StreamingKMeansTest {
                 Vectors.dense(-10.3, 10.0),
                 Vectors.dense(-10.0, 10.3)
             };
-    public static final List<Set<DenseVector>> expectedGroups1 =
+    private static final List<Set<DenseVector>> expectedGroups1 =
             Arrays.asList(
                     new HashSet<>(
                             Arrays.asList(
@@ -96,7 +105,7 @@ public class StreamingKMeansTest {
                                     Vectors.dense(-10.0, 10.0),
                                     Vectors.dense(-10.3, 10.0),
                                     Vectors.dense(-10.0, 10.3))));
-    public static final List<Set<DenseVector>> expectedGroups2 =
+    private static final List<Set<DenseVector>> expectedGroups2 =
             Collections.singletonList(
                     new HashSet<>(
                             Arrays.asList(
@@ -124,7 +133,7 @@ public class StreamingKMeansTest {
         Configuration config = new Configuration();
         config.set(ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
         env = StreamExecutionEnvironment.getExecutionEnvironment(config);
-        env.setParallelism(1);
+        env.setParallelism(4);
         env.enableCheckpointing(100);
         env.setRestartStrategy(RestartStrategies.noRestart());
         tEnv = StreamTableEnvironment.create(env);
@@ -162,7 +171,6 @@ public class StreamingKMeansTest {
     /** Adds sinks for StreamingKMeansModel's transform output and model data. */
     private void configModelSink(StreamingKMeansModel streamingModel) {
         Table outputTable = streamingModel.transform(predictTable)[0];
-
         DataStream<Row> output = tEnv.toDataStream(outputTable);
         output.addSink(new MockBlockingQueueSinkFunction<>(outputId));
 
@@ -180,7 +188,7 @@ public class StreamingKMeansTest {
 
     /** Blocks the thread until the Model produces the next model-data-update event. */
     private void waitModelDataUpdate() throws InterruptedException {
-        TestBlockingQueueManager.poll(modelDataId);
+        TestBlockingQueueManager.poll(modelDataId, env.getParallelism());
     }
 
     /**
@@ -199,24 +207,24 @@ public class StreamingKMeansTest {
                 TestBlockingQueueManager.poll(outputId, StreamingKMeansTest.predictData.length);
         List<Set<DenseVector>> actualGroups2 =
                 groupFeaturesByPrediction(rawResult2, featuresCol, predictionCol);
-        assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups2));
+        Assert.assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups2));
     }
 
     @Test
     public void testParam() {
         StreamingKMeans streamingKMeans = new StreamingKMeans();
-        assertEquals("features", streamingKMeans.getFeaturesCol());
-        assertEquals("prediction", streamingKMeans.getPredictionCol());
-        assertEquals(EuclideanDistanceMeasure.NAME, streamingKMeans.getDistanceMeasure());
-        assertEquals("random", streamingKMeans.getInitMode());
-        assertEquals(2, streamingKMeans.getK());
-        assertEquals(1, streamingKMeans.getDims());
-        assertEquals("count", streamingKMeans.getBatchStrategy());
-        assertEquals(1, streamingKMeans.getBatchSize());
-        assertEquals(0., streamingKMeans.getDecayFactor(), 1e-5);
-        assertEquals("batches", streamingKMeans.getTimeUnit());
-        assertEquals("random", streamingKMeans.getInitMode());
-        assertEquals(StreamingKMeans.class.getName().hashCode(), streamingKMeans.getSeed());
+        Assert.assertEquals("features", streamingKMeans.getFeaturesCol());
+        Assert.assertEquals("prediction", streamingKMeans.getPredictionCol());
+        Assert.assertEquals(EuclideanDistanceMeasure.NAME, streamingKMeans.getDistanceMeasure());
+        Assert.assertEquals("random", streamingKMeans.getInitMode());
+        Assert.assertEquals(2, streamingKMeans.getK());
+        Assert.assertEquals(1, streamingKMeans.getDims());
+        Assert.assertEquals("count", streamingKMeans.getBatchStrategy());
+        Assert.assertEquals(1, streamingKMeans.getBatchSize());
+        Assert.assertEquals(0., streamingKMeans.getDecayFactor(), 1e-5);
+        Assert.assertEquals("batches", streamingKMeans.getTimeUnit());
+        Assert.assertEquals("random", streamingKMeans.getInitMode());
+        Assert.assertEquals(StreamingKMeans.class.getName().hashCode(), streamingKMeans.getSeed());
 
         streamingKMeans
                 .setK(9)
@@ -229,16 +237,16 @@ public class StreamingKMeansTest {
                 .setInitMode("direct")
                 .setSeed(100);
 
-        assertEquals("test_feature", streamingKMeans.getFeaturesCol());
-        assertEquals("test_prediction", streamingKMeans.getPredictionCol());
-        assertEquals(3, streamingKMeans.getK());
-        assertEquals(5, streamingKMeans.getDims());
-        assertEquals("count", streamingKMeans.getBatchStrategy());
-        assertEquals(5, streamingKMeans.getBatchSize());
-        assertEquals(0.25, streamingKMeans.getDecayFactor(), 1e-5);
-        assertEquals("points", streamingKMeans.getTimeUnit());
-        assertEquals("direct", streamingKMeans.getInitMode());
-        assertEquals(100, streamingKMeans.getSeed());
+        Assert.assertEquals("test_feature", streamingKMeans.getFeaturesCol());
+        Assert.assertEquals("test_prediction", streamingKMeans.getPredictionCol());
+        Assert.assertEquals(3, streamingKMeans.getK());
+        Assert.assertEquals(5, streamingKMeans.getDims());
+        Assert.assertEquals("count", streamingKMeans.getBatchStrategy());
+        Assert.assertEquals(5, streamingKMeans.getBatchSize());
+        Assert.assertEquals(0.25, streamingKMeans.getDecayFactor(), 1e-5);
+        Assert.assertEquals("points", streamingKMeans.getTimeUnit());
+        Assert.assertEquals("direct", streamingKMeans.getInitMode());
+        Assert.assertEquals(100, streamingKMeans.getSeed());
     }
 
     @Test
@@ -427,12 +435,13 @@ public class StreamingKMeansTest {
                         new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)},
                         Vectors.dense(3.0, 3.0));
 
-        assertEquals(expectedModelData.centroids.length, actualModelData.centroids.length);
-        assertArrayEquals(
+        Assert.assertEquals(expectedModelData.centroids.length, actualModelData.centroids.length);
+        Assert.assertArrayEquals(
                 expectedModelData.centroids[0].values, actualModelData.centroids[0].values, 1e-5);
-        assertArrayEquals(
+        Assert.assertArrayEquals(
                 expectedModelData.centroids[1].values, actualModelData.centroids[1].values, 1e-5);
-        assertArrayEquals(expectedModelData.weights.values, actualModelData.weights.values, 1e-5);
+        Assert.assertArrayEquals(
+                expectedModelData.weights.values, actualModelData.weights.values, 1e-5);
     }
 
     @Test
