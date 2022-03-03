@@ -18,8 +18,6 @@
 
 package org.apache.flink.ml.clustering;
 
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.IteratorUtils;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
@@ -39,6 +37,9 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.IteratorUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -90,10 +91,9 @@ public class KMeansTest extends AbstractTestBase {
         dataTable = tEnv.fromDataStream(env.fromCollection(DATA), schema).as("features");
     }
 
-
     /**
-     * Aggregates feature by predictions. Results are returned as a list of sets, where
-     * elements in the same set are features whose prediction results are the same.
+     * Aggregates feature by predictions. Results are returned as a list of sets, where elements in
+     * the same set are features whose prediction results are the same.
      *
      * @param rows A list of rows containing feature and prediction columns
      * @param featuresCol Name of the column in the table that contains the features
@@ -103,7 +103,7 @@ public class KMeansTest extends AbstractTestBase {
     protected static List<Set<DenseVector>> groupFeaturesByPrediction(
             List<Row> rows, String featuresCol, String predictionCol) {
         Map<Integer, Set<DenseVector>> map = new HashMap<>();
-        for (Row row: rows) {
+        for (Row row : rows) {
             DenseVector vector = (DenseVector) row.getField(featuresCol);
             int predict = (Integer) row.getField(predictionCol);
             map.putIfAbsent(predict, new HashSet<>());
@@ -150,7 +150,8 @@ public class KMeansTest extends AbstractTestBase {
                 output.getResolvedSchema().getColumnNames());
         List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -170,7 +171,8 @@ public class KMeansTest extends AbstractTestBase {
                 Collections.singletonList(Collections.singleton(Vectors.dense(0.0, 0.1)));
         List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -185,7 +187,8 @@ public class KMeansTest extends AbstractTestBase {
                 output.getResolvedSchema().getColumnNames());
         List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -204,7 +207,8 @@ public class KMeansTest extends AbstractTestBase {
 
         List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
@@ -235,7 +239,8 @@ public class KMeansTest extends AbstractTestBase {
         Table output = modelB.transform(dataTable)[0];
         List<Row> results = IteratorUtils.toList(output.execute().collect());
         List<Set<DenseVector>> actualGroups =
-                groupFeaturesByPrediction(results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
+                groupFeaturesByPrediction(
+                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 }

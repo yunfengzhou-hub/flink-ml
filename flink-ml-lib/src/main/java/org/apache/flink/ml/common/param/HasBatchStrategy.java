@@ -15,11 +15,7 @@ public interface HasBatchStrategy<T> extends WithParams<T> {
                     ParamValidators.inArray(COUNT_STRATEGY));
 
     Param<Integer> BATCH_SIZE =
-            new IntParam(
-                    "batchSize",
-                    "Number of elements in a batch.",
-                    1,
-                    ParamValidators.gt(0));
+            new IntParam("batchSize", "Number of elements in a batch.", 1, ParamValidators.gt(0));
 
     default String getBatchStrategy() {
         return get(BATCH_STRATEGY);

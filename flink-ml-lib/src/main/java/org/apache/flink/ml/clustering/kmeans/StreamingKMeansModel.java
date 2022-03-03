@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
@@ -44,6 +43,8 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
 
+import org.apache.commons.lang3.ArrayUtils;
+
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -52,12 +53,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * StreamingKMeansModel can be regarded as an advanced {@link KMeansModel} operator which can update model data in a
- * streaming format, using the model data provided by {@link StreamingKMeans}.
+ * StreamingKMeansModel can be regarded as an advanced {@link KMeansModel} operator which can update
+ * model data in a streaming format, using the model data provided by {@link StreamingKMeans}.
  */
-public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeansModelParams<StreamingKMeansModel> {
+public class StreamingKMeansModel
+        implements Model<StreamingKMeansModel>, KMeansModelParams<StreamingKMeansModel> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
-    private static final OutputTag<KMeansModelData> outputTag = new OutputTag<KMeansModelData>("latest-model-data"){};
+    private static final OutputTag<KMeansModelData> outputTag =
+            new OutputTag<KMeansModelData>("latest-model-data") {};
     private Table initModelDataTable;
     private Table modelDataTable;
     private DataStream<KMeansModelData> latestModelData;
@@ -100,17 +103,23 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
 
         DataStream<Row> predictionResult =
                 BroadcastUtils.withBroadcastStream(
-                        Arrays.asList(tEnv.toDataStream(inputs[0]), KMeansModelData.getModelDataStream(modelDataTable)),
-                        Collections.singletonMap(KMeansModel.broadcastModelKey, KMeansModelData.getModelDataStream(initModelDataTable)),
+                        Arrays.asList(
+                                tEnv.toDataStream(inputs[0]),
+                                KMeansModelData.getModelDataStream(modelDataTable)),
+                        Collections.singletonMap(
+                                KMeansModel.broadcastModelKey,
+                                KMeansModelData.getModelDataStream(initModelDataTable)),
                         inputList -> {
                             DataStream inputData = inputList.get(0);
                             DataStream modelData = inputList.get(1);
                             return modelData
                                     .broadcast()
                                     .connect(inputData)
-                                    .process(new PredictLabelFunction(
+                                    .process(
+                                            new PredictLabelFunction(
                                                     getFeaturesCol(),
-                                                    DistanceMeasure.getInstance(getDistanceMeasure())),
+                                                    DistanceMeasure.getInstance(
+                                                            getDistanceMeasure())),
                                             outputTypeInfo);
                         });
 
@@ -120,10 +129,10 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
     }
 
     /**
-     * Gets the data stream containing the latest model data used in this Model. The "latest" means that
-     * If a model data is observed in this stream, the model data would have come into effect in this model.
-     * Thus predict data arrived afterwards will be served
-     * by this model data, or a later model data. It won't be served by any earlier model data.
+     * Gets the data stream containing the latest model data used in this Model. The "latest" means
+     * that If a model data is observed in this stream, the model data would have come into effect
+     * in this model. Thus predict data arrived afterwards will be served by this model data, or a
+     * later model data. It won't be served by any earlier model data.
      */
     @VisibleForTesting
     public DataStream<KMeansModelData> getLatestModelData() {
@@ -138,24 +147,31 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
 
         private DenseVector[] centroids;
 
-        public PredictLabelFunction(
-                String featuresCol, DistanceMeasure distanceMeasure) {
+        public PredictLabelFunction(String featuresCol, DistanceMeasure distanceMeasure) {
             this.featuresCol = featuresCol;
             this.distanceMeasure = distanceMeasure;
         }
 
         @Override
-        public void processElement1(KMeansModelData modelData, CoProcessFunction<KMeansModelData, Row, Row>.Context ctx, Collector<Row> collector) {
+        public void processElement1(
+                KMeansModelData modelData,
+                CoProcessFunction<KMeansModelData, Row, Row>.Context ctx,
+                Collector<Row> collector) {
             centroids = modelData.centroids;
             ctx.output(outputTag, modelData);
         }
 
         @Override
-        public void processElement2(Row dataPoint, CoProcessFunction<KMeansModelData, Row, Row>.Context ctx, Collector<Row> collector) {
+        public void processElement2(
+                Row dataPoint,
+                CoProcessFunction<KMeansModelData, Row, Row>.Context ctx,
+                Collector<Row> collector) {
             if (centroids == null) {
                 KMeansModelData modelData =
                         (KMeansModelData)
-                                getRuntimeContext().getBroadcastVariable(KMeansModel.broadcastModelKey).get(0);
+                                getRuntimeContext()
+                                        .getBroadcastVariable(KMeansModel.broadcastModelKey)
+                                        .get(0);
                 processElement1(modelData, ctx, collector);
             }
             DenseVector point = (DenseVector) dataPoint.getField(featuresCol);
@@ -187,16 +203,17 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
     }
 
     // TODO: Add INFO level logging.
-    public static StreamingKMeansModel load(StreamExecutionEnvironment env, String path) throws IOException {
+    public static StreamingKMeansModel load(StreamExecutionEnvironment env, String path)
+            throws IOException {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-        DataStream<KMeansModelData> modelDataStream = ReadWriteUtils.loadUnboundedStream(
-                env, Paths.get(path, "modelData").toString(), new ModelDataDecoder()
-        );
+        DataStream<KMeansModelData> modelDataStream =
+                ReadWriteUtils.loadUnboundedStream(
+                        env, Paths.get(path, "modelData").toString(), new ModelDataDecoder());
 
-        DataStream<KMeansModelData> initModelDataStream = ReadWriteUtils.loadBoundedStream(
-                env, Paths.get(path, "initModelData").toString(), new ModelDataDecoder()
-        );
+        DataStream<KMeansModelData> initModelDataStream =
+                ReadWriteUtils.loadBoundedStream(
+                        env, Paths.get(path, "initModelData").toString(), new ModelDataDecoder());
 
         StreamingKMeansModel model = ReadWriteUtils.loadStageParam(path);
         model.initModelDataTable = tEnv.fromDataStream(initModelDataStream);

@@ -100,7 +100,8 @@ public class ExampleStages {
 
         @Override
         public void save(String path) throws IOException {
-            ReadWriteUtils.saveDataStream(modelData, Paths.get(path, "data").toString(), new TestUtils.IntEncoder());
+            ReadWriteUtils.saveDataStream(
+                    modelData, Paths.get(path, "data").toString(), new TestUtils.IntEncoder());
             ReadWriteUtils.saveMetadata(this, path);
         }
 
@@ -108,7 +109,10 @@ public class ExampleStages {
                 throws IOException {
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
             DataStream<Integer> modelData =
-                    ReadWriteUtils.loadBoundedStream(env, Paths.get(path, "data").toString(), new TestUtils.IntegerStreamFormat());
+                    ReadWriteUtils.loadBoundedStream(
+                            env,
+                            Paths.get(path, "data").toString(),
+                            new TestUtils.IntegerStreamFormat());
 
             SumModel model = ReadWriteUtils.loadStageParam(path);
             return model.setModelData(tEnv.fromDataStream(modelData));

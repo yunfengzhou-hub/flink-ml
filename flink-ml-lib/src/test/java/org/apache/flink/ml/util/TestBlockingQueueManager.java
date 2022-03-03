@@ -28,9 +28,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/**
- * A class that manages global blocking queues used in unit tests.
- */
+/** A class that manages global blocking queues used in unit tests. */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class TestBlockingQueueManager extends ExternalResource {
     private static final Map<String, BlockingQueue> queueMap = new HashMap<>();
@@ -39,13 +37,13 @@ public class TestBlockingQueueManager extends ExternalResource {
     public static synchronized String createBlockingQueue() {
         String id = String.valueOf(counter);
         queueMap.put(id, new LinkedBlockingQueue<>());
-        counter ++;
+        counter++;
         return id;
     }
 
     @SafeVarargs
     public static <T> void offerAll(String id, T... values) throws InterruptedException {
-        for (T value: values) {
+        for (T value : values) {
             offer(id, value);
         }
     }
@@ -54,16 +52,18 @@ public class TestBlockingQueueManager extends ExternalResource {
         offer(id, value, 1, TimeUnit.MINUTES);
     }
 
-    public static <T> void offer(String id, T value, long timeout, TimeUnit unit) throws InterruptedException {
-       boolean success = queueMap.get(id).offer(value, timeout, unit);
-       if (!success) {
-           throw new RuntimeException("Failed to enqueue " + value + " to blocking queue " + id + ".");
-       }
+    public static <T> void offer(String id, T value, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        boolean success = queueMap.get(id).offer(value, timeout, unit);
+        if (!success) {
+            throw new RuntimeException(
+                    "Failed to enqueue " + value + " to blocking queue " + id + ".");
+        }
     }
 
     public static <T> List<T> poll(String id, int num) throws InterruptedException {
         List<T> result = new ArrayList<>();
-        for (int i = 0; i < num; i ++) {
+        for (int i = 0; i < num; i++) {
             result.add(poll(id));
         }
         return result;

@@ -106,8 +106,8 @@ public class KMeansModelData {
                                     DenseVectorSerializer.INSTANCE.deserialize(
                                             inputViewStreamWrapper);
                         }
-                        DenseVector weights = DenseVectorSerializer.INSTANCE.deserialize(
-                                inputViewStreamWrapper);
+                        DenseVector weights =
+                                DenseVectorSerializer.INSTANCE.deserialize(inputViewStreamWrapper);
                         return new KMeansModelData(centroids, weights);
                     } catch (EOFException e) {
                         return null;

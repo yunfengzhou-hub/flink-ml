@@ -112,7 +112,8 @@ public class NaiveBayesModel
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         NaiveBayesModel model = ReadWriteUtils.loadStageParam(path);
         DataStream<NaiveBayesModelData> modelData =
-                ReadWriteUtils.loadBoundedStream(env, Paths.get(path, "data").toString(), new ModelDataDecoder());
+                ReadWriteUtils.loadBoundedStream(
+                        env, Paths.get(path, "data").toString(), new ModelDataDecoder());
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
 

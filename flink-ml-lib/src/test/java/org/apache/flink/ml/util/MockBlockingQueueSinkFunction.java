@@ -21,7 +21,8 @@ package org.apache.flink.ml.util;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 /**
- * A {@link SinkFunction} for unit tests. It outputs records to a blocking queue managed by {@link TestBlockingQueueManager}.
+ * A {@link SinkFunction} for unit tests. It outputs records to a blocking queue managed by {@link
+ * TestBlockingQueueManager}.
  */
 public class MockBlockingQueueSinkFunction<T> implements SinkFunction<T> {
     private final String id;

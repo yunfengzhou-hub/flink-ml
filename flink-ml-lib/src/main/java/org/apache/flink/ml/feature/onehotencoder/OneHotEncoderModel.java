@@ -125,7 +125,9 @@ public class OneHotEncoderModel
         OneHotEncoderModel model = ReadWriteUtils.loadStageParam(path);
         DataStream<Tuple2<Integer, Integer>> modelData =
                 ReadWriteUtils.loadBoundedStream(
-                        env, Paths.get(path, "data").toString(), new OneHotEncoderModelData.ModelDataStreamFormat());
+                        env,
+                        Paths.get(path, "data").toString(),
+                        new OneHotEncoderModelData.ModelDataStreamFormat());
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
 

@@ -21,7 +21,8 @@ package org.apache.flink.ml.util;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
 /**
- * A {@link SourceFunction} for unit tests. It collects records from a blocking queue managed by {@link TestBlockingQueueManager}.
+ * A {@link SourceFunction} for unit tests. It collects records from a blocking queue managed by
+ * {@link TestBlockingQueueManager}.
  */
 public class MockBlockingQueueSourceFunction<T> implements SourceFunction<T> {
     private final String id;

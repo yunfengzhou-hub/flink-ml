@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.commons.collections.IteratorUtils;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.MapFunction;
@@ -58,6 +57,8 @@ import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
+import org.apache.commons.collections.IteratorUtils;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -69,7 +70,8 @@ import java.util.*;
  * continuously according to an unbounded stream of train data.
  */
 public class StreamingKMeans
-        implements Estimator<StreamingKMeans, StreamingKMeansModel>, StreamingKMeansParams<StreamingKMeans> {
+        implements Estimator<StreamingKMeans, StreamingKMeansModel>,
+                StreamingKMeansParams<StreamingKMeans> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table initModelDataTable;
 
@@ -88,7 +90,8 @@ public class StreamingKMeans
     public StreamingKMeansModel fit(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
         Preconditions.checkArgument(HasBatchStrategy.COUNT_STRATEGY.equals(getBatchStrategy()));
-        Preconditions.checkArgument(initModelDataTable != null || getInitMode().equals("random"),
+        Preconditions.checkArgument(
+                initModelDataTable != null || getInitMode().equals("random"),
                 "Initial model data needs to be directly set or randomly created.");
 
         StreamTableEnvironment tEnv =
@@ -96,8 +99,7 @@ public class StreamingKMeans
         StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
 
         DataStream<DenseVector> points =
-                tEnv.toDataStream(inputs[0])
-                        .map(new FeaturesExtractor(getFeaturesCol()));
+                tEnv.toDataStream(inputs[0]).map(new FeaturesExtractor(getFeaturesCol()));
 
         DataStream<KMeansModelData> initCentroids;
         if (getInitMode().equals("random")) {
@@ -107,7 +109,12 @@ public class StreamingKMeans
         }
 
         IterationBody body =
-                new StreamingKMeansIterationBody(DistanceMeasure.getInstance(getDistanceMeasure()), getDecayFactor(), getTimeUnit(), getBatchSize(), getK());
+                new StreamingKMeansIterationBody(
+                        DistanceMeasure.getInstance(getDistanceMeasure()),
+                        getDecayFactor(),
+                        getTimeUnit(),
+                        getBatchSize(),
+                        getK());
 
         DataStream<DenseVector[]> finalCentroids =
                 Iterations.iterateUnboundedStreams(
@@ -115,7 +122,9 @@ public class StreamingKMeans
                         .get(0);
 
         Table finalCentroidsTable = tEnv.fromDataStream(finalCentroids);
-        StreamingKMeansModel model = new StreamingKMeansModel(tEnv.fromDataStream(initCentroids)).setModelData(finalCentroidsTable);
+        StreamingKMeansModel model =
+                new StreamingKMeansModel(tEnv.fromDataStream(initCentroids))
+                        .setModelData(finalCentroidsTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;
     }
@@ -146,9 +155,13 @@ public class StreamingKMeans
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
             Source<KMeansModelData, ?, ?> initModelDataSource =
-                    FileSource.forRecordStreamFormat(new KMeansModelData.ModelDataDecoder(),
-                            new org.apache.flink.core.fs.Path(initModelDataPath.toString())).build();
-            DataStream<KMeansModelData> initModelDataStream = env.fromSource(initModelDataSource, WatermarkStrategy.noWatermarks(), "initModelData");
+                    FileSource.forRecordStreamFormat(
+                                    new KMeansModelData.ModelDataDecoder(),
+                                    new org.apache.flink.core.fs.Path(initModelDataPath.toString()))
+                            .build();
+            DataStream<KMeansModelData> initModelDataStream =
+                    env.fromSource(
+                            initModelDataSource, WatermarkStrategy.noWatermarks(), "initModelData");
 
             kMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
             kMeans.setInitMode("direct");
@@ -169,7 +182,12 @@ public class StreamingKMeans
         private final int batchSize;
         private final int K;
 
-        public StreamingKMeansIterationBody(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int batchSize, int k) {
+        public StreamingKMeansIterationBody(
+                DistanceMeasure distanceMeasure,
+                double decayFactor,
+                String timeUnit,
+                int batchSize,
+                int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.timeUnit = timeUnit;
@@ -190,8 +208,8 @@ public class StreamingKMeans
                             .transform(
                                     "UpdateModelData",
                                     TypeInformation.of(KMeansModelData.class),
-                                    new UpdateModelDataOperator(distanceMeasure, decayFactor, timeUnit, K)
-                            );
+                                    new UpdateModelDataOperator(
+                                            distanceMeasure, decayFactor, timeUnit, K));
 
             return new IterationBodyResult(
                     DataStreamList.of(newCentroids), DataStreamList.of(newCentroids));
@@ -207,7 +225,8 @@ public class StreamingKMeans
         private ListState<DenseVector[]> miniBatchState;
         private ListState<KMeansModelData> modelDataState;
 
-        public UpdateModelDataOperator(DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int K) {
+        public UpdateModelDataOperator(
+                DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int K) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.timeUnit = timeUnit;
@@ -226,7 +245,8 @@ public class StreamingKMeans
 
             modelDataState =
                     context.getOperatorStateStore()
-                            .getListState(new ListStateDescriptor<>("modelData", KMeansModelData.class));
+                            .getListState(
+                                    new ListStateDescriptor<>("modelData", KMeansModelData.class));
         }
 
         @Override
@@ -242,11 +262,13 @@ public class StreamingKMeans
         }
 
         private void processElement(Output<StreamRecord<KMeansModelData>> output) throws Exception {
-            if (!modelDataState.get().iterator().hasNext() || !miniBatchState.get().iterator().hasNext()) {
+            if (!modelDataState.get().iterator().hasNext()
+                    || !miniBatchState.get().iterator().hasNext()) {
                 return;
             }
 
-            List<KMeansModelData> modelDataList = IteratorUtils.toList(modelDataState.get().iterator());
+            List<KMeansModelData> modelDataList =
+                    IteratorUtils.toList(modelDataState.get().iterator());
             if (modelDataList.size() != 1) {
                 throw new RuntimeException(
                         "The operator received "
@@ -272,7 +294,8 @@ public class StreamingKMeans
                 counts[i] = 0;
             }
             for (DenseVector point : points) {
-                int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
+                int closestCentroidId =
+                        KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
                 counts[closestCentroidId]++;
                 for (int j = 0; j < dims; j++) {
                     sums[closestCentroidId].values[j] += point.values[j];
@@ -285,7 +308,7 @@ public class StreamingKMeans
             }
 
             BLAS.scal(discount, weights);
-            for (int i =0; i < K; i ++) {
+            for (int i = 0; i < K; i++) {
                 DenseVector centroid = centroids[i];
 
                 double updatedWeight = weights.values[i] + counts[i];
@@ -313,7 +336,8 @@ public class StreamingKMeans
         }
     }
 
-    private static class MiniBatchCreator implements AggregateFunction<DenseVector, List<DenseVector>, DenseVector[]> {
+    private static class MiniBatchCreator
+            implements AggregateFunction<DenseVector, List<DenseVector>, DenseVector[]> {
         @Override
         public List<DenseVector> createAccumulator() {
             return new ArrayList<>();
@@ -337,12 +361,13 @@ public class StreamingKMeans
         }
     }
 
-    private static DataStream<KMeansModelData> createRandomCentroids(StreamExecutionEnvironment env, int dims, int k, long seed) {
+    private static DataStream<KMeansModelData> createRandomCentroids(
+            StreamExecutionEnvironment env, int dims, int k, long seed) {
         DenseVector[] centroids = new DenseVector[k];
         Random random = new Random(seed);
-        for (int i = 0; i < k; i ++) {
+        for (int i = 0; i < k; i++) {
             centroids[i] = new DenseVector(dims);
-            for (int j = 0; j < dims; j ++) {
+            for (int j = 0; j < dims; j++) {
                 centroids[i].values[j] = random.nextDouble();
             }
         }

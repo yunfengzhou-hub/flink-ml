@@ -11,12 +11,11 @@ public interface HasDecayFactor<T> extends WithParams<T> {
     Param<String> HALF_LIFE_TIME_UNIT =
             new StringParam(
                     "halfLifeTimeUnit",
-                    "The time unit of half life. " +
-                            "If points, then the decay factor is raised to the power of number of new points. " +
-                            "If batches, then decay factor will be used as is.",
+                    "The time unit of half life. "
+                            + "If points, then the decay factor is raised to the power of number of new points. "
+                            + "If batches, then decay factor will be used as is.",
                     BATCH_UNIT,
                     ParamValidators.inArray(BATCH_UNIT, POINT_UNIT));
-
 
     Param<Double> DECAY_FACTOR =
             new DoubleParam(

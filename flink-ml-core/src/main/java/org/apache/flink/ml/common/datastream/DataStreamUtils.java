@@ -54,16 +54,18 @@ public class DataStreamUtils {
         return AllReduceImpl.allReduceSum(input);
     }
 
-    public static <OUT1, OUT2> DataStream<OUT2> getSideOutput(DataStream<OUT1> input, OutputTag<OUT2> outputTag) {
-        SingleOutputStreamOperator<OUT1> operator = new MockSingleOutputStreamOperator<>(input.getExecutionEnvironment(), input.getTransformation());
+    public static <OUT1, OUT2> DataStream<OUT2> getSideOutput(
+            DataStream<OUT1> input, OutputTag<OUT2> outputTag) {
+        SingleOutputStreamOperator<OUT1> operator =
+                new MockSingleOutputStreamOperator<>(
+                        input.getExecutionEnvironment(), input.getTransformation());
         return operator.getSideOutput(outputTag);
     }
 
-    /**
-     * Helper class to make {@link SingleOutputStreamOperator}'s constructor public.
-     */
+    /** Helper class to make {@link SingleOutputStreamOperator}'s constructor public. */
     private static class MockSingleOutputStreamOperator<T> extends SingleOutputStreamOperator<T> {
-        public MockSingleOutputStreamOperator(StreamExecutionEnvironment environment, Transformation<T> transformation) {
+        public MockSingleOutputStreamOperator(
+                StreamExecutionEnvironment environment, Transformation<T> transformation) {
             super(environment, transformation);
         }
     }

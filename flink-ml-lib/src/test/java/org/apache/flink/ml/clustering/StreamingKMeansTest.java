@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.clustering;
 
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
@@ -41,6 +40,8 @@ import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
+
+import org.apache.commons.collections.CollectionUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -57,37 +58,42 @@ public class StreamingKMeansTest {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
     public static final DenseVector[] trainData1 =
-            new DenseVector[]{
-                    Vectors.dense(10.0, 0.0),
-                    Vectors.dense(10.0, 0.3),
-                    Vectors.dense(10.3, 0.0),
-                    Vectors.dense(-10.0, 0.0),
-                    Vectors.dense(-10.0, 0.6),
-                    Vectors.dense(-10.6, 0.0)};
+            new DenseVector[] {
+                Vectors.dense(10.0, 0.0),
+                Vectors.dense(10.0, 0.3),
+                Vectors.dense(10.3, 0.0),
+                Vectors.dense(-10.0, 0.0),
+                Vectors.dense(-10.0, 0.6),
+                Vectors.dense(-10.6, 0.0)
+            };
     public static final DenseVector[] trainData2 =
-            new DenseVector[]{
-                    Vectors.dense(10.0, 100.0),
-                    Vectors.dense(10.0, 100.3),
-                    Vectors.dense(10.3, 100.0),
-                    Vectors.dense(-10.0, -100.0),
-                    Vectors.dense(-10.0, -100.6),
-                    Vectors.dense(-10.6, -100.0)};
+            new DenseVector[] {
+                Vectors.dense(10.0, 100.0),
+                Vectors.dense(10.0, 100.3),
+                Vectors.dense(10.3, 100.0),
+                Vectors.dense(-10.0, -100.0),
+                Vectors.dense(-10.0, -100.6),
+                Vectors.dense(-10.6, -100.0)
+            };
     public static final DenseVector[] predictData =
-            new DenseVector[]{
-                    Vectors.dense(10.0, 10.0),
-                    Vectors.dense(10.3, 10.0),
-                    Vectors.dense(10.0, 10.3),
-                    Vectors.dense(-10.0, 10.0),
-                    Vectors.dense(-10.3, 10.0),
-                    Vectors.dense(-10.0, 10.3)};
+            new DenseVector[] {
+                Vectors.dense(10.0, 10.0),
+                Vectors.dense(10.3, 10.0),
+                Vectors.dense(10.0, 10.3),
+                Vectors.dense(-10.0, 10.0),
+                Vectors.dense(-10.3, 10.0),
+                Vectors.dense(-10.0, 10.3)
+            };
     public static final List<Set<DenseVector>> expectedGroups1 =
             Arrays.asList(
                     new HashSet<>(
-                            Arrays.asList(Vectors.dense(10.0, 10.0),
+                            Arrays.asList(
+                                    Vectors.dense(10.0, 10.0),
                                     Vectors.dense(10.3, 10.0),
                                     Vectors.dense(10.0, 10.3))),
                     new HashSet<>(
-                            Arrays.asList(Vectors.dense(-10.0, 10.0),
+                            Arrays.asList(
+                                    Vectors.dense(-10.0, 10.0),
                                     Vectors.dense(-10.3, 10.0),
                                     Vectors.dense(-10.0, 10.3))));
     public static final List<Set<DenseVector>> expectedGroups2 =
@@ -135,7 +141,8 @@ public class StreamingKMeansTest {
 
         Schema schema = Schema.newBuilder().column("f0", DataTypes.of(DenseVector.class)).build();
 
-        offlineTrainTable = tEnv.fromDataStream(env.fromElements(trainData1), schema).as("features");
+        offlineTrainTable =
+                tEnv.fromDataStream(env.fromElements(trainData1), schema).as("features");
         trainTable =
                 tEnv.fromDataStream(
                                 env.addSource(
@@ -152,9 +159,7 @@ public class StreamingKMeansTest {
                         .as("features");
     }
 
-    /**
-     * Adds sinks for StreamingKMeansModel's transform output and model data.
-     */
+    /** Adds sinks for StreamingKMeansModel's transform output and model data. */
     private void configModelSink(StreamingKMeansModel streamingModel) {
         Table outputTable = streamingModel.transform(predictTable)[0];
 
@@ -165,9 +170,7 @@ public class StreamingKMeansTest {
         modelDataStream.addSink(new MockBlockingQueueSinkFunction<>(modelDataId));
     }
 
-    /**
-     * Blocks the thread until the init model data has been broadcast to Model.
-     */
+    /** Blocks the thread until the init model data has been broadcast to Model. */
     private void waitInitModelBroadcastFinish() throws InterruptedException {
         Thread.sleep(2000);
         TestBlockingQueueManager.offerAll(predictId, predictData);
@@ -175,24 +178,27 @@ public class StreamingKMeansTest {
         TestBlockingQueueManager.poll(outputId, predictData.length);
     }
 
-    /**
-     * Blocks the thread until the Model produces the next model-data-update event.
-     */
+    /** Blocks the thread until the Model produces the next model-data-update event. */
     private void waitModelDataUpdate() throws InterruptedException {
         TestBlockingQueueManager.poll(modelDataId);
     }
 
     /**
-     * Inserts default predict data to the predict queue, fetches the prediction results, and asserts that the grouping result is as expected.
+     * Inserts default predict data to the predict queue, fetches the prediction results, and
+     * asserts that the grouping result is as expected.
      *
      * @param expectedGroups A list containing sets of features, which is the expected group result
      * @param featuresCol Name of the column in the table that contains the features
      * @param predictionCol Name of the column in the table that contains the prediction result
      */
-    private void predictAndAssert(List<Set<DenseVector>> expectedGroups, String featuresCol, String predictionCol) throws Exception {
+    private void predictAndAssert(
+            List<Set<DenseVector>> expectedGroups, String featuresCol, String predictionCol)
+            throws Exception {
         TestBlockingQueueManager.offerAll(predictId, StreamingKMeansTest.predictData);
-        List<Row> rawResult2 = TestBlockingQueueManager.poll(outputId, StreamingKMeansTest.predictData.length);
-        List<Set<DenseVector>> actualGroups2 = groupFeaturesByPrediction(rawResult2, featuresCol, predictionCol);
+        List<Row> rawResult2 =
+                TestBlockingQueueManager.poll(outputId, StreamingKMeansTest.predictData.length);
+        List<Set<DenseVector>> actualGroups2 =
+                groupFeaturesByPrediction(rawResult2, featuresCol, predictionCol);
         assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups2));
     }
 
@@ -212,7 +218,8 @@ public class StreamingKMeansTest {
         assertEquals("random", streamingKMeans.getInitMode());
         assertEquals(StreamingKMeans.class.getName().hashCode(), streamingKMeans.getSeed());
 
-        streamingKMeans.setK(9)
+        streamingKMeans
+                .setK(9)
                 .setFeaturesCol("test_feature")
                 .setPredictionCol("test_prediction")
                 .setK(3)
@@ -241,7 +248,8 @@ public class StreamingKMeansTest {
                         .setInitMode("random")
                         .setDims(2)
                         .setBatchSize(6)
-                        .setFeaturesCol("features").setPredictionCol("prediction");
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction");
         StreamingKMeansModel streamingModel = streamingKMeans.fit(trainTable);
         configModelSink(streamingModel);
 
@@ -250,11 +258,17 @@ public class StreamingKMeansTest {
 
         TestBlockingQueueManager.offerAll(trainId, trainData1);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups1, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups1,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
 
         TestBlockingQueueManager.offerAll(trainId, trainData2);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups2, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups2,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
     }
 
     @Test
@@ -275,11 +289,17 @@ public class StreamingKMeansTest {
 
         clients.add(env.executeAsync());
         waitInitModelBroadcastFinish();
-        predictAndAssert(expectedGroups1, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups1,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
 
         TestBlockingQueueManager.offerAll(trainId, trainData2);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups2, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups2,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
     }
 
     @Test
@@ -290,7 +310,8 @@ public class StreamingKMeansTest {
                         .setDims(2)
                         .setDecayFactor(100.0)
                         .setBatchSize(6)
-                        .setFeaturesCol("features").setPredictionCol("prediction");
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction");
         StreamingKMeansModel streamingModel = streamingKMeans.fit(trainTable);
         configModelSink(streamingModel);
 
@@ -299,11 +320,17 @@ public class StreamingKMeansTest {
 
         TestBlockingQueueManager.offerAll(trainId, trainData1);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups1, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups1,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
 
         TestBlockingQueueManager.offerAll(trainId, trainData2);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups1, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups1,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
     }
 
     @Test
@@ -314,7 +341,8 @@ public class StreamingKMeansTest {
                         .setDims(2)
                         .setHalfLife(1, HasDecayFactor.POINT_UNIT)
                         .setBatchSize(6)
-                        .setFeaturesCol("features").setPredictionCol("prediction");
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction");
         StreamingKMeansModel streamingModel = streamingKMeans.fit(trainTable);
         configModelSink(streamingModel);
 
@@ -323,11 +351,17 @@ public class StreamingKMeansTest {
 
         TestBlockingQueueManager.offerAll(trainId, trainData1);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups1, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups1,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
 
         TestBlockingQueueManager.offerAll(trainId, trainData2);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups2, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups2,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
     }
 
     @Test
@@ -337,9 +371,7 @@ public class StreamingKMeansTest {
         KMeansModel offlineModel = offlineKMeans.fit(offlineTrainTable);
 
         StreamingKMeans streamingKMeans =
-                new StreamingKMeans(offlineModel.getModelData())
-                        .setDims(2)
-                        .setBatchSize(6);
+                new StreamingKMeans(offlineModel.getModelData()).setDims(2).setBatchSize(6);
         ReadWriteUtils.updateExistingParams(streamingKMeans, offlineKMeans.getParamMap());
 
         String kMeansSavePath = tempFolder.newFolder().getAbsolutePath();
@@ -359,11 +391,17 @@ public class StreamingKMeansTest {
         clients.add(env.executeAsync());
         waitInitModelBroadcastFinish();
 
-        predictAndAssert(expectedGroups1, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups1,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
 
         TestBlockingQueueManager.offerAll(trainId, trainData2);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups2, streamingKMeans.getFeaturesCol(), streamingKMeans.getPredictionCol());
+        predictAndAssert(
+                expectedGroups2,
+                streamingKMeans.getFeaturesCol(),
+                streamingKMeans.getPredictionCol());
     }
 
     @Test
@@ -373,7 +411,8 @@ public class StreamingKMeansTest {
                         .setInitMode("random")
                         .setDims(2)
                         .setBatchSize(6)
-                        .setFeaturesCol("features").setPredictionCol("prediction");
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction");
         StreamingKMeansModel streamingModel = streamingKMeans.fit(trainTable);
         configModelSink(streamingModel);
 
@@ -383,76 +422,79 @@ public class StreamingKMeansTest {
         TestBlockingQueueManager.offerAll(trainId, trainData1);
         KMeansModelData actualModelData = TestBlockingQueueManager.poll(modelDataId);
 
-        KMeansModelData expectedModelData = new KMeansModelData(
-                new DenseVector[]{
-                        Vectors.dense(10.1, 0.1),
-                        Vectors.dense(-10.2, 0.2)
-                },
-                Vectors.dense(3.0, 3.0)
-        );
+        KMeansModelData expectedModelData =
+                new KMeansModelData(
+                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)},
+                        Vectors.dense(3.0, 3.0));
 
         assertEquals(expectedModelData.centroids.length, actualModelData.centroids.length);
-        assertArrayEquals(expectedModelData.centroids[0].values, actualModelData.centroids[0].values, 1e-5);
-        assertArrayEquals(expectedModelData.centroids[1].values, actualModelData.centroids[1].values, 1e-5);
+        assertArrayEquals(
+                expectedModelData.centroids[0].values, actualModelData.centroids[0].values, 1e-5);
+        assertArrayEquals(
+                expectedModelData.centroids[1].values, actualModelData.centroids[1].values, 1e-5);
         assertArrayEquals(expectedModelData.weights.values, actualModelData.weights.values, 1e-5);
     }
 
     @Test
     public void testSetModelData() throws Exception {
-        KMeansModelData modelData1 = new KMeansModelData(
-                new DenseVector[]{
-                        Vectors.dense(10.1, 0.1),
-                        Vectors.dense(-10.2, 0.2)
-                },
-                Vectors.dense(3.0, 3.0)
-        );
+        KMeansModelData modelData1 =
+                new KMeansModelData(
+                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)},
+                        Vectors.dense(3.0, 3.0));
 
-        KMeansModelData modelData2 = new KMeansModelData(
-                new DenseVector[]{
-                        Vectors.dense(10.1, 100.1),
-                        Vectors.dense(-10.2, -100.2)
-                },
-                Vectors.dense(3.0, 3.0)
-        );
+        KMeansModelData modelData2 =
+                new KMeansModelData(
+                        new DenseVector[] {
+                            Vectors.dense(10.1, 100.1), Vectors.dense(-10.2, -100.2)
+                        },
+                        Vectors.dense(3.0, 3.0));
 
-        Table initModelDataTable = tEnv.fromDataStream(env.fromElements(modelData1))
-                .as("features");
+        Table initModelDataTable = tEnv.fromDataStream(env.fromElements(modelData1)).as("features");
 
         String modelDataInputId = TestBlockingQueueManager.createBlockingQueue();
         queueIds.add(modelDataInputId);
         Table modelDataTable =
                 tEnv.fromDataStream(
-                                env.addSource(
-                                        new MockBlockingQueueSourceFunction<>(modelDataInputId),
-                                        TypeInformation.of(KMeansModelData.class)));
+                        env.addSource(
+                                new MockBlockingQueueSourceFunction<>(modelDataInputId),
+                                TypeInformation.of(KMeansModelData.class)));
 
-        StreamingKMeansModel streamingModel = new StreamingKMeansModel(initModelDataTable)
-                .setModelData(modelDataTable)
-                .setFeaturesCol("features").setPredictionCol("prediction");
+        StreamingKMeansModel streamingModel =
+                new StreamingKMeansModel(initModelDataTable)
+                        .setModelData(modelDataTable)
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction");
         configModelSink(streamingModel);
 
         clients.add(env.executeAsync());
         waitInitModelBroadcastFinish();
 
-        predictAndAssert(expectedGroups1, streamingModel.getFeaturesCol(), streamingModel.getPredictionCol());
+        predictAndAssert(
+                expectedGroups1,
+                streamingModel.getFeaturesCol(),
+                streamingModel.getPredictionCol());
 
         TestBlockingQueueManager.offerAll(modelDataInputId, modelData2);
         waitModelDataUpdate();
-        predictAndAssert(expectedGroups2, streamingModel.getFeaturesCol(), streamingModel.getPredictionCol());
+        predictAndAssert(
+                expectedGroups2,
+                streamingModel.getFeaturesCol(),
+                streamingModel.getPredictionCol());
     }
 
     @After
     public void after() {
-        for (String queueId: queueIds) {
+        for (String queueId : queueIds) {
             TestBlockingQueueManager.deleteBlockingQueue(queueId);
         }
         queueIds.clear();
 
-        for (JobClient client: clients) {
+        for (JobClient client : clients) {
             try {
                 client.cancel();
             } catch (IllegalStateException e) {
-                if (!e.getMessage().equals("MiniCluster is not yet running or has already been shut down.")) {
+                if (!e.getMessage()
+                        .equals("MiniCluster is not yet running or has already been shut down.")) {
                     throw e;
                 }
             }

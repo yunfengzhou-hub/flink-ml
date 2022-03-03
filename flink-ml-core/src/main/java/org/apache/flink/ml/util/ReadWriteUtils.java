@@ -387,13 +387,10 @@ public class ReadWriteUtils {
      * @param encoder The encoder to encode the model data.
      * @param <T> The class type of the model data.
      */
-    public static <T> void saveDataStream(
-            DataStream<T> stream, String path, Encoder<T> encoder) {
+    public static <T> void saveDataStream(DataStream<T> stream, String path, Encoder<T> encoder) {
         new File(path).mkdirs();
         FileSink<T> sink =
-                FileSink.forRowFormat(
-                                new org.apache.flink.core.fs.Path(path),
-                                encoder)
+                FileSink.forRowFormat(new org.apache.flink.core.fs.Path(path), encoder)
                         .withRollingPolicy(OnCheckpointRollingPolicy.build())
                         .withBucketAssigner(new BasePathBucketAssigner<>())
                         .build();
@@ -412,12 +409,14 @@ public class ReadWriteUtils {
     public static <T> DataStream<T> loadBoundedStream(
             StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> decoder) {
         Source<T, ?, ?> source =
-                FileSource.forRecordStreamFormat(decoder, new org.apache.flink.core.fs.Path(path)).build();
+                FileSource.forRecordStreamFormat(decoder, new org.apache.flink.core.fs.Path(path))
+                        .build();
         return env.fromSource(source, WatermarkStrategy.noWatermarks(), "boundedDataStream");
     }
 
     /**
-     * Loads the unbounded data stream from the given path using the decoder. It will periodically check the provided path for possible new files.
+     * Loads the unbounded data stream from the given path using the decoder. It will periodically
+     * check the provided path for possible new files.
      *
      * @param env A StreamExecutionEnvironment instance.
      * @param path The parent directory of the model data file.
@@ -429,7 +428,8 @@ public class ReadWriteUtils {
             StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> decoder) {
         Source<T, ?, ?> source =
                 FileSource.forRecordStreamFormat(decoder, new org.apache.flink.core.fs.Path(path))
-                        .monitorContinuously(Duration.ofMillis(100)).build();
+                        .monitorContinuously(Duration.ofMillis(100))
+                        .build();
         return env.fromSource(source, WatermarkStrategy.noWatermarks(), "unboundedDataStream");
     }
 }

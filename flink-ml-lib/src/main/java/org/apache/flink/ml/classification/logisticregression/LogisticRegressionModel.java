@@ -81,7 +81,9 @@ public class LogisticRegressionModel
         LogisticRegressionModel model = ReadWriteUtils.loadStageParam(path);
         DataStream<LogisticRegressionModelData> modelData =
                 ReadWriteUtils.loadBoundedStream(
-                        env, Paths.get(path, "data").toString(), new LogisticRegressionModelData.ModelDataDecoder());
+                        env,
+                        Paths.get(path, "data").toString(),
+                        new LogisticRegressionModelData.ModelDataDecoder());
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
 

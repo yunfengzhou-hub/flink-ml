@@ -29,7 +29,8 @@ import org.apache.flink.ml.param.*;
  * @param <T> The class type of this instance.
  */
 @SuppressWarnings("unchecked")
-public interface StreamingKMeansParams<T> extends HasBatchStrategy<T>, HasDecayFactor<T>, HasSeed<T>, KMeansModelParams<T> {
+public interface StreamingKMeansParams<T>
+        extends HasBatchStrategy<T>, HasDecayFactor<T>, HasSeed<T>, KMeansModelParams<T> {
     Param<String> INIT_MODE =
             new StringParam(
                     "initMode",
@@ -39,10 +40,7 @@ public interface StreamingKMeansParams<T> extends HasBatchStrategy<T>, HasDecayF
 
     Param<Integer> DIMS =
             new IntParam(
-                    "dims",
-                    "The number of dimensions of centroids.",
-                    1,
-                    ParamValidators.gt(0));
+                    "dims", "The number of dimensions of centroids.", 1, ParamValidators.gt(0));
 
     default String getInitMode() {
         return get(INIT_MODE);

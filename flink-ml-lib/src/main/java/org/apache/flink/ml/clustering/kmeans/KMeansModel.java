@@ -150,7 +150,8 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
     public static KMeansModel load(StreamExecutionEnvironment env, String path) throws IOException {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         DataStream<KMeansModelData> modelData =
-                ReadWriteUtils.loadBoundedStream(env, Paths.get(path, "data").toString(), new ModelDataDecoder());
+                ReadWriteUtils.loadBoundedStream(
+                        env, Paths.get(path, "data").toString(), new ModelDataDecoder());
         KMeansModel model = ReadWriteUtils.loadStageParam(path);
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
