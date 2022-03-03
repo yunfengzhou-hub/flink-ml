@@ -167,11 +167,11 @@ public class StreamingKMeansModel implements Model<StreamingKMeansModel>, KMeans
     public static StreamingKMeansModel load(StreamExecutionEnvironment env, String path) throws IOException {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-        DataStream<KMeansModelData> modelDataStream = ReadWriteUtils.loadUnboundedDataStream(
+        DataStream<KMeansModelData> modelDataStream = ReadWriteUtils.loadUnboundedStream(
                 env, Paths.get(path, "modelData").toString(), new ModelDataDecoder()
         );
 
-        DataStream<KMeansModelData> initModelDataStream = ReadWriteUtils.loadBoundedDataStream(
+        DataStream<KMeansModelData> initModelDataStream = ReadWriteUtils.loadBoundedStream(
                 env, Paths.get(path, "initModelData").toString(), new ModelDataDecoder()
         );
 

@@ -41,6 +41,7 @@ import org.apache.flink.table.api.internal.TableImpl;
 import org.junit.Assert;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -99,7 +100,7 @@ public class ExampleStages {
 
         @Override
         public void save(String path) throws IOException {
-            ReadWriteUtils.saveModelData(modelData, path, new TestUtils.IntEncoder());
+            ReadWriteUtils.saveDataStream(modelData, Paths.get(path, "data").toString(), new TestUtils.IntEncoder());
             ReadWriteUtils.saveMetadata(this, path);
         }
 
@@ -107,7 +108,7 @@ public class ExampleStages {
                 throws IOException {
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
             DataStream<Integer> modelData =
-                    ReadWriteUtils.loadModelData(env, path, new TestUtils.IntegerStreamFormat());
+                    ReadWriteUtils.loadBoundedStream(env, Paths.get(path, "data").toString(), new TestUtils.IntegerStreamFormat());
 
             SumModel model = ReadWriteUtils.loadStageParam(path);
             return model.setModelData(tEnv.fromDataStream(modelData));

@@ -41,6 +41,7 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -138,9 +139,9 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
 
     @Override
     public void save(String path) throws IOException {
-        ReadWriteUtils.saveModelData(
+        ReadWriteUtils.saveDataStream(
                 KMeansModelData.getModelDataStream(modelDataTable),
-                path,
+                Paths.get(path, "data").toString(),
                 new KMeansModelData.ModelDataEncoder());
         ReadWriteUtils.saveMetadata(this, path);
     }
@@ -149,7 +150,7 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
     public static KMeansModel load(StreamExecutionEnvironment env, String path) throws IOException {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         DataStream<KMeansModelData> modelData =
-                ReadWriteUtils.loadModelData(env, path, new ModelDataDecoder());
+                ReadWriteUtils.loadBoundedStream(env, Paths.get(path, "data").toString(), new ModelDataDecoder());
         KMeansModel model = ReadWriteUtils.loadStageParam(path);
         return model.setModelData(tEnv.fromDataStream(modelData));
     }

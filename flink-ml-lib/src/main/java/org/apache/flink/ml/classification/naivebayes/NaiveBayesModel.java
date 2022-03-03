@@ -42,6 +42,7 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -100,9 +101,9 @@ public class NaiveBayesModel
     @Override
     public void save(String path) throws IOException {
         ReadWriteUtils.saveMetadata(this, path);
-        ReadWriteUtils.saveModelData(
+        ReadWriteUtils.saveDataStream(
                 NaiveBayesModelData.getModelDataStream(modelDataTable),
-                path,
+                Paths.get(path, "data").toString(),
                 new NaiveBayesModelData.ModelDataEncoder());
     }
 
@@ -111,7 +112,7 @@ public class NaiveBayesModel
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         NaiveBayesModel model = ReadWriteUtils.loadStageParam(path);
         DataStream<NaiveBayesModelData> modelData =
-                ReadWriteUtils.loadModelData(env, path, new ModelDataDecoder());
+                ReadWriteUtils.loadBoundedStream(env, Paths.get(path, "data").toString(), new ModelDataDecoder());
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
 

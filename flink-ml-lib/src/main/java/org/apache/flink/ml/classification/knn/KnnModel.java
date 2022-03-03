@@ -41,6 +41,7 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -104,9 +105,9 @@ public class KnnModel implements Model<KnnModel>, KnnModelParams<KnnModel> {
     @Override
     public void save(String path) throws IOException {
         ReadWriteUtils.saveMetadata(this, path);
-        ReadWriteUtils.saveModelData(
+        ReadWriteUtils.saveDataStream(
                 KnnModelData.getModelDataStream(modelDataTable),
-                path,
+                Paths.get(path, "data").toString(),
                 new KnnModelData.ModelDataEncoder());
     }
 
@@ -121,7 +122,7 @@ public class KnnModel implements Model<KnnModel>, KnnModelParams<KnnModel> {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         KnnModel model = ReadWriteUtils.loadStageParam(path);
         DataStream<KnnModelData> modelData =
-                ReadWriteUtils.loadModelData(env, path, new KnnModelData.ModelDataDecoder());
+                ReadWriteUtils.loadBoundedStream(env, Paths.get(path, "data").toString(), new KnnModelData.ModelDataDecoder());
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
 
