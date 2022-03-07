@@ -113,7 +113,6 @@ public class StreamingKMeans
                 new StreamingKMeansIterationBody(
                         DistanceMeasure.getInstance(getDistanceMeasure()),
                         getDecayFactor(),
-                        getTimeUnit(),
                         getBatchSize(),
                         getK());
 
@@ -181,19 +180,16 @@ public class StreamingKMeans
     private static class StreamingKMeansIterationBody implements IterationBody {
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
-        private final String timeUnit;
         private final int batchSize;
         private final int k;
 
         public StreamingKMeansIterationBody(
                 DistanceMeasure distanceMeasure,
                 double decayFactor,
-                String timeUnit,
                 int batchSize,
                 int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
-            this.timeUnit = timeUnit;
             this.batchSize = batchSize;
             this.k = k;
         }
@@ -212,7 +208,7 @@ public class StreamingKMeans
                                     "UpdateModelData",
                                     TypeInformation.of(KMeansModelData.class),
                                     new UpdateModelDataOperator(
-                                            distanceMeasure, decayFactor, timeUnit, k))
+                                            distanceMeasure, decayFactor, k))
                             .setParallelism(1);
 
             return new IterationBodyResult(
@@ -224,16 +220,14 @@ public class StreamingKMeans
             implements TwoInputStreamOperator<DenseVector[], KMeansModelData, KMeansModelData> {
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
-        private final String timeUnit;
         private final int k;
         private ListState<DenseVector[]> miniBatchState;
         private ListState<KMeansModelData> modelDataState;
 
         public UpdateModelDataOperator(
-                DistanceMeasure distanceMeasure, double decayFactor, String timeUnit, int k) {
+                DistanceMeasure distanceMeasure, double decayFactor, int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
-            this.timeUnit = timeUnit;
             this.k = k;
         }
 
@@ -306,12 +300,7 @@ public class StreamingKMeans
                 }
             }
 
-            double discount = decayFactor;
-            if (timeUnit.equals(POINT_UNIT)) {
-                discount = Math.pow(decayFactor, points.length);
-            }
-
-            BLAS.scal(discount, weights);
+            BLAS.scal(decayFactor, weights);
             for (int i = 0; i < k; i++) {
                 DenseVector centroid = centroids[i];
 

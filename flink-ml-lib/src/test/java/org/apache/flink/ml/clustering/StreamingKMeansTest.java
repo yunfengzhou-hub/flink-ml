@@ -28,7 +28,6 @@ import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
 import org.apache.flink.ml.clustering.kmeans.StreamingKMeans;
 import org.apache.flink.ml.clustering.kmeans.StreamingKMeansModel;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
-import org.apache.flink.ml.common.param.HasDecayFactor;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
@@ -222,7 +221,6 @@ public class StreamingKMeansTest {
         Assert.assertEquals("count", streamingKMeans.getBatchStrategy());
         Assert.assertEquals(1, streamingKMeans.getBatchSize());
         Assert.assertEquals(0., streamingKMeans.getDecayFactor(), 1e-5);
-        Assert.assertEquals("batches", streamingKMeans.getTimeUnit());
         Assert.assertEquals("random", streamingKMeans.getInitMode());
         Assert.assertEquals(StreamingKMeans.class.getName().hashCode(), streamingKMeans.getSeed());
 
@@ -233,7 +231,7 @@ public class StreamingKMeansTest {
                 .setK(3)
                 .setDims(5)
                 .setBatchSize(5)
-                .setHalfLife(0.5, "points")
+                .setDecayFactor(0.25)
                 .setInitMode("direct")
                 .setSeed(100);
 
@@ -244,7 +242,6 @@ public class StreamingKMeansTest {
         Assert.assertEquals("count", streamingKMeans.getBatchStrategy());
         Assert.assertEquals(5, streamingKMeans.getBatchSize());
         Assert.assertEquals(0.25, streamingKMeans.getDecayFactor(), 1e-5);
-        Assert.assertEquals("points", streamingKMeans.getTimeUnit());
         Assert.assertEquals("direct", streamingKMeans.getInitMode());
         Assert.assertEquals(100, streamingKMeans.getSeed());
     }
@@ -342,37 +339,6 @@ public class StreamingKMeansTest {
     }
 
     @Test
-    public void testHalfLife() throws Exception {
-        StreamingKMeans streamingKMeans =
-                new StreamingKMeans()
-                        .setInitMode("random")
-                        .setDims(2)
-                        .setHalfLife(1, HasDecayFactor.POINT_UNIT)
-                        .setBatchSize(6)
-                        .setFeaturesCol("features")
-                        .setPredictionCol("prediction");
-        StreamingKMeansModel streamingModel = streamingKMeans.fit(trainTable);
-        configModelSink(streamingModel);
-
-        clients.add(env.executeAsync());
-        waitInitModelBroadcastFinish();
-
-        TestBlockingQueueManager.offerAll(trainId, trainData1);
-        waitModelDataUpdate();
-        predictAndAssert(
-                expectedGroups1,
-                streamingKMeans.getFeaturesCol(),
-                streamingKMeans.getPredictionCol());
-
-        TestBlockingQueueManager.offerAll(trainId, trainData2);
-        waitModelDataUpdate();
-        predictAndAssert(
-                expectedGroups2,
-                streamingKMeans.getFeaturesCol(),
-                streamingKMeans.getPredictionCol());
-    }
-
-    @Test
     public void testSaveAndReload() throws Exception {
         KMeans offlineKMeans =
                 new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
@@ -457,8 +423,6 @@ public class StreamingKMeansTest {
                             Vectors.dense(10.1, 100.1), Vectors.dense(-10.2, -100.2)
                         },
                         Vectors.dense(3.0, 3.0));
-
-        Table initModelDataTable = tEnv.fromDataStream(env.fromElements(modelData1)).as("features");
 
         String modelDataInputId = TestBlockingQueueManager.createBlockingQueue();
         queueIds.add(modelDataInputId);
