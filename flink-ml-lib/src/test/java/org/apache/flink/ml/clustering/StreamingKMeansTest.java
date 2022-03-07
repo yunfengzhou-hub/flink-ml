@@ -34,6 +34,7 @@ import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.ml.util.MockBlockingQueueSinkFunction;
 import org.apache.flink.ml.util.MockBlockingQueueSourceFunction;
 import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.ml.util.StageTestUtils;
 import org.apache.flink.ml.util.TestBlockingQueueManager;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
@@ -348,17 +349,27 @@ public class StreamingKMeansTest {
                 new StreamingKMeans(offlineModel.getModelData()).setDims(2).setBatchSize(6);
         ReadWriteUtils.updateExistingParams(streamingKMeans, offlineKMeans.getParamMap());
 
-        String kMeansSavePath = tempFolder.newFolder().getAbsolutePath();
-        streamingKMeans.save(kMeansSavePath);
-        clients.add(env.executeAsync());
-        StreamingKMeans loadedKMeans = StreamingKMeans.load(env, kMeansSavePath);
+        StreamingKMeans loadedKMeans =
+                StageTestUtils.saveAndReload(
+                        env, streamingKMeans, tempFolder.newFolder().getAbsolutePath());
 
         StreamingKMeansModel streamingModel = loadedKMeans.fit(trainTable);
 
+        String modelDataPassId = TestBlockingQueueManager.createBlockingQueue();
+        queueIds.add(modelDataPassId);
+
         String modelSavePath = tempFolder.newFolder().getAbsolutePath();
         streamingModel.save(modelSavePath);
+        KMeansModelData.getModelDataStream(streamingModel.getModelData()[0])
+                .addSink(new MockBlockingQueueSinkFunction<>(modelDataPassId));
         clients.add(env.executeAsync());
+
         StreamingKMeansModel loadedModel = StreamingKMeansModel.load(env, modelSavePath);
+        DataStream<KMeansModelData> loadedModelData =
+                env.addSource(
+                        new MockBlockingQueueSourceFunction<>(modelDataPassId),
+                        TypeInformation.of(KMeansModelData.class));
+        loadedModel.setModelData(tEnv.fromDataStream(loadedModelData));
 
         configModelSink(loadedModel);
 
@@ -458,11 +469,6 @@ public class StreamingKMeansTest {
 
     @After
     public void after() {
-        for (String queueId : queueIds) {
-            TestBlockingQueueManager.deleteBlockingQueue(queueId);
-        }
-        queueIds.clear();
-
         for (JobClient client : clients) {
             try {
                 client.cancel();
@@ -474,5 +480,10 @@ public class StreamingKMeansTest {
             }
         }
         clients.clear();
+
+        for (String queueId : queueIds) {
+            TestBlockingQueueManager.deleteBlockingQueue(queueId);
+        }
+        queueIds.clear();
     }
 }

@@ -21,7 +21,6 @@ package org.apache.flink.ml.common.param;
 import org.apache.flink.ml.param.DoubleParam;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.ParamValidators;
-import org.apache.flink.ml.param.StringParam;
 import org.apache.flink.ml.param.WithParams;
 
 /** Interface for the shared decay factor param. */

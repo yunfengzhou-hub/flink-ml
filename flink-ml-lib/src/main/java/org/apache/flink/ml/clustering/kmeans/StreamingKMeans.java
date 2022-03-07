@@ -124,9 +124,7 @@ public class StreamingKMeans
         finalCentroids.getTransformation().setParallelism(1);
 
         Table finalCentroidsTable = tEnv.fromDataStream(finalCentroids);
-        StreamingKMeansModel model =
-                new StreamingKMeansModel()
-                        .setModelData(finalCentroidsTable);
+        StreamingKMeansModel model = new StreamingKMeansModel().setModelData(finalCentroidsTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;
     }
@@ -184,10 +182,7 @@ public class StreamingKMeans
         private final int k;
 
         public StreamingKMeansIterationBody(
-                DistanceMeasure distanceMeasure,
-                double decayFactor,
-                int batchSize,
-                int k) {
+                DistanceMeasure distanceMeasure, double decayFactor, int batchSize, int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.batchSize = batchSize;
@@ -207,12 +202,13 @@ public class StreamingKMeans
                             .transform(
                                     "UpdateModelData",
                                     TypeInformation.of(KMeansModelData.class),
-                                    new UpdateModelDataOperator(
-                                            distanceMeasure, decayFactor, k))
+                                    new UpdateModelDataOperator(distanceMeasure, decayFactor, k))
                             .setParallelism(1);
 
             return new IterationBodyResult(
-                    DataStreamList.of(newCentroids), DataStreamList.of(newCentroids));
+                    DataStreamList.of(
+                            newCentroids.map(x -> x).setParallelism(modelData.getParallelism())),
+                    DataStreamList.of(newCentroids));
         }
     }
 
@@ -224,8 +220,7 @@ public class StreamingKMeans
         private ListState<DenseVector[]> miniBatchState;
         private ListState<KMeansModelData> modelDataState;
 
-        public UpdateModelDataOperator(
-                DistanceMeasure distanceMeasure, double decayFactor, int k) {
+        public UpdateModelDataOperator(DistanceMeasure distanceMeasure, double decayFactor, int k) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.k = k;

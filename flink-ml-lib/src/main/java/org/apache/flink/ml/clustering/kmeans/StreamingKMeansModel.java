@@ -22,8 +22,6 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.ml.api.Model;
-import org.apache.flink.ml.clustering.kmeans.KMeansModelData.ModelDataDecoder;
-import org.apache.flink.ml.clustering.kmeans.KMeansModelData.ModelDataEncoder;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
@@ -45,7 +43,6 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.*;
 
 /**
@@ -92,12 +89,11 @@ public class StreamingKMeansModel
         DataStream<Row> predictionResult =
                 KMeansModelData.getModelDataStream(modelDataTable)
                         .broadcast()
-                                .connect(tEnv.toDataStream(inputs[0]))
+                        .connect(tEnv.toDataStream(inputs[0]))
                         .process(
                                 new PredictLabelFunction(
                                         getFeaturesCol(),
-                                        DistanceMeasure.getInstance(
-                                                getDistanceMeasure())),
+                                        DistanceMeasure.getInstance(getDistanceMeasure())),
                                 outputTypeInfo);
 
         latestModelData = DataStreamUtils.getSideOutput(predictionResult, outputTag);
@@ -138,7 +134,7 @@ public class StreamingKMeansModel
                 Collector<Row> collector) {
             centroids = modelData.centroids;
             ctx.output(outputTag, modelData);
-            for (Row dataPoint: cache) {
+            for (Row dataPoint : cache) {
                 processElement2(dataPoint, ctx, collector);
             }
             cache.clear();
@@ -166,25 +162,12 @@ public class StreamingKMeansModel
 
     @Override
     public void save(String path) throws IOException {
-        String modelDataPath = Paths.get(path, "modelData").toString();
-        ReadWriteUtils.saveDataStream(
-                KMeansModelData.getModelDataStream(modelDataTable),
-                modelDataPath,
-                new ModelDataEncoder());
-
         ReadWriteUtils.saveMetadata(this, path);
     }
 
     // TODO: Add INFO level logging.
     public static StreamingKMeansModel load(StreamExecutionEnvironment env, String path)
             throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-
-        DataStream<KMeansModelData> modelDataStream =
-                ReadWriteUtils.loadUnboundedStream(
-                        env, Paths.get(path, "modelData").toString(), new ModelDataDecoder());
-
-        StreamingKMeansModel model = ReadWriteUtils.loadStageParam(path);
-        return model.setModelData(tEnv.fromDataStream(modelDataStream));
+        return ReadWriteUtils.loadStageParam(path);
     }
 }
