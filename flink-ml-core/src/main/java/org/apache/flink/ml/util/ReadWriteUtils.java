@@ -49,7 +49,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -122,6 +121,24 @@ public class ReadWriteUtils {
      */
     public static void saveMetadata(Stage<?> stage, String path) throws IOException {
         saveMetadata(stage, path, new HashMap<>());
+    }
+
+    /** Returns a subdirectory of the given path for saving/loading model data. */
+    private static String getDataPath(String path) {
+        return Paths.get(path, "data").toString();
+    }
+
+    /** Returns all data files under the given path as a list of paths. */
+    private static org.apache.flink.core.fs.Path[] getDataPaths(String path) {
+        String dataPath = getDataPath(path);
+        File[] files = new File(dataPath).listFiles();
+
+        org.apache.flink.core.fs.Path[] paths = new org.apache.flink.core.fs.Path[files.length];
+        for (int i = 0; i < paths.length; i++) {
+            paths[i] = org.apache.flink.core.fs.Path.fromLocalFile(files[i]);
+        }
+
+        return paths;
     }
 
     /**
@@ -385,56 +402,37 @@ public class ReadWriteUtils {
     }
 
     /**
-     * Saves the data stream to the given path using the encoder.
+     * Saves the model data stream to the given path using the model encoder.
      *
-     * @param stream The data stream.
-     * @param path The parent directory to create the files to hold the saved data.
-     * @param encoder The encoder to encode the data read from the files.
-     * @param <T> The class type of the data.
+     * @param model The model data stream.
+     * @param path The parent directory of the model data file.
+     * @param modelEncoder The encoder to encode the model data.
+     * @param <T> The class type of the model data.
      */
-    public static <T> void saveDataStream(DataStream<T> stream, String path, Encoder<T> encoder) {
-        new File(path).mkdirs();
+    public static <T> void saveModelData(
+            DataStream<T> model, String path, Encoder<T> modelEncoder) {
         FileSink<T> sink =
-                FileSink.forRowFormat(new org.apache.flink.core.fs.Path(path), encoder)
+                FileSink.forRowFormat(
+                                new org.apache.flink.core.fs.Path(getDataPath(path)), modelEncoder)
                         .withRollingPolicy(OnCheckpointRollingPolicy.build())
                         .withBucketAssigner(new BasePathBucketAssigner<>())
                         .build();
-        stream.sinkTo(sink);
+        model.sinkTo(sink);
     }
 
     /**
-     * Loads the bounded data stream from the given path using the decoder.
+     * Loads the model data from the given path using the model decoder.
      *
      * @param env A StreamExecutionEnvironment instance.
-     * @param path The parent directory of the files containing data to be loaded.
-     * @param decoder The decoder used to decode the data.
-     * @param <T> The class type of the data.
-     * @return The loaded data.
+     * @param path The parent directory of the model data file.
+     * @param modelDecoder The decoder used to decode the model data.
+     * @param <T> The class type of the model data.
+     * @return The loaded model data.
      */
-    public static <T> DataStream<T> loadBoundedStream(
-            StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> decoder) {
+    public static <T> DataStream<T> loadModelData(
+            StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> modelDecoder) {
         Source<T, ?, ?> source =
-                FileSource.forRecordStreamFormat(decoder, new org.apache.flink.core.fs.Path(path))
-                        .build();
-        return env.fromSource(source, WatermarkStrategy.noWatermarks(), "boundedDataStream");
-    }
-
-    /**
-     * Loads the unbounded data stream from the given path using the decoder. It will periodically
-     * check the provided path for possible new files.
-     *
-     * @param env A StreamExecutionEnvironment instance.
-     * @param path The parent directory of the files containing data to be loaded.
-     * @param decoder The decoder used to decode the data.
-     * @param <T> The class type of the data.
-     * @return The loaded data.
-     */
-    public static <T> DataStream<T> loadUnboundedStream(
-            StreamExecutionEnvironment env, String path, SimpleStreamFormat<T> decoder) {
-        Source<T, ?, ?> source =
-                FileSource.forRecordStreamFormat(decoder, new org.apache.flink.core.fs.Path(path))
-                        .monitorContinuously(Duration.ofMillis(100))
-                        .build();
-        return env.fromSource(source, WatermarkStrategy.noWatermarks(), "unboundedDataStream");
+                FileSource.forRecordStreamFormat(modelDecoder, getDataPaths(path)).build();
+        return env.fromSource(source, WatermarkStrategy.noWatermarks(), "modelData");
     }
 }

@@ -42,7 +42,6 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -113,9 +112,9 @@ public class OneHotEncoderModel
     @Override
     public void save(String path) throws IOException {
         ReadWriteUtils.saveMetadata(this, path);
-        ReadWriteUtils.saveDataStream(
+        ReadWriteUtils.saveModelData(
                 OneHotEncoderModelData.getModelDataStream(modelDataTable),
-                Paths.get(path, "modelData").toString(),
+                path,
                 new OneHotEncoderModelData.ModelDataEncoder());
     }
 
@@ -124,10 +123,8 @@ public class OneHotEncoderModel
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         OneHotEncoderModel model = ReadWriteUtils.loadStageParam(path);
         DataStream<Tuple2<Integer, Integer>> modelData =
-                ReadWriteUtils.loadBoundedStream(
-                        env,
-                        Paths.get(path, "modelData").toString(),
-                        new OneHotEncoderModelData.ModelDataStreamFormat());
+                ReadWriteUtils.loadModelData(
+                        env, path, new OneHotEncoderModelData.ModelDataStreamFormat());
         return model.setModelData(tEnv.fromDataStream(modelData));
     }
 
