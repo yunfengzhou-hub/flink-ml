@@ -18,16 +18,14 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.connector.source.Source;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.ObjectArrayTypeInfo;
-import org.apache.flink.connector.file.sink.FileSink;
-import org.apache.flink.connector.file.src.FileSource;
+import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
@@ -37,6 +35,7 @@ import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.common.param.HasBatchStrategy;
 import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.DenseVector;
+import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
@@ -44,10 +43,7 @@ import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.BasePathBucketAssigner;
-import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
-import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.Table;
@@ -58,16 +54,13 @@ import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.collections.IteratorUtils;
+import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 
 /**
  * StreamingKMeans extends the function of {@link KMeans}, supporting to train a K-Means model
@@ -102,12 +95,15 @@ public class StreamingKMeans
         DataStream<DenseVector> points =
                 tEnv.toDataStream(inputs[0]).map(new FeaturesExtractor(getFeaturesCol()));
 
-        DataStream<KMeansModelData> initCentroids;
+        DataStream<KMeansModelData> initModelDataStream;
         if (getInitMode().equals("random")) {
-            initCentroids = createRandomCentroids(env, getDims(), getK(), getSeed());
+            initModelDataStream = createRandomCentroids(env, getDims(), getK(), getSeed());
         } else {
-            initCentroids = KMeansModelData.getModelDataStream(initModelDataTable);
+            initModelDataStream = KMeansModelData.getModelDataStream(initModelDataTable);
         }
+        DataStream<Tuple2<KMeansModelData, DenseVector>> initModelDataWithWeightsStream =
+                initModelDataStream.map(new InitWeightAssigner(getInitWeights()));
+        initModelDataWithWeightsStream.getTransformation().setParallelism(1);
 
         IterationBody body =
                 new StreamingKMeansIterationBody(
@@ -116,31 +112,43 @@ public class StreamingKMeans
                         getBatchSize(),
                         getK());
 
-        DataStream<KMeansModelData> finalCentroids =
+        DataStream<KMeansModelData> finalModelDataStream =
                 Iterations.iterateUnboundedStreams(
-                                DataStreamList.of(initCentroids), DataStreamList.of(points), body)
+                                DataStreamList.of(initModelDataWithWeightsStream),
+                                DataStreamList.of(points),
+                                body)
                         .get(0);
-        finalCentroids = finalCentroids.union(initCentroids);
-        finalCentroids.getTransformation().setParallelism(1);
+        finalModelDataStream = finalModelDataStream.union(initModelDataStream);
+        finalModelDataStream.getTransformation().setParallelism(1);
 
-        Table finalCentroidsTable = tEnv.fromDataStream(finalCentroids);
-        StreamingKMeansModel model = new StreamingKMeansModel().setModelData(finalCentroidsTable);
+        Table finalModelDataTable = tEnv.fromDataStream(finalModelDataStream);
+        StreamingKMeansModel model = new StreamingKMeansModel().setModelData(finalModelDataTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;
+    }
+
+    private static class InitWeightAssigner
+            implements MapFunction<KMeansModelData, Tuple2<KMeansModelData, DenseVector>> {
+        private final double[] initWeights;
+
+        private InitWeightAssigner(Double[] initWeights) {
+            this.initWeights = ArrayUtils.toPrimitive(initWeights);
+        }
+
+        @Override
+        public Tuple2<KMeansModelData, DenseVector> map(KMeansModelData modelData)
+                throws Exception {
+            return Tuple2.of(modelData, Vectors.dense(initWeights));
+        }
     }
 
     @Override
     public void save(String path) throws IOException {
         if (initModelDataTable != null) {
-            String initModelDataPath = Paths.get(path, "initModelData").toString();
-            FileSink<KMeansModelData> initModelDataSink =
-                    FileSink.forRowFormat(
-                                    new org.apache.flink.core.fs.Path(initModelDataPath),
-                                    new KMeansModelData.ModelDataEncoder())
-                            .withRollingPolicy(OnCheckpointRollingPolicy.build())
-                            .withBucketAssigner(new BasePathBucketAssigner<>())
-                            .build();
-            KMeansModelData.getModelDataStream(initModelDataTable).sinkTo(initModelDataSink);
+            ReadWriteUtils.saveModelData(
+                    KMeansModelData.getModelDataStream(initModelDataTable),
+                    path,
+                    new KMeansModelData.ModelDataEncoder());
         }
 
         ReadWriteUtils.saveMetadata(this, path);
@@ -150,18 +158,12 @@ public class StreamingKMeans
             throws IOException {
         StreamingKMeans kMeans = ReadWriteUtils.loadStageParam(path);
 
-        Path initModelDataPath = Paths.get(path, "initModelData");
+        Path initModelDataPath = Paths.get(path, "data");
         if (Files.exists(initModelDataPath)) {
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-            Source<KMeansModelData, ?, ?> initModelDataSource =
-                    FileSource.forRecordStreamFormat(
-                                    new KMeansModelData.ModelDataDecoder(),
-                                    new org.apache.flink.core.fs.Path(initModelDataPath.toString()))
-                            .build();
             DataStream<KMeansModelData> initModelDataStream =
-                    env.fromSource(
-                            initModelDataSource, WatermarkStrategy.noWatermarks(), "initModelData");
+                    ReadWriteUtils.loadModelData(env, path, new KMeansModelData.ModelDataDecoder());
 
             kMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
             kMeans.setInitMode("direct");
@@ -192,33 +194,47 @@ public class StreamingKMeans
         @Override
         public IterationBodyResult process(
                 DataStreamList variableStreams, DataStreamList dataStreams) {
-            DataStream<KMeansModelData> modelData = variableStreams.get(0);
+            DataStream<Tuple2<KMeansModelData, DenseVector>> modelDataWithWeights =
+                    variableStreams.get(0);
             DataStream<DenseVector> points = dataStreams.get(0);
 
-            DataStream<KMeansModelData> newCentroids =
+            DataStream<Tuple2<KMeansModelData, DenseVector>> newModelDataWithWeights =
                     points.countWindowAll(batchSize)
                             .aggregate(new MiniBatchCreator())
-                            .connect(modelData.broadcast())
+                            .connect(modelDataWithWeights.broadcast())
                             .transform(
                                     "UpdateModelData",
-                                    TypeInformation.of(KMeansModelData.class),
+                                    new TupleTypeInfo<>(
+                                            TypeInformation.of(KMeansModelData.class),
+                                            DenseVectorTypeInfo.INSTANCE),
                                     new UpdateModelDataOperator(distanceMeasure, decayFactor, k))
                             .setParallelism(1);
 
+            DataStream<KMeansModelData> newModelData =
+                    newModelDataWithWeights.map(
+                            (MapFunction<Tuple2<KMeansModelData, DenseVector>, KMeansModelData>)
+                                    x -> x.f0);
+            newModelDataWithWeights
+                    .getTransformation()
+                    .setParallelism(modelDataWithWeights.getParallelism());
+
             return new IterationBodyResult(
-                    DataStreamList.of(
-                            newCentroids.map(x -> x).setParallelism(modelData.getParallelism())),
-                    DataStreamList.of(newCentroids));
+                    DataStreamList.of(newModelDataWithWeights), DataStreamList.of(newModelData));
         }
     }
 
-    private static class UpdateModelDataOperator extends AbstractStreamOperator<KMeansModelData>
-            implements TwoInputStreamOperator<DenseVector[], KMeansModelData, KMeansModelData> {
+    private static class UpdateModelDataOperator
+            extends AbstractStreamOperator<Tuple2<KMeansModelData, DenseVector>>
+            implements TwoInputStreamOperator<
+                    DenseVector[],
+                    Tuple2<KMeansModelData, DenseVector>,
+                    Tuple2<KMeansModelData, DenseVector>> {
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
         private final int k;
         private ListState<DenseVector[]> miniBatchState;
         private ListState<KMeansModelData> modelDataState;
+        private ListState<DenseVector> weightsState;
 
         public UpdateModelDataOperator(DistanceMeasure distanceMeasure, double decayFactor, int k) {
             this.distanceMeasure = distanceMeasure;
@@ -240,21 +256,29 @@ public class StreamingKMeans
                     context.getOperatorStateStore()
                             .getListState(
                                     new ListStateDescriptor<>("modelData", KMeansModelData.class));
+
+            weightsState =
+                    context.getOperatorStateStore()
+                            .getListState(
+                                    new ListStateDescriptor<>(
+                                            "weights", DenseVectorTypeInfo.INSTANCE));
         }
 
         @Override
         public void processElement1(StreamRecord<DenseVector[]> streamRecord) throws Exception {
             miniBatchState.add(streamRecord.getValue());
-            processElement(output);
+            processElement();
         }
 
         @Override
-        public void processElement2(StreamRecord<KMeansModelData> streamRecord) throws Exception {
-            modelDataState.add(streamRecord.getValue());
-            processElement(output);
+        public void processElement2(StreamRecord<Tuple2<KMeansModelData, DenseVector>> streamRecord)
+                throws Exception {
+            modelDataState.add(streamRecord.getValue().f0);
+            weightsState.add(streamRecord.getValue().f1);
+            processElement();
         }
 
-        private void processElement(Output<StreamRecord<KMeansModelData>> output) throws Exception {
+        private void processElement() throws Exception {
             if (!modelDataState.get().iterator().hasNext()
                     || !miniBatchState.get().iterator().hasNext()) {
                 return;
@@ -269,8 +293,17 @@ public class StreamingKMeans
                                 + " list of centroids in this round");
             }
             DenseVector[] centroids = modelDataList.get(0).centroids;
-            DenseVector weights = modelDataList.get(0).weights;
             modelDataState.clear();
+
+            List<DenseVector> weightsList = IteratorUtils.toList(weightsState.get().iterator());
+            if (weightsList.size() != 1) {
+                throw new RuntimeException(
+                        "The operator received "
+                                + weightsList.size()
+                                + " list of centroids in this round");
+            }
+            DenseVector weights = weightsList.get(0);
+            weightsState.clear();
 
             List<DenseVector[]> pointsList = IteratorUtils.toList(miniBatchState.get().iterator());
             DenseVector[] points = pointsList.get(0);
@@ -307,7 +340,7 @@ public class StreamingKMeans
                 BLAS.axpy(lambda / counts[i], sums[i], centroid);
             }
 
-            output.collect(new StreamRecord<>(new KMeansModelData(centroids, weights)));
+            output.collect(new StreamRecord<>(Tuple2.of(new KMeansModelData(centroids), weights)));
         }
     }
 
@@ -359,6 +392,6 @@ public class StreamingKMeans
                 centroids[i].values[j] = random.nextDouble();
             }
         }
-        return env.fromElements(new KMeansModelData(centroids, new DenseVector(k)));
+        return env.fromElements(new KMeansModelData(centroids));
     }
 }

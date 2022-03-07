@@ -21,17 +21,13 @@ package org.apache.flink.ml.clustering.kmeans;
 import org.apache.flink.ml.common.param.HasBatchStrategy;
 import org.apache.flink.ml.common.param.HasDecayFactor;
 import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.ml.param.IntParam;
-import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.param.ParamValidators;
-import org.apache.flink.ml.param.StringParam;
+import org.apache.flink.ml.param.*;
 
 /**
  * Params of {@link StreamingKMeans}.
  *
  * @param <T> The class type of this instance.
  */
-@SuppressWarnings("unchecked")
 public interface StreamingKMeansParams<T>
         extends HasBatchStrategy<T>, HasDecayFactor<T>, HasSeed<T>, KMeansModelParams<T> {
     Param<String> INIT_MODE =
@@ -48,13 +44,19 @@ public interface StreamingKMeansParams<T>
                     1,
                     ParamValidators.gt(0));
 
+    Param<Double[]> INIT_WEIGHTS =
+            new DoubleArrayParam(
+                    "initWeights",
+                    "The weight of the initial centroids.",
+                    null,
+                    ParamValidators.nonEmptyArray());
+
     default String getInitMode() {
         return get(INIT_MODE);
     }
 
     default T setInitMode(String value) {
-        set(INIT_MODE, value);
-        return (T) this;
+        return set(INIT_MODE, value);
     }
 
     default int getDims() {
@@ -62,7 +64,14 @@ public interface StreamingKMeansParams<T>
     }
 
     default T setDims(int value) {
-        set(DIMS, value);
-        return (T) this;
+        return set(DIMS, value);
+    }
+
+    default Double[] getInitWeights() {
+        return get(INIT_WEIGHTS);
+    }
+
+    default T setInitWeights(Double[] value) {
+        return set(INIT_WEIGHTS, value);
     }
 }

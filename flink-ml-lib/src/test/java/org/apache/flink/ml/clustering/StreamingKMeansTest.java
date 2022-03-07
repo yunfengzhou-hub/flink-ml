@@ -253,6 +253,7 @@ public class StreamingKMeansTest {
                 new StreamingKMeans()
                         .setInitMode("random")
                         .setDims(2)
+                        .setInitWeights(new Double[] {0., 0.})
                         .setBatchSize(6)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
@@ -287,6 +288,7 @@ public class StreamingKMeansTest {
                 new StreamingKMeans(offlineModel.getModelData())
                         .setInitMode("direct")
                         .setDims(2)
+                        .setInitWeights(new Double[] {0., 0.})
                         .setBatchSize(6);
         ReadWriteUtils.updateExistingParams(streamingKMeans, offlineKMeans.getParamMap());
 
@@ -314,6 +316,7 @@ public class StreamingKMeansTest {
                 new StreamingKMeans()
                         .setInitMode("random")
                         .setDims(2)
+                        .setInitWeights(new Double[] {0., 0.})
                         .setDecayFactor(100.0)
                         .setBatchSize(6)
                         .setFeaturesCol("features")
@@ -346,7 +349,10 @@ public class StreamingKMeansTest {
         KMeansModel offlineModel = offlineKMeans.fit(offlineTrainTable);
 
         StreamingKMeans streamingKMeans =
-                new StreamingKMeans(offlineModel.getModelData()).setDims(2).setBatchSize(6);
+                new StreamingKMeans(offlineModel.getModelData())
+                        .setDims(2)
+                        .setBatchSize(6)
+                        .setInitWeights(new Double[] {0., 0.});
         ReadWriteUtils.updateExistingParams(streamingKMeans, offlineKMeans.getParamMap());
 
         StreamingKMeans loadedKMeans =
@@ -395,6 +401,7 @@ public class StreamingKMeansTest {
                 new StreamingKMeans()
                         .setInitMode("random")
                         .setDims(2)
+                        .setInitWeights(new Double[] {0., 0.})
                         .setBatchSize(6)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
@@ -409,31 +416,28 @@ public class StreamingKMeansTest {
 
         KMeansModelData expectedModelData =
                 new KMeansModelData(
-                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)},
-                        Vectors.dense(3.0, 3.0));
+                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)});
 
         Assert.assertEquals(expectedModelData.centroids.length, actualModelData.centroids.length);
-        Assert.assertArrayEquals(
-                expectedModelData.centroids[0].values, actualModelData.centroids[0].values, 1e-5);
-        Assert.assertArrayEquals(
-                expectedModelData.centroids[1].values, actualModelData.centroids[1].values, 1e-5);
-        Assert.assertArrayEquals(
-                expectedModelData.weights.values, actualModelData.weights.values, 1e-5);
+        for (int i = 0; i < expectedModelData.centroids.length; i++) {
+            Assert.assertArrayEquals(
+                    expectedModelData.centroids[i].values,
+                    actualModelData.centroids[i].values,
+                    1e-5);
+        }
     }
 
     @Test
     public void testSetModelData() throws Exception {
         KMeansModelData modelData1 =
                 new KMeansModelData(
-                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)},
-                        Vectors.dense(3.0, 3.0));
+                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)});
 
         KMeansModelData modelData2 =
                 new KMeansModelData(
                         new DenseVector[] {
                             Vectors.dense(10.1, 100.1), Vectors.dense(-10.2, -100.2)
-                        },
-                        Vectors.dense(3.0, 3.0));
+                        });
 
         String modelDataInputId = TestBlockingQueueManager.createBlockingQueue();
         queueIds.add(modelDataInputId);

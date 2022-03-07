@@ -49,11 +49,8 @@ public class KMeansModelData {
 
     public DenseVector[] centroids;
 
-    public DenseVector weights;
-
-    public KMeansModelData(DenseVector[] centroids, DenseVector weights) {
+    public KMeansModelData(DenseVector[] centroids) {
         this.centroids = centroids;
-        this.weights = weights;
     }
 
     /**
@@ -81,8 +78,6 @@ public class KMeansModelData {
                 DenseVectorSerializer.INSTANCE.serialize(
                         denseVector, new DataOutputViewStreamWrapper(outputStream));
             }
-            DenseVectorSerializer.INSTANCE.serialize(
-                    modelData.weights, new DataOutputViewStreamWrapper(outputStream));
         }
     }
 
@@ -106,9 +101,7 @@ public class KMeansModelData {
                                     DenseVectorSerializer.INSTANCE.deserialize(
                                             inputViewStreamWrapper);
                         }
-                        DenseVector weights =
-                                DenseVectorSerializer.INSTANCE.deserialize(inputViewStreamWrapper);
-                        return new KMeansModelData(centroids, weights);
+                        return new KMeansModelData(centroids);
                     } catch (EOFException e) {
                         return null;
                     }

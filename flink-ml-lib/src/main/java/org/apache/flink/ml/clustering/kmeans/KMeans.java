@@ -198,32 +198,25 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
     }
 
     private static class ModelDataGenerator
-            implements AllWindowFunction<Tuple2<DenseVector, Long>, KMeansModelData, TimeWindow> {
+            implements AllWindowFunction<DenseVector, KMeansModelData, TimeWindow> {
         @Override
         public void apply(
                 TimeWindow timeWindow,
-                Iterable<Tuple2<DenseVector, Long>> iterable,
+                Iterable<DenseVector> iterable,
                 Collector<KMeansModelData> out) {
-            List<Tuple2<DenseVector, Long>> centroidsAndWeights =
-                    IteratorUtils.toList(iterable.iterator());
-            DenseVector[] centroids = new DenseVector[centroidsAndWeights.size()];
-            double[] weights = new double[centroidsAndWeights.size()];
-            for (int i = 0; i < centroidsAndWeights.size(); i++) {
-                centroids[i] = centroidsAndWeights.get(i).f0;
-                weights[i] = centroidsAndWeights.get(i).f1;
-            }
-            out.collect(new KMeansModelData(centroids, new DenseVector(weights)));
+            List<DenseVector> centroids = IteratorUtils.toList(iterable.iterator());
+            out.collect(new KMeansModelData(centroids.toArray(new DenseVector[0])));
         }
     }
 
     private static class CentroidAverager
-            implements MapFunction<Tuple3<Integer, DenseVector, Long>, Tuple2<DenseVector, Long>> {
+            implements MapFunction<Tuple3<Integer, DenseVector, Long>, DenseVector> {
         @Override
-        public Tuple2<DenseVector, Long> map(Tuple3<Integer, DenseVector, Long> value) {
+        public DenseVector map(Tuple3<Integer, DenseVector, Long> value) {
             for (int i = 0; i < value.f1.size(); i++) {
                 value.f1.values[i] /= value.f2;
             }
-            return Tuple2.of(value.f1, value.f2);
+            return value.f1;
         }
     }
 
