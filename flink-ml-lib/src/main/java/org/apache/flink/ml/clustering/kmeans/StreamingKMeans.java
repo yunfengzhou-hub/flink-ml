@@ -117,15 +117,16 @@ public class StreamingKMeans
                         getBatchSize(),
                         getK());
 
-        DataStream<DenseVector[]> finalCentroids =
+        DataStream<KMeansModelData> finalCentroids =
                 Iterations.iterateUnboundedStreams(
                                 DataStreamList.of(initCentroids), DataStreamList.of(points), body)
                         .get(0);
+        finalCentroids = finalCentroids.union(initCentroids);
         finalCentroids.getTransformation().setParallelism(1);
 
         Table finalCentroidsTable = tEnv.fromDataStream(finalCentroids);
         StreamingKMeansModel model =
-                new StreamingKMeansModel(tEnv.fromDataStream(initCentroids))
+                new StreamingKMeansModel()
                         .setModelData(finalCentroidsTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;

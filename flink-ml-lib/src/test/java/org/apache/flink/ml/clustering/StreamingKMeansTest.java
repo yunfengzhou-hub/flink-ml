@@ -469,15 +469,16 @@ public class StreamingKMeansTest {
                                 TypeInformation.of(KMeansModelData.class)));
 
         StreamingKMeansModel streamingModel =
-                new StreamingKMeansModel(initModelDataTable)
+                new StreamingKMeansModel()
                         .setModelData(modelDataTable)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
         configModelSink(streamingModel);
 
         clients.add(env.executeAsync());
-        waitInitModelBroadcastFinish();
 
+        TestBlockingQueueManager.offerAll(modelDataInputId, modelData1);
+        waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups1,
                 streamingModel.getFeaturesCol(),

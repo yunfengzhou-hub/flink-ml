@@ -24,7 +24,6 @@ import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.ml.api.Model;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData.ModelDataDecoder;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData.ModelDataEncoder;
-import org.apache.flink.ml.common.broadcast.BroadcastUtils;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
@@ -47,10 +46,7 @@ import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * StreamingKMeansModel can be regarded as an advanced {@link KMeansModel} operator which can update
@@ -61,17 +57,10 @@ public class StreamingKMeansModel
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private static final OutputTag<KMeansModelData> outputTag =
             new OutputTag<KMeansModelData>("latest-model-data") {};
-    private Table initModelDataTable;
     private Table modelDataTable;
     private DataStream<KMeansModelData> latestModelData;
 
     public StreamingKMeansModel() {
-        ParamUtils.initializeMapWithDefaultValues(paramMap, this);
-    }
-
-    public StreamingKMeansModel(Table... initModelDataTables) {
-        Preconditions.checkArgument(initModelDataTables.length == 1);
-        this.initModelDataTable = initModelDataTables[0];
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
     }
 
@@ -88,7 +77,6 @@ public class StreamingKMeansModel
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Table[] transform(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
 
@@ -102,26 +90,15 @@ public class StreamingKMeansModel
                         ArrayUtils.addAll(inputTypeInfo.getFieldNames(), getPredictionCol()));
 
         DataStream<Row> predictionResult =
-                BroadcastUtils.withBroadcastStream(
-                        Arrays.asList(
-                                tEnv.toDataStream(inputs[0]),
-                                KMeansModelData.getModelDataStream(modelDataTable).broadcast()),
-                        Collections.singletonMap(
-                                KMeansModel.BROADCAST_MODEL_KEY,
-                                KMeansModelData.getModelDataStream(initModelDataTable)),
-                        inputList -> {
-                            DataStream inputData = inputList.get(0);
-                            DataStream modelData = inputList.get(1);
-                            return modelData
-                                    .broadcast()
-                                    .connect(inputData)
-                                    .process(
-                                            new PredictLabelFunction(
-                                                    getFeaturesCol(),
-                                                    DistanceMeasure.getInstance(
-                                                            getDistanceMeasure())),
-                                            outputTypeInfo);
-                        });
+                KMeansModelData.getModelDataStream(modelDataTable)
+                        .broadcast()
+                                .connect(tEnv.toDataStream(inputs[0]))
+                        .process(
+                                new PredictLabelFunction(
+                                        getFeaturesCol(),
+                                        DistanceMeasure.getInstance(
+                                                getDistanceMeasure())),
+                                outputTypeInfo);
 
         latestModelData = DataStreamUtils.getSideOutput(predictionResult, outputTag);
 
@@ -147,6 +124,8 @@ public class StreamingKMeansModel
 
         private DenseVector[] centroids;
 
+        private final List<Row> cache = new ArrayList<>();
+
         public PredictLabelFunction(String featuresCol, DistanceMeasure distanceMeasure) {
             this.featuresCol = featuresCol;
             this.distanceMeasure = distanceMeasure;
@@ -159,6 +138,10 @@ public class StreamingKMeansModel
                 Collector<Row> collector) {
             centroids = modelData.centroids;
             ctx.output(outputTag, modelData);
+            for (Row dataPoint: cache) {
+                processElement2(dataPoint, ctx, collector);
+            }
+            cache.clear();
         }
 
         @Override
@@ -167,12 +150,8 @@ public class StreamingKMeansModel
                 CoProcessFunction<KMeansModelData, Row, Row>.Context ctx,
                 Collector<Row> collector) {
             if (centroids == null) {
-                KMeansModelData modelData =
-                        (KMeansModelData)
-                                getRuntimeContext()
-                                        .getBroadcastVariable(KMeansModel.BROADCAST_MODEL_KEY)
-                                        .get(0);
-                processElement1(modelData, ctx, collector);
+                cache.add(dataPoint);
+                return;
             }
             DenseVector point = (DenseVector) dataPoint.getField(featuresCol);
             int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
@@ -193,12 +172,6 @@ public class StreamingKMeansModel
                 modelDataPath,
                 new ModelDataEncoder());
 
-        String initModelDataPath = Paths.get(path, "initModelData").toString();
-        ReadWriteUtils.saveDataStream(
-                KMeansModelData.getModelDataStream(initModelDataTable),
-                initModelDataPath,
-                new ModelDataEncoder());
-
         ReadWriteUtils.saveMetadata(this, path);
     }
 
@@ -211,12 +184,7 @@ public class StreamingKMeansModel
                 ReadWriteUtils.loadUnboundedStream(
                         env, Paths.get(path, "modelData").toString(), new ModelDataDecoder());
 
-        DataStream<KMeansModelData> initModelDataStream =
-                ReadWriteUtils.loadBoundedStream(
-                        env, Paths.get(path, "initModelData").toString(), new ModelDataDecoder());
-
         StreamingKMeansModel model = ReadWriteUtils.loadStageParam(path);
-        model.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
         return model.setModelData(tEnv.fromDataStream(modelDataStream));
     }
 }
