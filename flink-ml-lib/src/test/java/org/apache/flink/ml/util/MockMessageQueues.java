@@ -26,13 +26,13 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-/** A class that manages global blocking queues used in unit tests. */
+/** A class that manages global message queues used in unit tests. */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public class TestBlockingQueueManager {
+public class MockMessageQueues {
     private static final Map<String, BlockingQueue> queueMap = new HashMap<>();
     private static long counter = 0;
 
-    public static synchronized String createBlockingQueue() {
+    public static synchronized String createMessageQueue() {
         String id = String.valueOf(counter);
         queueMap.put(id, new LinkedBlockingQueue<>());
         counter++;

@@ -18,11 +18,11 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.metrics.Gauge;
 import org.apache.flink.ml.api.Model;
-import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
@@ -37,13 +37,15 @@ import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Collector;
-import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * StreamingKMeansModel can be regarded as an advanced {@link KMeansModel} operator which can update
@@ -52,10 +54,7 @@ import java.util.*;
 public class StreamingKMeansModel
         implements Model<StreamingKMeansModel>, KMeansModelParams<StreamingKMeansModel> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
-    private static final OutputTag<KMeansModelData> outputTag =
-            new OutputTag<KMeansModelData>("latest-model-data") {};
     private Table modelDataTable;
-    private DataStream<KMeansModelData> latestModelData;
 
     public StreamingKMeansModel() {
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
@@ -96,20 +95,7 @@ public class StreamingKMeansModel
                                         DistanceMeasure.getInstance(getDistanceMeasure())),
                                 outputTypeInfo);
 
-        latestModelData = DataStreamUtils.getSideOutput(predictionResult, outputTag);
-
         return new Table[] {tEnv.fromDataStream(predictionResult)};
-    }
-
-    /**
-     * Gets the data stream containing the latest model data used in this Model. The "latest" means
-     * that If a model data is observed in this stream, the model data would have come into effect
-     * in this model. Thus predict data arrived afterwards will be served by this model data, or a
-     * later model data. It won't be served by any earlier model data.
-     */
-    @VisibleForTesting
-    public DataStream<KMeansModelData> getLatestModelData() {
-        return latestModelData;
     }
 
     /** A utility function used for prediction. */
@@ -122,9 +108,29 @@ public class StreamingKMeansModel
 
         private final List<Row> cache = new ArrayList<>();
 
+        // TODO: replace this simple implementation of model data version with the formal API to
+        // track model version after its design is settled.
+        private int modelDataVersion;
+
         public PredictLabelFunction(String featuresCol, DistanceMeasure distanceMeasure) {
             this.featuresCol = featuresCol;
             this.distanceMeasure = distanceMeasure;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            super.open(parameters);
+
+            getRuntimeContext()
+                    .getMetricGroup()
+                    .gauge(
+                            "modelDataVersion",
+                            new Gauge<String>() {
+                                @Override
+                                public String getValue() {
+                                    return Integer.toString(modelDataVersion);
+                                }
+                            });
         }
 
         @Override
@@ -133,7 +139,7 @@ public class StreamingKMeansModel
                 CoProcessFunction<KMeansModelData, Row, Row>.Context ctx,
                 Collector<Row> collector) {
             centroids = modelData.centroids;
-            ctx.output(outputTag, modelData);
+            modelDataVersion++;
             for (Row dataPoint : cache) {
                 processElement2(dataPoint, ctx, collector);
             }

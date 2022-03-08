@@ -31,11 +31,13 @@ import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
-import org.apache.flink.ml.util.MockBlockingQueueSinkFunction;
-import org.apache.flink.ml.util.MockBlockingQueueSourceFunction;
+import org.apache.flink.ml.util.MockKVStore;
+import org.apache.flink.ml.util.MockMessageQueues;
+import org.apache.flink.ml.util.MockSinkFunction;
+import org.apache.flink.ml.util.MockSourceFunction;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.ml.util.StageTestUtils;
-import org.apache.flink.ml.util.TestBlockingQueueManager;
+import org.apache.flink.ml.util.TestMetricReporter;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -120,7 +122,10 @@ public class StreamingKMeansTest {
     private String predictId;
     private String outputId;
     private String modelDataId;
+    private String metricReporterPrefix;
+    private String currentModelDataVersion;
     private List<String> queueIds;
+    private List<String> kvStoreKeys;
     private List<JobClient> clients;
     private StreamExecutionEnvironment env;
     private StreamTableEnvironment tEnv;
@@ -130,23 +135,34 @@ public class StreamingKMeansTest {
 
     @Before
     public void before() {
+        metricReporterPrefix = MockKVStore.createNonDuplicatePrefix();
+        kvStoreKeys = new ArrayList<>();
+        kvStoreKeys.add(metricReporterPrefix);
+
+        currentModelDataVersion = "0";
+
+        trainId = MockMessageQueues.createMessageQueue();
+        predictId = MockMessageQueues.createMessageQueue();
+        outputId = MockMessageQueues.createMessageQueue();
+        modelDataId = MockMessageQueues.createMessageQueue();
+        queueIds = new ArrayList<>();
+        queueIds.addAll(Arrays.asList(trainId, predictId, outputId, modelDataId));
+
+        clients = new ArrayList<>();
+
         Configuration config = new Configuration();
         config.set(ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
+        config.setString("metrics.reporters", "test_reporter");
+        config.setString(
+                "metrics.reporter.test_reporter.class", TestMetricReporter.class.getName());
+        config.setString("metrics.reporter.test_reporter.interval", "100 MILLISECONDS");
+        config.setString("metrics.reporter.test_reporter.prefix", metricReporterPrefix);
+
         env = StreamExecutionEnvironment.getExecutionEnvironment(config);
         env.setParallelism(4);
         env.enableCheckpointing(100);
         env.setRestartStrategy(RestartStrategies.noRestart());
         tEnv = StreamTableEnvironment.create(env);
-
-        trainId = TestBlockingQueueManager.createBlockingQueue();
-        predictId = TestBlockingQueueManager.createBlockingQueue();
-        outputId = TestBlockingQueueManager.createBlockingQueue();
-        modelDataId = TestBlockingQueueManager.createBlockingQueue();
-
-        queueIds = new ArrayList<>();
-        queueIds.addAll(Arrays.asList(trainId, predictId, outputId, modelDataId));
-
-        clients = new ArrayList<>();
 
         Schema schema = Schema.newBuilder().column("f0", DataTypes.of(DenseVector.class)).build();
 
@@ -155,14 +171,14 @@ public class StreamingKMeansTest {
         trainTable =
                 tEnv.fromDataStream(
                                 env.addSource(
-                                        new MockBlockingQueueSourceFunction<>(trainId),
+                                        new MockSourceFunction<>(trainId),
                                         DenseVectorTypeInfo.INSTANCE),
                                 schema)
                         .as("features");
         predictTable =
                 tEnv.fromDataStream(
                                 env.addSource(
-                                        new MockBlockingQueueSourceFunction<>(predictId),
+                                        new MockSourceFunction<>(predictId),
                                         DenseVectorTypeInfo.INSTANCE),
                                 schema)
                         .as("features");
@@ -172,23 +188,36 @@ public class StreamingKMeansTest {
     private void configModelSink(StreamingKMeansModel streamingModel) {
         Table outputTable = streamingModel.transform(predictTable)[0];
         DataStream<Row> output = tEnv.toDataStream(outputTable);
-        output.addSink(new MockBlockingQueueSinkFunction<>(outputId));
+        output.addSink(new MockSinkFunction<>(outputId));
 
-        DataStream<KMeansModelData> modelDataStream = streamingModel.getLatestModelData();
-        modelDataStream.addSink(new MockBlockingQueueSinkFunction<>(modelDataId));
+        Table modelDataTable = streamingModel.getModelData()[0];
+        DataStream<KMeansModelData> modelDataStream =
+                KMeansModelData.getModelDataStream(modelDataTable);
+        modelDataStream.addSink(new MockSinkFunction<>(modelDataId));
     }
 
-    /** Blocks the thread until the init model data has been broadcast to Model. */
-    private void waitInitModelBroadcastFinish() throws InterruptedException {
-        Thread.sleep(2000);
-        TestBlockingQueueManager.offerAll(predictId, predictData);
+    /** Blocks the thread until Model has set up init model data. */
+    private void waitInitModelDataSetup() {
+        while (!MockKVStore.containsKey(
+                TestMetricReporter.getKey(metricReporterPrefix, "modelDataVersion"))) {
+            Thread.yield();
+        }
         waitModelDataUpdate();
-        TestBlockingQueueManager.poll(outputId, predictData.length);
     }
 
-    /** Blocks the thread until the Model produces the next model-data-update event. */
-    private void waitModelDataUpdate() throws InterruptedException {
-        TestBlockingQueueManager.poll(modelDataId, env.getParallelism());
+    /** Blocks the thread until the Model has received the next model-data-update event. */
+    private void waitModelDataUpdate() {
+        do {
+            String tmpModelDataVersion =
+                    MockKVStore.get(
+                            TestMetricReporter.getKey(metricReporterPrefix, "modelDataVersion"));
+            if (tmpModelDataVersion.equals(currentModelDataVersion)) {
+                Thread.yield();
+            } else {
+                currentModelDataVersion = tmpModelDataVersion;
+                break;
+            }
+        } while (true);
     }
 
     /**
@@ -202,9 +231,9 @@ public class StreamingKMeansTest {
     private void predictAndAssert(
             List<Set<DenseVector>> expectedGroups, String featuresCol, String predictionCol)
             throws Exception {
-        TestBlockingQueueManager.offerAll(predictId, StreamingKMeansTest.predictData);
+        MockMessageQueues.offerAll(predictId, StreamingKMeansTest.predictData);
         List<Row> rawResult2 =
-                TestBlockingQueueManager.poll(outputId, StreamingKMeansTest.predictData.length);
+                MockMessageQueues.poll(outputId, StreamingKMeansTest.predictData.length);
         List<Set<DenseVector>> actualGroups2 =
                 groupFeaturesByPrediction(rawResult2, featuresCol, predictionCol);
         Assert.assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups2));
@@ -261,16 +290,16 @@ public class StreamingKMeansTest {
         configModelSink(streamingModel);
 
         clients.add(env.executeAsync());
-        waitInitModelBroadcastFinish();
+        waitInitModelDataSetup();
 
-        TestBlockingQueueManager.offerAll(trainId, trainData1);
+        MockMessageQueues.offerAll(trainId, trainData1);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups1,
                 streamingKMeans.getFeaturesCol(),
                 streamingKMeans.getPredictionCol());
 
-        TestBlockingQueueManager.offerAll(trainId, trainData2);
+        MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2,
@@ -296,13 +325,13 @@ public class StreamingKMeansTest {
         configModelSink(streamingModel);
 
         clients.add(env.executeAsync());
-        waitInitModelBroadcastFinish();
+        waitInitModelDataSetup();
         predictAndAssert(
                 expectedGroups1,
                 streamingKMeans.getFeaturesCol(),
                 streamingKMeans.getPredictionCol());
 
-        TestBlockingQueueManager.offerAll(trainId, trainData2);
+        MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2,
@@ -325,16 +354,16 @@ public class StreamingKMeansTest {
         configModelSink(streamingModel);
 
         clients.add(env.executeAsync());
-        waitInitModelBroadcastFinish();
+        waitInitModelDataSetup();
 
-        TestBlockingQueueManager.offerAll(trainId, trainData1);
+        MockMessageQueues.offerAll(trainId, trainData1);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups1,
                 streamingKMeans.getFeaturesCol(),
                 streamingKMeans.getPredictionCol());
 
-        TestBlockingQueueManager.offerAll(trainId, trainData2);
+        MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups1,
@@ -361,33 +390,33 @@ public class StreamingKMeansTest {
 
         StreamingKMeansModel streamingModel = loadedKMeans.fit(trainTable);
 
-        String modelDataPassId = TestBlockingQueueManager.createBlockingQueue();
+        String modelDataPassId = MockMessageQueues.createMessageQueue();
         queueIds.add(modelDataPassId);
 
         String modelSavePath = tempFolder.newFolder().getAbsolutePath();
         streamingModel.save(modelSavePath);
         KMeansModelData.getModelDataStream(streamingModel.getModelData()[0])
-                .addSink(new MockBlockingQueueSinkFunction<>(modelDataPassId));
+                .addSink(new MockSinkFunction<>(modelDataPassId));
         clients.add(env.executeAsync());
 
         StreamingKMeansModel loadedModel = StreamingKMeansModel.load(env, modelSavePath);
         DataStream<KMeansModelData> loadedModelData =
                 env.addSource(
-                        new MockBlockingQueueSourceFunction<>(modelDataPassId),
+                        new MockSourceFunction<>(modelDataPassId),
                         TypeInformation.of(KMeansModelData.class));
         loadedModel.setModelData(tEnv.fromDataStream(loadedModelData));
 
         configModelSink(loadedModel);
 
         clients.add(env.executeAsync());
-        waitInitModelBroadcastFinish();
+        waitInitModelDataSetup();
 
         predictAndAssert(
                 expectedGroups1,
                 streamingKMeans.getFeaturesCol(),
                 streamingKMeans.getPredictionCol());
 
-        TestBlockingQueueManager.offerAll(trainId, trainData2);
+        MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2,
@@ -409,10 +438,10 @@ public class StreamingKMeansTest {
         configModelSink(streamingModel);
 
         clients.add(env.executeAsync());
-        waitInitModelBroadcastFinish();
+        MockMessageQueues.poll(modelDataId);
 
-        TestBlockingQueueManager.offerAll(trainId, trainData1);
-        KMeansModelData actualModelData = TestBlockingQueueManager.poll(modelDataId);
+        MockMessageQueues.offerAll(trainId, trainData1);
+        KMeansModelData actualModelData = MockMessageQueues.poll(modelDataId);
 
         KMeansModelData expectedModelData =
                 new KMeansModelData(
@@ -439,12 +468,12 @@ public class StreamingKMeansTest {
                             Vectors.dense(10.1, 100.1), Vectors.dense(-10.2, -100.2)
                         });
 
-        String modelDataInputId = TestBlockingQueueManager.createBlockingQueue();
+        String modelDataInputId = MockMessageQueues.createMessageQueue();
         queueIds.add(modelDataInputId);
         Table modelDataTable =
                 tEnv.fromDataStream(
                         env.addSource(
-                                new MockBlockingQueueSourceFunction<>(modelDataInputId),
+                                new MockSourceFunction<>(modelDataInputId),
                                 TypeInformation.of(KMeansModelData.class)));
 
         StreamingKMeansModel streamingModel =
@@ -456,14 +485,14 @@ public class StreamingKMeansTest {
 
         clients.add(env.executeAsync());
 
-        TestBlockingQueueManager.offerAll(modelDataInputId, modelData1);
-        waitModelDataUpdate();
+        MockMessageQueues.offerAll(modelDataInputId, modelData1);
+        waitInitModelDataSetup();
         predictAndAssert(
                 expectedGroups1,
                 streamingModel.getFeaturesCol(),
                 streamingModel.getPredictionCol());
 
-        TestBlockingQueueManager.offerAll(modelDataInputId, modelData2);
+        MockMessageQueues.offerAll(modelDataInputId, modelData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2,
@@ -486,8 +515,13 @@ public class StreamingKMeansTest {
         clients.clear();
 
         for (String queueId : queueIds) {
-            TestBlockingQueueManager.deleteBlockingQueue(queueId);
+            MockMessageQueues.deleteBlockingQueue(queueId);
         }
         queueIds.clear();
+
+        for (String key : kvStoreKeys) {
+            MockKVStore.remove(key);
+        }
+        kvStoreKeys.clear();
     }
 }

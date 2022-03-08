@@ -18,29 +18,21 @@
 
 package org.apache.flink.ml.util;
 
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 /**
- * A {@link SourceFunction} for unit tests. It collects records from a blocking queue managed by
- * {@link TestBlockingQueueManager}.
+ * A {@link SinkFunction} for unit tests. It outputs records to a blocking queue managed by {@link
+ * MockMessageQueues}.
  */
-public class MockBlockingQueueSourceFunction<T> implements SourceFunction<T> {
+public class MockSinkFunction<T> implements SinkFunction<T> {
     private final String id;
-    private boolean isRunning = true;
 
-    public MockBlockingQueueSourceFunction(String id) {
+    public MockSinkFunction(String id) {
         this.id = id;
     }
 
     @Override
-    public void run(SourceContext<T> context) throws Exception {
-        while (isRunning) {
-            context.collect(TestBlockingQueueManager.poll(id));
-        }
-    }
-
-    @Override
-    public void cancel() {
-        isRunning = false;
+    public void invoke(T value, Context context) throws Exception {
+        MockMessageQueues.offer(id, value);
     }
 }
