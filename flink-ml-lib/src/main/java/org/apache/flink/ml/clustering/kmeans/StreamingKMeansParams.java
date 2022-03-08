@@ -21,7 +21,11 @@ package org.apache.flink.ml.clustering.kmeans;
 import org.apache.flink.ml.common.param.HasBatchStrategy;
 import org.apache.flink.ml.common.param.HasDecayFactor;
 import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.ml.param.*;
+import org.apache.flink.ml.param.DoubleArrayParam;
+import org.apache.flink.ml.param.IntParam;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.param.ParamValidators;
+import org.apache.flink.ml.param.StringParam;
 
 /**
  * Params of {@link StreamingKMeans}.
