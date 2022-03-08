@@ -10,6 +10,10 @@ public class MockKVStore {
 
     private static long counter = 0;
 
+    /**
+     * Returns a prefix string to make sure key-value pairs created in different test cases would
+     * not have the same key.
+     */
     public static synchronized String createNonDuplicatePrefix() {
         String prefix = Long.toString(counter);
         counter++;

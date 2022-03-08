@@ -106,6 +106,8 @@ public class StreamingKMeansModel
 
         private DenseVector[] centroids;
 
+        // TODO: replace this with a complete solution of reading first model data from unbounded
+        // model data stream before processing the first predict data.
         private final List<Row> cache = new ArrayList<>();
 
         // TODO: replace this simple implementation of model data version with the formal API to
@@ -125,23 +127,18 @@ public class StreamingKMeansModel
                     .getMetricGroup()
                     .gauge(
                             "modelDataVersion",
-                            new Gauge<String>() {
-                                @Override
-                                public String getValue() {
-                                    return Integer.toString(modelDataVersion);
-                                }
-                            });
+                            (Gauge<String>) () -> Integer.toString(modelDataVersion));
         }
 
         @Override
         public void processElement1(
                 KMeansModelData modelData,
-                CoProcessFunction<KMeansModelData, Row, Row>.Context ctx,
+                CoProcessFunction<KMeansModelData, Row, Row>.Context context,
                 Collector<Row> collector) {
             centroids = modelData.centroids;
             modelDataVersion++;
             for (Row dataPoint : cache) {
-                processElement2(dataPoint, ctx, collector);
+                processElement2(dataPoint, context, collector);
             }
             cache.clear();
         }
@@ -149,7 +146,7 @@ public class StreamingKMeansModel
         @Override
         public void processElement2(
                 Row dataPoint,
-                CoProcessFunction<KMeansModelData, Row, Row>.Context ctx,
+                CoProcessFunction<KMeansModelData, Row, Row>.Context context,
                 Collector<Row> collector) {
             if (centroids == null) {
                 cache.add(dataPoint);
