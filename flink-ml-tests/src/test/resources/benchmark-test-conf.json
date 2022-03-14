@@ -1,0 +1,19 @@
+{
+  "benchmarks": [
+    {
+      "name": "KMeansBenchmark1",
+      "className": "org.apache.flink.ml.clustering.kmeans.KMeansBenchmark",
+      "paramMap": {
+        "seed": "null",
+        "featuresCol": "\"features\"",
+        "maxIter": "2",
+        "k": "2",
+        "distanceMeasure": "\"euclidean\"",
+        "initMode": "\"random\"",
+        "predictionCol": "\"prediction\"",
+        "dataSize": "10000",
+        "dims": "10"
+      }
+    }
+  ]
+}

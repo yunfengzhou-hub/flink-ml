@@ -57,6 +57,7 @@ under the License.
     <module>flink-ml-lib</module>
     <module>flink-ml-tests</module>
     <module>flink-ml-uber</module>
+      <module>flink-ml-benchmark</module>
   </modules>
 
   <properties>
@@ -259,6 +260,13 @@ under the License.
             </manifest>
           </archive>
         </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
 
       <plugin>
@@ -343,6 +351,8 @@ under the License.
             <exclude>**/LICENSE*</exclude>
             <!-- artifacts created during release process -->
             <exclude>release/**</exclude>
+            <!-- Test Data. -->
+            <exclude>flink-ml-tests/src/test/resources/*.json</exclude>
           </excludes>
         </configuration>
       </plugin>
