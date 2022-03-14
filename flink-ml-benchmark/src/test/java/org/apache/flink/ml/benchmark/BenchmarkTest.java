@@ -18,7 +18,7 @@
 
 package org.apache.flink.ml.benchmark;
 
-import org.apache.flink.ml.clustering.kmeans.KMeansBenchmark;
+import org.apache.flink.ml.benchmark.clustering.KMeansBenchmark;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 

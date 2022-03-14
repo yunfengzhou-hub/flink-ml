@@ -16,10 +16,13 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.clustering.kmeans;
+package org.apache.flink.ml.benchmark.clustering;
 
 import org.apache.flink.ml.benchmark.DataGenerator;
 import org.apache.flink.ml.benchmark.EstimatorBenchmark;
+import org.apache.flink.ml.clustering.kmeans.KMeans;
+import org.apache.flink.ml.clustering.kmeans.KMeansModel;
+import org.apache.flink.ml.clustering.kmeans.KMeansParams;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 

@@ -18,7 +18,7 @@
 
 package org.apache.flink.ml.benchmark;
 
-import org.apache.flink.ml.clustering.kmeans.KMeansBenchmark;
+import org.apache.flink.ml.benchmark.clustering.KMeansBenchmark;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.WithParams;
 import org.apache.flink.ml.util.ParamUtils;

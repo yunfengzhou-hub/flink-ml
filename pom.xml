@@ -352,7 +352,7 @@ under the License.
             <!-- artifacts created during release process -->
             <exclude>release/**</exclude>
             <!-- Test Data. -->
-            <exclude>flink-ml-tests/src/test/resources/*.json</exclude>
+            <exclude>flink-ml-benchmark/src/main/resources/*.json</exclude>
           </excludes>
         </configuration>
       </plugin>
