@@ -16,27 +16,8 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.param;
+package org.apache.flink.ml.benchmark.data;
 
-import java.io.IOException;
-
-/** Class for the long parameter. */
-public class LongParam extends Param<Long> {
-
-    public LongParam(
-            String name, String description, Long defaultValue, ParamValidator<Long> validator) {
-        super(name, Long.class, description, defaultValue, validator);
-    }
-
-    public LongParam(String name, String description, Long defaultValue) {
-        this(name, description, defaultValue, ParamValidators.alwaysTrue());
-    }
-
-    @Override
-    public Long jsonDecode(Object json) throws IOException {
-        if (json instanceof Integer) {
-            return ((Integer) json).longValue();
-        }
-        return (Long) json;
-    }
-}
+/** Interface for generating data as input table arrays. */
+public interface InputDataGenerator<T extends InputDataGenerator<T>>
+        extends DataGenerator<T>, InputDataGeneratorParams<T> {}

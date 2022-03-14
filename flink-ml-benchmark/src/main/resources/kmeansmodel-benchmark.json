@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "KMeansModel-1": {
+    "stage": {
+      "className": "org.apache.flink.ml.clustering.kmeans.KMeansModel",
+      "paramMap": {
+        "featuresCol": "features",
+        "k": 2,
+        "distanceMeasure": "euclidean",
+        "predictionCol": "prediction"
+      }
+    },
+    "modelData":  {
+      "className": "org.apache.flink.ml.benchmark.data.clustering.KMeansModelDataGenerator",
+      "paramMap": {
+        "seed": null,
+        "arraySize": 2,
+        "vectorDim": 10
+      }
+    },
+    "inputData": {
+      "className": "org.apache.flink.ml.benchmark.data.common.DenseVectorGenerator",
+      "paramMap": {
+        "seed": null,
+        "colNames": ["features"],
+        "numValues": 10000,
+        "vectorDim": 10
+      }
+    }
+  }
+}
