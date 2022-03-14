@@ -16,27 +16,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.param;
+package org.apache.flink.ml.benchmark.data;
 
-import java.io.IOException;
+import org.apache.flink.ml.common.param.HasOutputCols;
+import org.apache.flink.ml.common.param.HasSeed;
+import org.apache.flink.ml.param.LongParam;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.param.ParamValidators;
 
-/** Class for the long parameter. */
-public class LongParam extends Param<Long> {
+/** Interface for the common generator params. */
+public interface CommonDataGeneratorParams<T> extends HasSeed<T>, HasOutputCols<T> {
+    Param<Long> NUM_VALUES =
+            new LongParam(
+                    "numValues", "Number of data to be generated.", 10L, ParamValidators.gt(0));
 
-    public LongParam(
-            String name, String description, Long defaultValue, ParamValidator<Long> validator) {
-        super(name, Long.class, description, defaultValue, validator);
+    default long getNumValues() {
+        return get(NUM_VALUES);
     }
 
-    public LongParam(String name, String description, Long defaultValue) {
-        this(name, description, defaultValue, ParamValidators.alwaysTrue());
-    }
-
-    @Override
-    public Long jsonDecode(Object json) throws IOException {
-        if (json instanceof Integer) {
-            return ((Integer) json).longValue();
-        }
-        return (Long) json;
+    default T setNumValues(long value) {
+        return set(NUM_VALUES, value);
     }
 }

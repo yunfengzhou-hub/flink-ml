@@ -19,15 +19,13 @@
 package org.apache.flink.ml.common.param;
 
 import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.param.ParamValidators;
 import org.apache.flink.ml.param.StringArrayParam;
 import org.apache.flink.ml.param.WithParams;
 
 /** Interface for the shared outputCols param. */
 public interface HasOutputCols<T> extends WithParams<T> {
     Param<String[]> OUTPUT_COLS =
-            new StringArrayParam(
-                    "outputCols", "Output column names.", null, ParamValidators.nonEmptyArray());
+            new StringArrayParam("outputCols", "Output column names.", new String[0]);
 
     default String[] getOutputCols() {
         return get(OUTPUT_COLS);

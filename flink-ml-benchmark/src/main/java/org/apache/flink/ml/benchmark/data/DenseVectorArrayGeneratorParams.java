@@ -16,27 +16,26 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.param;
+package org.apache.flink.ml.benchmark.data;
 
-import java.io.IOException;
+import org.apache.flink.ml.param.IntParam;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.param.ParamValidators;
 
-/** Class for the long parameter. */
-public class LongParam extends Param<Long> {
+/** Interface for the vector array generator params. */
+public interface DenseVectorArrayGeneratorParams<T> extends DenseVectorGeneratorParams<T> {
+    Param<Integer> ARRAY_SIZE =
+            new IntParam(
+                    "arraySize",
+                    "Number of elements in the generated array.",
+                    1,
+                    ParamValidators.gt(0));
 
-    public LongParam(
-            String name, String description, Long defaultValue, ParamValidator<Long> validator) {
-        super(name, Long.class, description, defaultValue, validator);
+    default int getArraySize() {
+        return get(ARRAY_SIZE);
     }
 
-    public LongParam(String name, String description, Long defaultValue) {
-        this(name, description, defaultValue, ParamValidators.alwaysTrue());
-    }
-
-    @Override
-    public Long jsonDecode(Object json) throws IOException {
-        if (json instanceof Integer) {
-            return ((Integer) json).longValue();
-        }
-        return (Long) json;
+    default T setArraySize(int value) {
+        return set(ARRAY_SIZE, value);
     }
 }
