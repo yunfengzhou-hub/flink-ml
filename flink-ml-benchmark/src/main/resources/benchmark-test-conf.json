@@ -1,28 +1,5 @@
 {
   "_version": 1,
-  "KMeans-1": {
-    "stage": {
-      "className": "org.apache.flink.ml.clustering.kmeans.KMeans",
-      "paramMap": {
-        "seed": "null",
-        "featuresCol": "\"features\"",
-        "maxIter": "2",
-        "k": "2",
-        "distanceMeasure": "\"euclidean\"",
-        "initMode": "\"random\"",
-        "predictionCol": "\"prediction\""
-      }
-    },
-    "inputs": {
-      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator",
-      "paramMap": {
-        "seed": "null",
-        "featuresCol": "\"features\"",
-        "dataSize": "10000",
-        "dims": "10"
-      }
-    }
-  },
   "KMeansModel-1": {
     "stage": {
       "className": "org.apache.flink.ml.clustering.kmeans.KMeansModel",

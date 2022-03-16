@@ -20,6 +20,7 @@ package org.apache.flink.ml.benchmark;
 
 import org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
+import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.param.WithParams;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -95,14 +96,13 @@ public class BenchmarkTest {
         Map<String, Map<String, ?>> benchmarkParamsMap =
                 BenchmarkUtils.parseBenchmarkParams(jsonMap);
 
-        assertEquals(2, benchmarkParamsMap.size());
-        assertTrue(benchmarkParamsMap.containsKey("KMeans-1"));
+        assertEquals(1, benchmarkParamsMap.size());
         assertTrue(benchmarkParamsMap.containsKey("KMeansModel-1"));
 
-        KMeans expectedStage = new KMeans().setMaxIter(2);
+        KMeansModel expectedStage = new KMeansModel();
         WithParams<?> actualStage =
                 BenchmarkUtils.parseInstance(
-                        (Map<String, ?>) benchmarkParamsMap.get("KMeans-1").get("stage"));
+                        (Map<String, ?>) benchmarkParamsMap.get("KMeansModel-1").get("stage"));
         assertEquals(expectedStage.getClass(), actualStage.getClass());
         assertEquals(expectedStage.getParamMap(), actualStage.getParamMap());
 
@@ -131,7 +131,6 @@ public class BenchmarkTest {
 
         Benchmark.main(new String[] {configFile.getAbsolutePath()});
 
-        assertTrue(outContent.toString().contains("KMeans-1"));
         assertTrue(outContent.toString().contains("KMeansModel-1"));
     }
 }
