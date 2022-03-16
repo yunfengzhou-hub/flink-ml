@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark;
+package org.apache.flink.ml.benchmark.generator;
 
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
@@ -37,7 +37,7 @@ import org.apache.flink.util.NumberSequenceIterator;
 import java.util.Random;
 
 /** Utility methods to generate data for benchmarks. */
-public class DataGenerator {
+public class GeneratorUtils {
     /**
      * Generates random continuous vectors.
      *
@@ -81,7 +81,7 @@ public class DataGenerator {
         }
 
         @Override
-        public Vector map(Long value) throws Exception {
+        public Vector map(Long value) {
             double[] values = new double[dims];
             for (int i = 0; i < dims; i++) {
                 values[i] = random.nextDouble();

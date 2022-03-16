@@ -18,67 +18,120 @@
 
 package org.apache.flink.ml.benchmark;
 
-import org.apache.flink.ml.benchmark.clustering.KMeansBenchmark;
+import org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator;
+import org.apache.flink.ml.clustering.kmeans.KMeans;
+import org.apache.flink.ml.param.WithParams;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
+import org.apache.commons.io.FileUtils;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.io.PrintStream;
+import java.util.Map;
 
+import static org.apache.flink.ml.util.ReadWriteUtils.OBJECT_MAPPER;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Tests {@link Benchmark}. */
+/** Tests benchmarks. */
+@SuppressWarnings("unchecked")
 public class BenchmarkTest {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
-    // Tests the whole life cycle of using a benchmark, including loading from file, executing the
-    // benchmark, check results, and save results to file.
+    private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+    private final PrintStream originalOut = System.out;
+
+    @Before
+    public void before() {
+        System.setOut(new PrintStream(outContent));
+    }
+
+    @After
+    public void after() {
+        System.setOut(originalOut);
+        outContent.reset();
+    }
+
     @Test
-    public void testLifeCycle() throws Exception {
+    public void testBenchmarkName() {
+        assertTrue(BenchmarkUtils.isValidBenchmarkName("Aa0_-1"));
+        assertFalse(BenchmarkUtils.isValidBenchmarkName("_A-1"));
+        assertFalse(BenchmarkUtils.isValidBenchmarkName("-A-1"));
+    }
+
+    @Test
+    public void testExecuteBenchmark() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-        Benchmark<?> benchmark =
-                new KMeansBenchmark()
-                        .setName("KMeansBenchmark1")
-                        .setMaxIter(2)
-                        .setDataSize(10000)
-                        .setDims(10);
+        KMeans kMeans = new KMeans();
+        KMeansInputsGenerator inputsGenerator = new KMeansInputsGenerator();
+
+        BenchmarkResult result =
+                BenchmarkUtils.runBenchmark("testBenchmarkName", tEnv, kMeans, inputsGenerator);
+
+        BenchmarkUtils.printResult(result);
+        assertTrue(outContent.toString().contains("testBenchmarkName"));
+        assertTrue(outContent.toString().contains(result.executionTimeMillis.toString()));
+    }
+
+    @Test
+    public void testLoadAndPrint() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         InputStream inputStream =
                 this.getClass().getClassLoader().getResourceAsStream("benchmark-test-conf.json");
+        Map<String, ?> jsonMap = OBJECT_MAPPER.readValue(inputStream, Map.class);
+        Map<String, Map<String, ?>> benchmarkParamsMap =
+                BenchmarkUtils.parseBenchmarkParams(jsonMap);
 
-        List<Benchmark<?>> actualBenchmarks = Benchmark.parseFrom(inputStream);
+        assertEquals(2, benchmarkParamsMap.size());
+        assertTrue(benchmarkParamsMap.containsKey("KMeans-1"));
+        assertTrue(benchmarkParamsMap.containsKey("KMeansModel-1"));
 
-        assertEquals(actualBenchmarks.size(), 1);
-        assertEquals(benchmark.getName(), actualBenchmarks.get(0).getName());
-        assertEquals(benchmark.getParamMap(), actualBenchmarks.get(0).getParamMap());
+        KMeans expectedStage = new KMeans().setMaxIter(2);
+        WithParams<?> actualStage =
+                BenchmarkUtils.parseInstance(
+                        (Map<String, ?>) benchmarkParamsMap.get("KMeans-1").get("stage"));
+        assertEquals(expectedStage.getClass(), actualStage.getClass());
+        assertEquals(expectedStage.getParamMap(), actualStage.getParamMap());
 
-        long estimatedTime = System.currentTimeMillis();
-        BenchmarkResult result = benchmark.execute(tEnv);
-        estimatedTime = System.currentTimeMillis() - estimatedTime;
+        for (String benchmarkName : benchmarkParamsMap.keySet()) {
+            long estimatedTime = System.currentTimeMillis();
+            BenchmarkResult result =
+                    BenchmarkUtils.runBenchmark(
+                            benchmarkName, tEnv, (Map<String, ?>) jsonMap.get(benchmarkName));
+            estimatedTime = System.currentTimeMillis() - estimatedTime;
 
-        assertTrue(result.getExecutionTime() > 0);
-        assertTrue(result.getExecutionTime() <= estimatedTime);
+            assertTrue(result.executionTimeMillis > 0);
+            assertTrue(result.executionTimeMillis <= estimatedTime);
 
-        String savePath = tempFolder.newFolder().getAbsolutePath();
-        String saveFileName = savePath + "/benchmark.txt";
+            BenchmarkUtils.printResult(result);
+            assertTrue(outContent.toString().contains(benchmarkName));
+            assertTrue(outContent.toString().contains(result.executionTimeMillis.toString()));
+        }
+    }
 
-        BenchmarkResult.save(saveFileName, result);
+    @Test
+    public void testMain() throws Exception {
+        File configFile = new File(tempFolder.newFolder().getAbsolutePath() + "/test-conf.json");
+        InputStream inputStream =
+                this.getClass().getClassLoader().getResourceAsStream("benchmark-test-conf.json");
+        FileUtils.copyInputStreamToFile(inputStream, configFile);
 
-        BufferedReader reader = new BufferedReader(new FileReader(saveFileName));
+        Benchmark.main(new String[] {configFile.getAbsolutePath()});
 
-        String savedContent = reader.lines().collect(Collectors.joining(System.lineSeparator()));
-
-        assertTrue(savedContent.contains(benchmark.getName()));
-        assertTrue(savedContent.contains(Long.toString(result.getExecutionTime())));
+        assertTrue(outContent.toString().contains("KMeans-1"));
+        assertTrue(outContent.toString().contains("KMeansModel-1"));
     }
 }

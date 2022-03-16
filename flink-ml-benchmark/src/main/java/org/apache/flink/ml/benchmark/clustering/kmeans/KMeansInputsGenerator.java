@@ -16,29 +16,44 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark.clustering;
+package org.apache.flink.ml.benchmark.clustering.kmeans;
 
-import org.apache.flink.ml.benchmark.DataGenerator;
-import org.apache.flink.ml.benchmark.EstimatorBenchmark;
-import org.apache.flink.ml.clustering.kmeans.KMeans;
-import org.apache.flink.ml.clustering.kmeans.KMeansModel;
+import org.apache.flink.ml.benchmark.generator.DataGenerator;
+import org.apache.flink.ml.benchmark.generator.GeneratorParams;
+import org.apache.flink.ml.benchmark.generator.GeneratorUtils;
 import org.apache.flink.ml.clustering.kmeans.KMeansParams;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
-/** Benchmark of {@link KMeans}. */
-public class KMeansBenchmark extends EstimatorBenchmark<KMeans, KMeansModel, KMeansBenchmark>
-        implements KMeansParams<KMeansBenchmark> {
+import java.util.HashMap;
+import java.util.Map;
 
-    public KMeansBenchmark() {
-        super(KMeans.class);
+/**
+ * Class that generates table arrays containing inputs for {@link
+ * org.apache.flink.ml.clustering.kmeans.KMeans} operator.
+ */
+public class KMeansInputsGenerator
+        implements DataGenerator<KMeansInputsGenerator>,
+                GeneratorParams<KMeansInputsGenerator>,
+                KMeansParams<KMeansInputsGenerator> {
+    private final Map<Param<?>, Object> paramMap = new HashMap<>();
+
+    public KMeansInputsGenerator() {
+        ParamUtils.initializeMapWithDefaultValues(paramMap, this);
     }
 
     @Override
-    public Table[] getTrainData(StreamTableEnvironment tEnv) {
+    public Table[] getData(StreamTableEnvironment tEnv) {
         Table dataTable =
-                DataGenerator.generateRandomContinuousVectorStream(
+                GeneratorUtils.generateRandomContinuousVectorStream(
                         tEnv, getDataSize(), getSeed(), getDims());
         return new Table[] {dataTable.as(getFeaturesCol())};
+    }
+
+    @Override
+    public Map<Param<?>, Object> getParamMap() {
+        return paramMap;
     }
 }

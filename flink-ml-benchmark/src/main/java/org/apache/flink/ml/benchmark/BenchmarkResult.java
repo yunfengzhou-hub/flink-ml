@@ -18,41 +18,17 @@
 
 package org.apache.flink.ml.benchmark;
 
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-
-/** The result of executing a {@link Benchmark}. */
+/** The result of executing a benchmark. */
 public class BenchmarkResult {
-    private long executionTime;
-    private final Benchmark<?> benchmark;
+    /** The name of the benchmark. */
+    public String name;
 
-    public BenchmarkResult(Benchmark<?> benchmark) {
-        this.benchmark = benchmark;
-    }
+    /** The total execution time of the benchmark flink job. Unit: milliseconds */
+    public Double executionTimeMillis;
 
-    public long getExecutionTime() {
-        return executionTime;
-    }
+    /** The average throughput of the benchmark flink job. Unit: transaction per second */
+    public Double throughputTPS;
 
-    public BenchmarkResult setExecutionTime(long executionTime) {
-        this.executionTime = executionTime;
-        return this;
-    }
-
-    public static void save(String fileName, BenchmarkResult... results) throws IOException {
-        FileWriter fileWriter = new FileWriter(fileName);
-        PrintWriter printWriter = new PrintWriter(fileWriter);
-
-        printWriter.println("This file contains " + results.length + " benchmark results.");
-
-        for (BenchmarkResult result : results) {
-            printWriter.println();
-            printWriter.println("Benchmark " + result.benchmark.getName() + ":");
-            printWriter.println("Execution Time: " + result.getExecutionTime());
-        }
-
-        printWriter.println();
-        printWriter.close();
-    }
+    /** The average latency of the benchmark flink job. Unit: milliseconds */
+    public Double latencyMillis;
 }

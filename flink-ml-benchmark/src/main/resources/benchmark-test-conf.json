@@ -1,8 +1,8 @@
 {
-  "benchmarks": [
-    {
-      "name": "KMeansBenchmark1",
-      "className": "org.apache.flink.ml.clustering.kmeans.KMeansBenchmark",
+  "_version": 1,
+  "KMeans-1": {
+    "stage": {
+      "className": "org.apache.flink.ml.clustering.kmeans.KMeans",
       "paramMap": {
         "seed": "null",
         "featuresCol": "\"features\"",
@@ -10,10 +10,45 @@
         "k": "2",
         "distanceMeasure": "\"euclidean\"",
         "initMode": "\"random\"",
-        "predictionCol": "\"prediction\"",
+        "predictionCol": "\"prediction\""
+      }
+    },
+    "inputs": {
+      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator",
+      "paramMap": {
+        "seed": "null",
+        "featuresCol": "\"features\"",
         "dataSize": "10000",
         "dims": "10"
       }
     }
-  ]
+  },
+  "KMeansModel-1": {
+    "stage": {
+      "className": "org.apache.flink.ml.clustering.kmeans.KMeansModel",
+      "paramMap": {
+        "featuresCol": "\"features\"",
+        "k": "2",
+        "distanceMeasure": "\"euclidean\"",
+        "predictionCol": "\"prediction\""
+      }
+    },
+    "modelData":  {
+      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelDataGenerator",
+      "paramMap": {
+        "seed": "null",
+        "k": "2",
+        "dims": "10"
+      }
+    },
+    "inputs": {
+      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelInputsGenerator",
+      "paramMap": {
+        "seed": "null",
+        "featuresCol": "\"features\"",
+        "dataSize": "10000",
+        "dims": "10"
+      }
+    }
+  }
 }

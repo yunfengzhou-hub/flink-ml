@@ -16,35 +16,17 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark;
+package org.apache.flink.ml.benchmark.generator;
 
-import org.apache.flink.ml.param.IntParam;
-import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.param.ParamValidators;
 import org.apache.flink.ml.param.WithParams;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
-/** Interface for the shared benchmark params. */
-public interface BenchmarkParams<T> extends WithParams<T> {
-    Param<Integer> DATA_SIZE =
-            new IntParam(
-                    "dataSize", "Size of test data to be generated.", 20, ParamValidators.gt(0));
-
-    Param<Integer> DIMS =
-            new IntParam("dims", "Size of data to be generated.", 20, ParamValidators.gt(0));
-
-    default int getDataSize() {
-        return get(DATA_SIZE);
-    }
-
-    default T setDataSize(int value) {
-        return set(DATA_SIZE, value);
-    }
-
-    default int getDims() {
-        return get(DIMS);
-    }
-
-    default T setDims(int value) {
-        return set(DIMS, value);
-    }
+/** Interface for generating data as table arrays. */
+public interface DataGenerator<T extends DataGenerator<T>> extends WithParams<T> {
+    /**
+     * Generate an array of Tables containing the data to be generated in the provided stream table
+     * environment.
+     */
+    Table[] getData(StreamTableEnvironment tEnv);
 }
