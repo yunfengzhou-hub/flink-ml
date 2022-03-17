@@ -36,15 +36,15 @@ public class GeneratorUtils {
      * Generates random continuous vectors.
      *
      * @param env The stream execution environment.
-     * @param numExamples Number of examples to generate in total.
+     * @param numData Number of examples to generate in total.
      * @param seed The seed to generate seed on each partition.
      * @param dims Dimension of the vectors to be generated.
      * @return The generated vector stream.
      */
     public static DataStream<DenseVector> generateRandomContinuousVectorStream(
-            StreamExecutionEnvironment env, long numExamples, long seed, int dims) {
+            StreamExecutionEnvironment env, long numData, long seed, int dims) {
         return env.fromParallelCollection(
-                        new NumberSequenceIterator(1L, numExamples), BasicTypeInfo.LONG_TYPE_INFO)
+                        new NumberSequenceIterator(1L, numData), BasicTypeInfo.LONG_TYPE_INFO)
                 .map(new GenerateRandomContinuousVectorFunction(seed, dims));
     }
 
@@ -80,16 +80,16 @@ public class GeneratorUtils {
      * Generates random continuous vector arrays.
      *
      * @param env The stream execution environment.
-     * @param numExamples Number of examples to generate in total.
+     * @param numData Number of examples to generate in total.
      * @param arraySize Size of the vector array.
      * @param seed The seed to generate seed on each partition.
      * @param dims Dimension of the vectors to be generated.
      * @return The generated vector stream.
      */
     public static DataStream<DenseVector[]> generateRandomContinuousVectorArrayStream(
-            StreamExecutionEnvironment env, long numExamples, int arraySize, long seed, int dims) {
+            StreamExecutionEnvironment env, long numData, int arraySize, long seed, int dims) {
         return env.fromParallelCollection(
-                        new NumberSequenceIterator(1L, numExamples), BasicTypeInfo.LONG_TYPE_INFO)
+                        new NumberSequenceIterator(1L, numData), BasicTypeInfo.LONG_TYPE_INFO)
                 .map(new GenerateRandomContinuousVectorArrayFunction(seed, dims, arraySize));
     }
 

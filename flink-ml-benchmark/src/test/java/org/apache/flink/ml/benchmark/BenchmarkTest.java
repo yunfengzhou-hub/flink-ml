@@ -70,12 +70,17 @@ public class BenchmarkTest {
     }
 
     @Test
-    public void testExecuteBenchmark() throws Exception {
+    public void testCreateAndExecute() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-        KMeans kMeans = new KMeans();
-        KMeansInputsGenerator inputsGenerator = new KMeansInputsGenerator();
+        KMeans kMeans = new KMeans().setK(5).setFeaturesCol("test_feature");
+        KMeansInputsGenerator inputsGenerator =
+                new KMeansInputsGenerator()
+                        .setK(5)
+                        .setFeaturesCol("test_feature")
+                        .setNumData(1000)
+                        .setDims(10);
 
         BenchmarkResult result =
                 BenchmarkUtils.runBenchmark("testBenchmarkName", tEnv, kMeans, inputsGenerator);

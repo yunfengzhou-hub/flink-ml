@@ -38,7 +38,8 @@ import java.util.Map;
 
 /**
  * Class that generates table arrays containing inputs for {@link
- * org.apache.flink.ml.clustering.kmeans.KMeans}.
+ * org.apache.flink.ml.clustering.kmeans.KMeans} and {@link
+ * org.apache.flink.ml.clustering.kmeans.KMeansModel}.
  */
 public class KMeansInputsGenerator
         implements DataGenerator<KMeansInputsGenerator>,
@@ -55,7 +56,7 @@ public class KMeansInputsGenerator
         StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
         DataStream<DenseVector> stream =
                 GeneratorUtils.generateRandomContinuousVectorStream(
-                        env, getDataSize(), getSeed(), getDims());
+                        env, getNumData(), getSeed(), getDims());
         Schema schema = Schema.newBuilder().column("f0", DataTypes.of(DenseVector.class)).build();
         Table table = tEnv.fromDataStream(stream, schema).as(getFeaturesCol());
         return new Table[] {table};

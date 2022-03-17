@@ -19,11 +19,11 @@
       }
     },
     "inputs": {
-      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelInputsGenerator",
+      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator",
       "paramMap": {
         "seed": "null",
         "featuresCol": "\"features\"",
-        "dataSize": "10000",
+        "numData": "10000",
         "dims": "10"
       }
     }

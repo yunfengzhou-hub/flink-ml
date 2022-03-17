@@ -44,18 +44,14 @@ cd $flink_ml_root_path/lib
 flink_ml_fat_jar_name="flink-ml-fat.jar"
 if ! [ -f $flink_ml_fat_jar_name ]; then
     echo "Creating fat jar containing all flink ml dependencies to be submitted." 1>&2
-
     mkdir tmp
     cd tmp
-
     for entry in "$flink_ml_root_path"/lib/*; do
       if [[ $entry == *.jar ]]; then
           unzip -quo $entry
       fi
     done
-
     cd ..
-
     jar -cf flink-ml-fat.jar -C tmp .
     rm -rf tmp
 fi

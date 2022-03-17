@@ -126,15 +126,9 @@ You can also configure and execute benchmarks through Command-Line Interface
 
 ### Prerequisites
 
-Before using Flink ML's CLI, make sure you have installed the following in your
-local environment.
-
-- Java 8
-- Maven 3.1.0 or higher
-- Flink 1.14
-
-And make sure that you have started a Flink cluster locally. If not, you can
-start a standalone session with the following command.
+Before using Flink ML's CLI, make sure you have installed Flink 1.14 in your
+local environment, and that you have started a Flink cluster locally. If not,
+you can start a standalone session with the following command.
 
 ```bash
 $ start-cluster
@@ -159,7 +153,6 @@ In the binary distribution's folder, execute the following command to run an
 example benchmark.
 
 ```bash
-
 $ ./bin/flink-ml-benchmark.sh ./examples/benchmark-example-conf.json
 ```
 
@@ -221,8 +214,8 @@ data needs to be explicitly set, the JSON object should also contain
 The value of `"stage"`, `"inputs"` or `"modelData"` should be a JSON object
 containing `"className"` and `paramMap`.
 
-- `"className"`'s value should be the full name of a `WithParams` subclass. For
-  `"stage"`, the class should be a subclass of `Stage`. For `"inputs"` or
+- `"className"`'s value should be the full classpath of a `WithParams` subclass.
+  For `"stage"`, the class should be a subclass of `Stage`. For `"inputs"` or
   `"modelData"`, the class should be a subclass of `DataGenerator`.
 
 - `"paramMap"`'s value should be a JSON object containing the parameters related
@@ -254,11 +247,11 @@ follows.
       }
     },
     "inputs": {
-      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelInputsGenerator",
+      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator",
       "paramMap": {
         "seed": "null",
         "featuresCol": "\"features\"",
-        "dataSize": "10000",
+        "numData": "10000",
         "dims": "10"
       }
     }

@@ -24,7 +24,6 @@ import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.util.Arrays;
 import java.util.Map;
 
 import static org.apache.flink.ml.util.ReadWriteUtils.OBJECT_MAPPER;
@@ -38,22 +37,23 @@ public class Benchmark {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-        System.err.println("Benchmark arguments: " + Arrays.toString(args));
-
         InputStream inputStream = new FileInputStream(args[0]);
         Map<String, ?> jsonMap = OBJECT_MAPPER.readValue(inputStream, Map.class);
         Map<String, Map<String, ?>> benchmarkParamsMap =
                 BenchmarkUtils.parseBenchmarkParams(jsonMap);
-
-        System.err.println("Read paramMap with keys " + benchmarkParamsMap.keySet());
+        System.err.println("Found benchmarks " + benchmarkParamsMap.keySet());
 
         for (String benchmarkName : benchmarkParamsMap.keySet()) {
-            System.err.println("Running benchmark " + benchmarkName);
+            System.err.println("Running benchmark " + benchmarkName + ".");
+
+            // Redirect all flink execution logs to stderr.
             System.setOut(System.err);
             BenchmarkResult result =
                     BenchmarkUtils.runBenchmark(
-                            benchmarkName, tEnv, (Map<String, ?>) jsonMap.get(benchmarkName));
+                            benchmarkName, tEnv, benchmarkParamsMap.get(benchmarkName));
             System.setOut(originalOut);
+
+            System.err.println("Completed benchmark " + benchmarkName + ".");
             BenchmarkUtils.printResult(result);
         }
     }

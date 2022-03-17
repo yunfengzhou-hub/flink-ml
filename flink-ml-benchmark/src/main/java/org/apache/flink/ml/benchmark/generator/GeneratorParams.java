@@ -20,24 +20,28 @@ package org.apache.flink.ml.benchmark.generator;
 
 import org.apache.flink.ml.common.param.HasSeed;
 import org.apache.flink.ml.param.IntParam;
+import org.apache.flink.ml.param.LongParam;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.ParamValidators;
 
-/** Interface for the shared generator params. */
+/** Interface for the generator params. */
 public interface GeneratorParams<T> extends HasSeed<T> {
-    Param<Integer> DATA_SIZE =
-            new IntParam(
-                    "dataSize", "Size of test data to be generated.", 20, ParamValidators.gt(0));
+    Param<Long> NUM_DATA =
+            new LongParam("numData", "Number of data to be generated.", 10L, ParamValidators.gt(0));
 
     Param<Integer> DIMS =
-            new IntParam("dims", "Size of data to be generated.", 20, ParamValidators.gt(0));
+            new IntParam(
+                    "dims",
+                    "Dimension of vector-typed data to be generated.",
+                    1,
+                    ParamValidators.gt(0));
 
-    default int getDataSize() {
-        return get(DATA_SIZE);
+    default long getNumData() {
+        return get(NUM_DATA);
     }
 
-    default T setDataSize(int value) {
-        return set(DATA_SIZE, value);
+    default T setNumData(long value) {
+        return set(NUM_DATA, value);
     }
 
     default int getDims() {

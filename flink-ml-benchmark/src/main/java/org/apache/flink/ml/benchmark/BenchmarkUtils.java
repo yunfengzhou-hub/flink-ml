@@ -82,24 +82,28 @@ public class BenchmarkUtils {
      * @return Results of the executed benchmark.
      */
     public static BenchmarkResult runBenchmark(
-            String name, StreamTableEnvironment tEnv, Map<String, ?> jsonMap) throws Exception {
-        Stage<?> stage = (Stage<?>) parseInstance((Map<String, ?>) jsonMap.get("stage"));
+            String name, StreamTableEnvironment tEnv, Map<String, ?> benchmarkParamsMap)
+            throws Exception {
+        Stage<?> stage = (Stage<?>) parseInstance((Map<String, ?>) benchmarkParamsMap.get("stage"));
 
         BenchmarkResult result;
-        if (jsonMap.size() == 2 && jsonMap.containsKey("inputs")) {
+        if (benchmarkParamsMap.size() == 2) {
             DataGenerator<?> inputsGenerator =
-                    (DataGenerator<?>) parseInstance((Map<String, ?>) jsonMap.get("inputs"));
+                    (DataGenerator<?>)
+                            parseInstance((Map<String, ?>) benchmarkParamsMap.get("inputs"));
             result = runBenchmark(name, tEnv, stage, inputsGenerator);
-        } else if (jsonMap.size() == 3 && stage instanceof Model) {
+        } else if (benchmarkParamsMap.size() == 3 && stage instanceof Model) {
             DataGenerator<?> inputsGenerator =
-                    (DataGenerator<?>) parseInstance((Map<String, ?>) jsonMap.get("inputs"));
+                    (DataGenerator<?>)
+                            parseInstance((Map<String, ?>) benchmarkParamsMap.get("inputs"));
             DataGenerator<?> modelDataGenerator =
-                    (DataGenerator<?>) parseInstance((Map<String, ?>) jsonMap.get("modelData"));
+                    (DataGenerator<?>)
+                            parseInstance((Map<String, ?>) benchmarkParamsMap.get("modelData"));
             result =
                     runBenchmark(name, tEnv, (Model<?>) stage, modelDataGenerator, inputsGenerator);
         } else {
             throw new IllegalArgumentException(
-                    "Unsupported json map with keys " + jsonMap.keySet());
+                    "Unsupported json map with keys " + benchmarkParamsMap.keySet());
         }
 
         return result;
@@ -198,8 +202,7 @@ public class BenchmarkUtils {
     }
 
     // A helper method that sets benchmark's parameter value. We can not call stage.set(param,
-    // value)
-    // directly because stage::set(...) needs the actual type of the value.
+    // value) directly because stage::set(...) needs the actual type of the value.
     private static <T> void setParam(WithParams<?> benchmark, Param<T> param, Object value) {
         benchmark.set(param, (T) value);
     }

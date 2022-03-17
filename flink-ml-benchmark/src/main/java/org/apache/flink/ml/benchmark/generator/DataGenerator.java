@@ -25,7 +25,7 @@ import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 /** Interface for generating data as table arrays. */
 public interface DataGenerator<T extends DataGenerator<T>> extends WithParams<T> {
     /**
-     * Generate an array of Tables containing the data to be generated in the provided stream table
+     * Gets an array of Tables containing the data to be generated in the provided stream table
      * environment.
      */
     Table[] getData(StreamTableEnvironment tEnv);

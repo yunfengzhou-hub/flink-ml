@@ -53,7 +53,7 @@ public class KMeansModelDataGenerator
         StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
         DataStream<KMeansModelData> stream =
                 GeneratorUtils.generateRandomContinuousVectorArrayStream(
-                                env, getDataSize(), getK(), getSeed(), getDims())
+                                env, getNumData(), getK(), getSeed(), getDims())
                         .map(KMeansModelData::new);
         Table table = tEnv.fromDataStream(stream);
         return new Table[] {table};

@@ -35,25 +35,17 @@ under the License.
 
             <includes>
                 <include>org.apache.flink:statefun-flink-core</include>
+                <include>org.apache.flink:flink-ml-uber_${scala.binary.version}</include>
             </includes>
         </dependencySet>
     </dependencySets>
 
     <files>
-
         <file>
             <source>../LICENSE</source>
             <outputDirectory/>
             <fileMode>0644</fileMode>
         </file>
-
-        <file>
-            <source>../flink-ml-uber/target/flink-ml-uber_${scala.binary.version}-${project.version}.jar</source>
-            <outputDirectory>lib/</outputDirectory>
-            <destName>flink-uber_${scala.binary.version}-${project.version}.jar</destName>
-            <fileMode>0644</fileMode>
-        </file>
-
     </files>
 
     <fileSets>
