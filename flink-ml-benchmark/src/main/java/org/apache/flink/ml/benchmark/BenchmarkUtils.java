@@ -84,21 +84,25 @@ public class BenchmarkUtils {
     public static BenchmarkResult runBenchmark(
             String name, StreamTableEnvironment tEnv, Map<String, ?> benchmarkParamsMap)
             throws Exception {
-        Stage<?> stage = (Stage<?>) parseInstance((Map<String, ?>) benchmarkParamsMap.get("stage"));
+        Stage<?> stage =
+                (Stage<?>) instantiateWithParams((Map<String, ?>) benchmarkParamsMap.get("stage"));
 
         BenchmarkResult result;
         if (benchmarkParamsMap.size() == 2) {
             DataGenerator<?> inputsGenerator =
                     (DataGenerator<?>)
-                            parseInstance((Map<String, ?>) benchmarkParamsMap.get("inputs"));
+                            instantiateWithParams(
+                                    (Map<String, ?>) benchmarkParamsMap.get("inputs"));
             result = runBenchmark(name, tEnv, stage, inputsGenerator);
         } else if (benchmarkParamsMap.size() == 3 && stage instanceof Model) {
             DataGenerator<?> inputsGenerator =
                     (DataGenerator<?>)
-                            parseInstance((Map<String, ?>) benchmarkParamsMap.get("inputs"));
+                            instantiateWithParams(
+                                    (Map<String, ?>) benchmarkParamsMap.get("inputs"));
             DataGenerator<?> modelDataGenerator =
                     (DataGenerator<?>)
-                            parseInstance((Map<String, ?>) benchmarkParamsMap.get("modelData"));
+                            instantiateWithParams(
+                                    (Map<String, ?>) benchmarkParamsMap.get("modelData"));
             result =
                     runBenchmark(name, tEnv, (Model<?>) stage, modelDataGenerator, inputsGenerator);
         } else {
@@ -182,7 +186,7 @@ public class BenchmarkUtils {
      * @param jsonMap a map containing className and paramMap.
      * @return the instantiated WithParams subclass.
      */
-    public static WithParams<?> parseInstance(Map<String, ?> jsonMap) throws Exception {
+    public static WithParams<?> instantiateWithParams(Map<String, ?> jsonMap) throws Exception {
         String className = (String) jsonMap.get("className");
         Class<WithParams<?>> clazz = (Class<WithParams<?>>) Class.forName(className);
         WithParams<?> instance = InstantiationUtil.instantiate(clazz);
@@ -201,10 +205,10 @@ public class BenchmarkUtils {
         return instance;
     }
 
-    // A helper method that sets benchmark's parameter value. We can not call stage.set(param,
+    // A helper method that sets an object's parameter value. We can not call stage.set(param,
     // value) directly because stage::set(...) needs the actual type of the value.
-    private static <T> void setParam(WithParams<?> benchmark, Param<T> param, Object value) {
-        benchmark.set(param, (T) value);
+    private static <T> void setParam(WithParams<?> withParams, Param<T> param, Object value) {
+        withParams.set(param, (T) value);
     }
 
     /** Prints out the provided benchmark result. */

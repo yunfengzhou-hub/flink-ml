@@ -106,7 +106,7 @@ public class BenchmarkTest {
 
         KMeansModel expectedStage = new KMeansModel();
         WithParams<?> actualStage =
-                BenchmarkUtils.parseInstance(
+                BenchmarkUtils.instantiateWithParams(
                         (Map<String, ?>) benchmarkParamsMap.get("KMeansModel-1").get("stage"));
         assertEquals(expectedStage.getClass(), actualStage.getClass());
         assertEquals(expectedStage.getParamMap(), actualStage.getParamMap());
