@@ -23,15 +23,9 @@ import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.linalg.DenseVector;
-import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.Schema;
-import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
 import org.apache.flink.util.NumberSequenceIterator;
 
 import java.util.Random;
@@ -41,29 +35,21 @@ public class GeneratorUtils {
     /**
      * Generates random continuous vectors.
      *
-     * @param tEnv The streaming table execution environment instance.
+     * @param env The stream execution environment.
      * @param numExamples Number of examples to generate in total.
      * @param seed The seed to generate seed on each partition.
      * @param dims Dimension of the vectors to be generated.
      * @return The generated vector stream.
      */
-    public static Table generateRandomContinuousVectorStream(
-            StreamTableEnvironment tEnv, long numExamples, long seed, int dims) {
-        StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
-
-        DataStream<Vector> stream =
-                env.fromParallelCollection(
-                                new NumberSequenceIterator(1L, numExamples),
-                                BasicTypeInfo.LONG_TYPE_INFO)
-                        .map(new GenerateRandomContinuousVectorFunction(seed, dims));
-
-        Schema schema = Schema.newBuilder().column("f0", DataTypes.of(DenseVector.class)).build();
-
-        return tEnv.fromDataStream(stream, schema);
+    public static DataStream<DenseVector> generateRandomContinuousVectorStream(
+            StreamExecutionEnvironment env, long numExamples, long seed, int dims) {
+        return env.fromParallelCollection(
+                        new NumberSequenceIterator(1L, numExamples), BasicTypeInfo.LONG_TYPE_INFO)
+                .map(new GenerateRandomContinuousVectorFunction(seed, dims));
     }
 
     private static class GenerateRandomContinuousVectorFunction
-            extends RichMapFunction<Long, Vector> {
+            extends RichMapFunction<Long, DenseVector> {
         private final int dims;
         private final long initSeed;
         private Random random;
@@ -81,12 +67,63 @@ public class GeneratorUtils {
         }
 
         @Override
-        public Vector map(Long value) {
+        public DenseVector map(Long value) {
             double[] values = new double[dims];
             for (int i = 0; i < dims; i++) {
                 values[i] = random.nextDouble();
             }
             return Vectors.dense(values);
+        }
+    }
+
+    /**
+     * Generates random continuous vector arrays.
+     *
+     * @param env The stream execution environment.
+     * @param numExamples Number of examples to generate in total.
+     * @param arraySize Size of the vector array.
+     * @param seed The seed to generate seed on each partition.
+     * @param dims Dimension of the vectors to be generated.
+     * @return The generated vector stream.
+     */
+    public static DataStream<DenseVector[]> generateRandomContinuousVectorArrayStream(
+            StreamExecutionEnvironment env, long numExamples, int arraySize, long seed, int dims) {
+        return env.fromParallelCollection(
+                        new NumberSequenceIterator(1L, numExamples), BasicTypeInfo.LONG_TYPE_INFO)
+                .map(new GenerateRandomContinuousVectorArrayFunction(seed, dims, arraySize));
+    }
+
+    private static class GenerateRandomContinuousVectorArrayFunction
+            extends RichMapFunction<Long, DenseVector[]> {
+        private final int dims;
+        private final long initSeed;
+        private final int arraySize;
+        private Random random;
+
+        private GenerateRandomContinuousVectorArrayFunction(
+                long initSeed, int dims, int arraySize) {
+            this.dims = dims;
+            this.initSeed = initSeed;
+            this.arraySize = arraySize;
+        }
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            super.open(parameters);
+            int index = getRuntimeContext().getIndexOfThisSubtask();
+            random = new Random(Tuple2.of(initSeed, index).hashCode());
+        }
+
+        @Override
+        public DenseVector[] map(Long value) {
+            DenseVector[] result = new DenseVector[arraySize];
+            for (int i = 0; i < arraySize; i++) {
+                result[i] = new DenseVector(dims);
+                for (int j = 0; j < dims; j++) {
+                    result[i].values[j] = random.nextDouble();
+                }
+            }
+            return result;
         }
     }
 }

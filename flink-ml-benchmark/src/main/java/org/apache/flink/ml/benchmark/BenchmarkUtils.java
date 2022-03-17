@@ -52,6 +52,9 @@ public class BenchmarkUtils {
      *     benchmarks.
      */
     public static Map<String, Map<String, ?>> parseBenchmarkParams(Map<String, ?> jsonMap) {
+        Preconditions.checkArgument(
+                jsonMap.containsKey("_version") && jsonMap.get("_version").equals(1));
+
         Map<String, Map<String, ?>> result = new HashMap<>();
         for (String key : jsonMap.keySet()) {
             if (!isValidBenchmarkName(key)) {

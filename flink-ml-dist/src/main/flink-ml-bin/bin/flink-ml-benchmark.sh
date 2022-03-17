@@ -62,4 +62,4 @@ fi
 cd $current_path
 
 # Submits benchmark flink job.
-flink run -c org.apache.flink.ml.benchmark.Benchmark $flink_ml_root_path/lib/$flink_ml_fat_jar_name $1
+flink run -c org.apache.flink.ml.benchmark.Benchmark $flink_ml_root_path/lib/$flink_ml_fat_jar_name ${@:1}

@@ -22,17 +22,23 @@ import org.apache.flink.ml.benchmark.generator.DataGenerator;
 import org.apache.flink.ml.benchmark.generator.GeneratorParams;
 import org.apache.flink.ml.benchmark.generator.GeneratorUtils;
 import org.apache.flink.ml.clustering.kmeans.KMeansParams;
+import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
 
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Class that generates table arrays containing inputs for {@link
- * org.apache.flink.ml.clustering.kmeans.KMeans} operator.
+ * org.apache.flink.ml.clustering.kmeans.KMeans}.
  */
 public class KMeansInputsGenerator
         implements DataGenerator<KMeansInputsGenerator>,
@@ -46,10 +52,13 @@ public class KMeansInputsGenerator
 
     @Override
     public Table[] getData(StreamTableEnvironment tEnv) {
-        Table dataTable =
+        StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
+        DataStream<DenseVector> stream =
                 GeneratorUtils.generateRandomContinuousVectorStream(
-                        tEnv, getDataSize(), getSeed(), getDims());
-        return new Table[] {dataTable.as(getFeaturesCol())};
+                        env, getDataSize(), getSeed(), getDims());
+        Schema schema = Schema.newBuilder().column("f0", DataTypes.of(DenseVector.class)).build();
+        Table table = tEnv.fromDataStream(stream, schema).as(getFeaturesCol());
+        return new Table[] {table};
     }
 
     @Override
