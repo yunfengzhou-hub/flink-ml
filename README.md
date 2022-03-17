@@ -8,6 +8,10 @@ Run the `mvn clean package` command.
 
 Then you will find a JAR file that contains your application, plus any libraries that you may have added as dependencies to the application: `target/<artifact-id>-<version>.jar`.
 
+## <a name="benchmark"></a>Benchmark
+
+Flink ML provides functionalities to benchmark its machine learning algorithms. For detailed information, please check the [Benchmark Guideline](./flink-ml-benchmark/README.md).
+
 ## <a name="contributing"></a>Contributing
 
 You can learn more about how to contribute in the [Apache Flink website](https://flink.apache.org/contributing/how-to-contribute.html). For code contributions, please read carefully the [Contributing Code](https://flink.apache.org/contributing/contribute-code.html) section for an overview of ongoing community work.

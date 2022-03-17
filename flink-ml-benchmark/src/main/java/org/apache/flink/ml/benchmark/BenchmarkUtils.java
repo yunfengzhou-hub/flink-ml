@@ -62,7 +62,12 @@ public class BenchmarkUtils {
         return result;
     }
 
-    /** Checks whether a string is a valid benchmark name. */
+    /**
+     * Checks whether a string is a valid benchmark name.
+     *
+     * <p>A valid benchmark name should only contain English letters, numbers, hyphens (-) and
+     * underscores (_). The name should not start with a hyphen or underscore.
+     */
     public static boolean isValidBenchmarkName(String name) {
         return Pattern.matches(benchmarkNamePattern, name);
     }
