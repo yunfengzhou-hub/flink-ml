@@ -91,7 +91,7 @@ public class BenchmarkTest {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         InputStream inputStream =
-                this.getClass().getClassLoader().getResourceAsStream("benchmark-test-conf.json");
+                this.getClass().getClassLoader().getResourceAsStream("benchmark-example-conf.json");
         Map<String, ?> jsonMap = OBJECT_MAPPER.readValue(inputStream, Map.class);
         Map<String, Map<String, ?>> benchmarkParamsMap =
                 BenchmarkUtils.parseBenchmarkParams(jsonMap);
@@ -126,7 +126,7 @@ public class BenchmarkTest {
     public void testMain() throws Exception {
         File configFile = new File(tempFolder.newFolder().getAbsolutePath() + "/test-conf.json");
         InputStream inputStream =
-                this.getClass().getClassLoader().getResourceAsStream("benchmark-test-conf.json");
+                this.getClass().getClassLoader().getResourceAsStream("benchmark-example-conf.json");
         FileUtils.copyInputStreamToFile(inputStream, configFile);
 
         Benchmark.main(new String[] {configFile.getAbsolutePath()});

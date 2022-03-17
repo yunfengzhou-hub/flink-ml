@@ -42,6 +42,12 @@ under the License.
     <files>
 
         <file>
+            <source>../LICENSE</source>
+            <outputDirectory/>
+            <fileMode>0644</fileMode>
+        </file>
+
+        <file>
             <source>../flink-ml-uber/target/flink-ml-uber_${scala.binary.version}-${project.version}.jar</source>
             <outputDirectory>lib/</outputDirectory>
             <destName>flink-uber_${scala.binary.version}-${project.version}.jar</destName>
@@ -56,6 +62,26 @@ under the License.
             <directory>src/main/flink-ml-bin/bin</directory>
             <outputDirectory>bin</outputDirectory>
             <fileMode>0755</fileMode>
+        </fileSet>
+
+        <!-- copy benchmark json configuration examples -->
+        <fileSet>
+            <directory>../flink-ml-benchmark/src/main/resources/</directory>
+            <outputDirectory>examples/</outputDirectory>
+            <fileMode>0644</fileMode>
+            <includes>
+                <include>*.json</include>
+            </includes>
+        </fileSet>
+
+        <!-- copy *.txt files -->
+        <fileSet>
+            <directory>src/main/flink-ml-bin/</directory>
+            <outputDirectory/>
+            <fileMode>0644</fileMode>
+            <includes>
+                <include>*.txt</include>
+            </includes>
         </fileSet>
 
     </fileSets>
