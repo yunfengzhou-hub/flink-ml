@@ -54,7 +54,12 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.ml.clustering.KMeansTest.groupFeaturesByPrediction;
@@ -496,15 +501,11 @@ public class OnlineKMeansTest {
         GlobalBlockingQueues.offerAll(modelDataInputId, modelData1);
         waitInitModelDataSetup();
         predictAndAssert(
-                expectedGroups1,
-                onlineModel.getFeaturesCol(),
-                onlineModel.getPredictionCol());
+                expectedGroups1, onlineModel.getFeaturesCol(), onlineModel.getPredictionCol());
 
         GlobalBlockingQueues.offerAll(modelDataInputId, modelData2);
         waitModelDataUpdate();
         predictAndAssert(
-                expectedGroups2,
-                onlineModel.getFeaturesCol(),
-                onlineModel.getPredictionCol());
+                expectedGroups2, onlineModel.getFeaturesCol(), onlineModel.getPredictionCol());
     }
 }

@@ -108,7 +108,7 @@ public class OnlineKMeansModel
 
         // TODO: replace this with a complete solution of reading first model data from unbounded
         // model data stream before processing the first predict data.
-        private final List<Row> cache = new ArrayList<>();
+        private final List<Row> bufferedPoints = new ArrayList<>();
 
         // TODO: replace this simple implementation of model data version with the formal API to
         // track model version after its design is settled.
@@ -137,10 +137,10 @@ public class OnlineKMeansModel
                 Collector<Row> collector) {
             centroids = modelData.centroids;
             modelDataVersion++;
-            for (Row dataPoint : cache) {
+            for (Row dataPoint : bufferedPoints) {
                 processElement2(dataPoint, context, collector);
             }
-            cache.clear();
+            bufferedPoints.clear();
         }
 
         @Override
@@ -149,7 +149,7 @@ public class OnlineKMeansModel
                 CoProcessFunction<KMeansModelData, Row, Row>.Context context,
                 Collector<Row> collector) {
             if (centroids == null) {
-                cache.add(dataPoint);
+                bufferedPoints.add(dataPoint);
                 return;
             }
             DenseVector point = (DenseVector) dataPoint.getField(featuresCol);

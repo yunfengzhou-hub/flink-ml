@@ -30,6 +30,7 @@ import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
 import org.apache.flink.iteration.Iterations;
+import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.common.param.HasBatchStrategy;
@@ -64,6 +65,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 
 /**
@@ -80,6 +82,9 @@ import java.util.Random;
  * <p>The decay factor scales the contribution of the clusters as estimated thus far. If decay
  * factor is 1, all batches are weighted equally. If decay factor is 0, new centroids are determined
  * entirely by recent data. Lower values correspond to more forgetting.
+ *
+ * <p>NOTE: This class's current naive implementation performs the training process in a
+ * single-threaded way. Correctness is not affected but there are performance issues.
  */
 public class OnlineKMeans
         implements Estimator<OnlineKMeans, OnlineKMeansModel>, OnlineKMeansParams<OnlineKMeans> {
@@ -108,6 +113,7 @@ public class OnlineKMeans
 
         DataStream<DenseVector> points =
                 tEnv.toDataStream(inputs[0]).map(new FeaturesExtractor(getFeaturesCol()));
+        // TODO: Enables dealing with with data and training process in a parallel way.
         points.getTransformation().setParallelism(1);
 
         DataStream<KMeansModelData> initModelDataStream;
@@ -134,7 +140,6 @@ public class OnlineKMeans
                                 DataStreamList.of(points),
                                 body)
                         .get(0);
-        finalModelDataStream = finalModelDataStream.union(initModelDataStream);
 
         Table finalModelDataTable = tEnv.fromDataStream(finalModelDataStream);
         OnlineKMeansModel model = new OnlineKMeansModel().setModelData(finalModelDataTable);
@@ -225,13 +230,13 @@ public class OnlineKMeans
                                     new UpdateModelDataOperator(distanceMeasure, decayFactor, k))
                             .setParallelism(1);
 
-            DataStream<KMeansModelData> newModelData =
-                    newModelDataWithWeights.map(
+            DataStream<KMeansModelData> outputModelData =
+                    modelDataWithWeights.map(
                             (MapFunction<Tuple2<KMeansModelData, DenseVector>, KMeansModelData>)
                                     x -> x.f0);
 
             return new IterationBodyResult(
-                    DataStreamList.of(newModelDataWithWeights), DataStreamList.of(newModelData));
+                    DataStreamList.of(newModelDataWithWeights), DataStreamList.of(outputModelData));
         }
     }
 
@@ -299,26 +304,17 @@ public class OnlineKMeans
                 return;
             }
 
-            // Retrieves data from states.
-            List<KMeansModelData> modelDataList =
-                    IteratorUtils.toList(modelDataState.get().iterator());
-            if (modelDataList.size() != 1) {
-                throw new RuntimeException(
-                        "The operator received "
-                                + modelDataList.size()
-                                + " list of model data in this round");
-            }
-            DenseVector[] centroids = modelDataList.get(0).centroids;
+            DenseVector[] centroids =
+                    Objects.requireNonNull(
+                                    OperatorStateUtils.getUniqueElement(modelDataState, "modelData")
+                                            .orElse(null))
+                            .centroids;
             modelDataState.clear();
 
-            List<DenseVector> weightsList = IteratorUtils.toList(weightsState.get().iterator());
-            if (weightsList.size() != 1) {
-                throw new RuntimeException(
-                        "The operator received "
-                                + weightsList.size()
-                                + " list of weights in this round");
-            }
-            DenseVector weights = weightsList.get(0);
+            DenseVector weights =
+                    Objects.requireNonNull(
+                            OperatorStateUtils.getUniqueElement(weightsState, "weights")
+                                    .orElse(null));
             weightsState.clear();
 
             List<DenseVector[]> pointsList = IteratorUtils.toList(miniBatchState.get().iterator());
@@ -349,11 +345,9 @@ public class OnlineKMeans
             BLAS.scal(decayFactor, weights);
             for (int i = 0; i < k; i++) {
                 DenseVector centroid = centroids[i];
+                weights.values[i] = weights.values[i] + counts[i];
+                double lambda = counts[i] / Math.max(weights.values[i], 1e-16);
 
-                double updatedWeight = weights.values[i] + counts[i];
-                double lambda = counts[i] / Math.max(updatedWeight, 1e-16);
-
-                weights.values[i] = updatedWeight;
                 BLAS.scal(1.0 - lambda, centroid);
                 BLAS.axpy(lambda / counts[i], sums[i], centroid);
             }

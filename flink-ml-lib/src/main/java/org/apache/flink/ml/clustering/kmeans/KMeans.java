@@ -36,6 +36,7 @@ import org.apache.flink.iteration.IterationConfig;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.Iterations;
 import org.apache.flink.iteration.ReplayableDataStreamList;
+import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.EndOfStreamWindows;
@@ -69,6 +70,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 
 /**
@@ -277,14 +279,10 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out)
                 throws Exception {
-            List<DenseVector[]> list = IteratorUtils.toList(centroids.get().iterator());
-            if (list.size() != 1) {
-                throw new RuntimeException(
-                        "The operator received "
-                                + list.size()
-                                + " list of centroids in this round");
-            }
-            DenseVector[] centroidValues = list.get(0);
+            DenseVector[] centroidValues =
+                    Objects.requireNonNull(
+                            OperatorStateUtils.getUniqueElement(centroids, "centroids")
+                                    .orElse(null));
 
             for (DenseVector point : points.get()) {
                 int closestCentroidId =
