@@ -28,11 +28,9 @@ import org.apache.flink.metrics.reporter.Scheduled;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * A subclass of {@link MetricReporter} that outputs metrics to in-memory kv store managed by {@link
- * MockKVStore}.
- */
+/** A subclass of {@link MetricReporter} that outputs metrics to a global map. */
 public class TestMetricReporter implements MetricReporter, Scheduled {
+    private static final Map<String, Object> map = new HashMap<>();
     private String prefix;
 
     private final Map<String, Gauge<?>> gauges = new HashMap<>();
@@ -73,11 +71,27 @@ public class TestMetricReporter implements MetricReporter, Scheduled {
     @Override
     public void report() {
         for (Map.Entry<String, Gauge<?>> entry : gauges.entrySet()) {
-            MockKVStore.set(getKey(prefix, entry.getKey()), entry.getValue().getValue());
+            set(getGlobalKey(prefix, entry.getKey()), entry.getValue().getValue());
         }
     }
 
-    public static String getKey(String prefix, String metricName) {
+    public static void set(String key, Object value) {
+        map.put(key, value);
+    }
+
+    public static Object get(String key) {
+        return map.get(key);
+    }
+
+    public static boolean containsKey(String key) {
+        return map.containsKey(key);
+    }
+
+    public static void remove(String key) {
+        map.remove(key);
+    }
+
+    public static String getGlobalKey(String prefix, String metricName) {
         return prefix + "-" + metricName;
     }
 }

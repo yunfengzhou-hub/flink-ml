@@ -31,7 +31,6 @@ import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
-import org.apache.flink.ml.util.MockKVStore;
 import org.apache.flink.ml.util.MockMessageQueues;
 import org.apache.flink.ml.util.MockSinkFunction;
 import org.apache.flink.ml.util.MockSourceFunction;
@@ -56,6 +55,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.flink.ml.clustering.KMeansTest.groupFeaturesByPrediction;
 
@@ -113,11 +113,11 @@ public class OnlineKMeansTest {
                                     Vectors.dense(-10.3, 10.0),
                                     Vectors.dense(-10.0, 10.3))));
 
+    private static final AtomicInteger prefixCount = new AtomicInteger(0);
     private String trainId;
     private String predictId;
     private String outputId;
     private String modelDataId;
-    private String metricReporterPrefix;
     private String modelDataVersionGaugeKey;
     private String currentModelDataVersion;
     private List<String> queueIds;
@@ -131,12 +131,12 @@ public class OnlineKMeansTest {
 
     @Before
     public void before() {
-        metricReporterPrefix = MockKVStore.createNonDuplicatePrefix();
-        kvStoreKeys = new ArrayList<>();
-        kvStoreKeys.add(metricReporterPrefix);
-
+        String metricReporterPrefix =
+                this.getClass().getSimpleName() + prefixCount.getAndIncrement();
         modelDataVersionGaugeKey =
-                TestMetricReporter.getKey(metricReporterPrefix, "modelDataVersion");
+                TestMetricReporter.getGlobalKey(metricReporterPrefix, "modelDataVersion");
+        kvStoreKeys = new ArrayList<>();
+        kvStoreKeys.add(modelDataVersionGaugeKey);
 
         currentModelDataVersion = "0";
 
@@ -203,7 +203,7 @@ public class OnlineKMeansTest {
         queueIds.clear();
 
         for (String key : kvStoreKeys) {
-            MockKVStore.remove(key);
+            TestMetricReporter.remove(key);
         }
         kvStoreKeys.clear();
     }
@@ -222,7 +222,7 @@ public class OnlineKMeansTest {
 
     /** Blocks the thread until Model has set up init model data. */
     private void waitInitModelDataSetup() {
-        while (!MockKVStore.containsKey(modelDataVersionGaugeKey)) {
+        while (!TestMetricReporter.containsKey(modelDataVersionGaugeKey)) {
             Thread.yield();
         }
         waitModelDataUpdate();
@@ -231,7 +231,7 @@ public class OnlineKMeansTest {
     /** Blocks the thread until the Model has received the next model-data-update event. */
     private void waitModelDataUpdate() {
         do {
-            String tmpModelDataVersion = MockKVStore.get(modelDataVersionGaugeKey);
+            String tmpModelDataVersion = (String) TestMetricReporter.get(modelDataVersionGaugeKey);
             if (tmpModelDataVersion.equals(currentModelDataVersion)) {
                 Thread.yield();
             } else {
@@ -253,8 +253,7 @@ public class OnlineKMeansTest {
             List<Set<DenseVector>> expectedGroups, String featuresCol, String predictionCol)
             throws Exception {
         MockMessageQueues.offerAll(predictId, OnlineKMeansTest.predictData);
-        List<Row> rawResult =
-                MockMessageQueues.poll(outputId, OnlineKMeansTest.predictData.length);
+        List<Row> rawResult = MockMessageQueues.poll(outputId, OnlineKMeansTest.predictData.length);
         List<Set<DenseVector>> actualGroups =
                 groupFeaturesByPrediction(rawResult, featuresCol, predictionCol);
         Assert.assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
@@ -316,16 +315,12 @@ public class OnlineKMeansTest {
         MockMessageQueues.offerAll(trainId, trainData1);
         waitModelDataUpdate();
         predictAndAssert(
-                expectedGroups1,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
         MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
-                expectedGroups2,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
     }
 
     @Test
@@ -348,16 +343,12 @@ public class OnlineKMeansTest {
         clients.add(env.executeAsync());
         waitInitModelDataSetup();
         predictAndAssert(
-                expectedGroups1,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
         MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
-                expectedGroups2,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
     }
 
     @Test
@@ -380,16 +371,12 @@ public class OnlineKMeansTest {
         MockMessageQueues.offerAll(trainId, trainData1);
         waitModelDataUpdate();
         predictAndAssert(
-                expectedGroups1,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
         MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
-                expectedGroups1,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
     }
 
     @Test
@@ -432,16 +419,12 @@ public class OnlineKMeansTest {
         clients.add(env.executeAsync());
         waitInitModelDataSetup();
         predictAndAssert(
-                expectedGroups1,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
         MockMessageQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
-                expectedGroups2,
-                onlineKMeans.getFeaturesCol(),
-                onlineKMeans.getPredictionCol());
+                expectedGroups2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
     }
 
     @Test

@@ -69,10 +69,20 @@ import java.util.Random;
 /**
  * OnlineKMeans extends the function of {@link KMeans}, supporting to train a K-Means model
  * continuously according to an unbounded stream of train data.
+ *
+ * <p>OnlineKMeans makes updates with the "mini-batch" KMeans rule, generalized to incorporate
+ * forgetfulness (i.e. decay). After the centroids estimated on the current batch are acquired,
+ * OnlineKMeans computes the new centroids from the weighted average between the original and the
+ * estimated centroids. The weight of the estimated centroids is the number of points assigned to
+ * them. The weight of the original centroids is also the number of points, but additionally
+ * multiplying with the decay factor.
+ *
+ * <p>The decay factor scales the contribution of the clusters as estimated thus far. If decay
+ * factor is 1, all batches are weighted equally. If decay factor is 0, new centroids are determined
+ * entirely by recent data. Lower values correspond to more forgetting.
  */
 public class OnlineKMeans
-        implements Estimator<OnlineKMeans, OnlineKMeansModel>,
-        OnlineKMeansParams<OnlineKMeans> {
+        implements Estimator<OnlineKMeans, OnlineKMeansModel>, OnlineKMeansParams<OnlineKMeans> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table initModelDataTable;
 
