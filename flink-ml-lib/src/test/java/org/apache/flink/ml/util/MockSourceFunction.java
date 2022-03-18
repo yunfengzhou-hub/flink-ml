@@ -22,7 +22,7 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
 /**
  * A {@link SourceFunction} for unit tests. It collects records from a blocking queue managed by
- * {@link MockMessageQueues}.
+ * {@link GlobalBlockingQueues}.
  */
 public class MockSourceFunction<T> implements SourceFunction<T> {
     private final String id;
@@ -35,7 +35,7 @@ public class MockSourceFunction<T> implements SourceFunction<T> {
     @Override
     public void run(SourceContext<T> context) throws Exception {
         while (isRunning) {
-            context.collect(MockMessageQueues.poll(id));
+            context.collect(GlobalBlockingQueues.poll(id));
         }
     }
 

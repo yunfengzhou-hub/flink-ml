@@ -28,11 +28,11 @@ import java.util.concurrent.TimeUnit;
 
 /** A class that manages global message queues used in unit tests. */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public class MockMessageQueues {
+public class GlobalBlockingQueues {
     private static final Map<String, BlockingQueue> queueMap = new HashMap<>();
     private static long counter = 0;
 
-    public static synchronized String createMessageQueue() {
+    public static synchronized String createBlockingQueue() {
         String id = String.valueOf(counter);
         queueMap.put(id, new LinkedBlockingQueue<>());
         counter++;
@@ -80,6 +80,8 @@ public class MockMessageQueues {
     }
 
     public static void deleteBlockingQueue(String id) {
-        queueMap.remove(id);
+        if (queueMap.remove(id) == null) {
+            throw new IllegalArgumentException("Queue " + id + " does not exist.");
+        }
     }
 }

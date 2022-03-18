@@ -112,6 +112,7 @@ public class OnlineKMeans
 
         DataStream<KMeansModelData> initModelDataStream;
         if (getInitMode().equals("random")) {
+            Preconditions.checkState(initModelDataTable == null);
             initModelDataStream = createRandomCentroids(env, getDims(), getK(), getSeed());
         } else {
             initModelDataStream = KMeansModelData.getModelDataStream(initModelDataTable);

@@ -22,7 +22,7 @@ import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 
 /**
  * A {@link SinkFunction} for unit tests. It outputs records to a blocking queue managed by {@link
- * MockMessageQueues}.
+ * GlobalBlockingQueues}.
  */
 public class MockSinkFunction<T> implements SinkFunction<T> {
     private final String id;
@@ -33,6 +33,6 @@ public class MockSinkFunction<T> implements SinkFunction<T> {
 
     @Override
     public void invoke(T value, Context context) throws Exception {
-        MockMessageQueues.offer(id, value);
+        GlobalBlockingQueues.offer(id, value);
     }
 }

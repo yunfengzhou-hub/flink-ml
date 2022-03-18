@@ -31,7 +31,7 @@ import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
-import org.apache.flink.ml.util.MockMessageQueues;
+import org.apache.flink.ml.util.GlobalBlockingQueues;
 import org.apache.flink.ml.util.MockSinkFunction;
 import org.apache.flink.ml.util.MockSourceFunction;
 import org.apache.flink.ml.util.ReadWriteUtils;
@@ -140,10 +140,10 @@ public class OnlineKMeansTest {
 
         currentModelDataVersion = "0";
 
-        trainId = MockMessageQueues.createMessageQueue();
-        predictId = MockMessageQueues.createMessageQueue();
-        outputId = MockMessageQueues.createMessageQueue();
-        modelDataId = MockMessageQueues.createMessageQueue();
+        trainId = GlobalBlockingQueues.createBlockingQueue();
+        predictId = GlobalBlockingQueues.createBlockingQueue();
+        outputId = GlobalBlockingQueues.createBlockingQueue();
+        modelDataId = GlobalBlockingQueues.createBlockingQueue();
         queueIds = new ArrayList<>();
         queueIds.addAll(Arrays.asList(trainId, predictId, outputId, modelDataId));
 
@@ -198,7 +198,7 @@ public class OnlineKMeansTest {
         clients.clear();
 
         for (String queueId : queueIds) {
-            MockMessageQueues.deleteBlockingQueue(queueId);
+            GlobalBlockingQueues.deleteBlockingQueue(queueId);
         }
         queueIds.clear();
 
@@ -208,13 +208,16 @@ public class OnlineKMeansTest {
         kvStoreKeys.clear();
     }
 
-    /** Adds sinks for OnlineKMeansModel's transform output and model data. */
-    private void configModelSink(OnlineKMeansModel streamingModel) {
-        Table outputTable = streamingModel.transform(predictTable)[0];
+    /**
+     * Performs transform() on the provided model with predictTable, and adds sinks for
+     * OnlineKMeansModel's transform output and model data.
+     */
+    private void configTransformAndSink(OnlineKMeansModel onlineModel) {
+        Table outputTable = onlineModel.transform(predictTable)[0];
         DataStream<Row> output = tEnv.toDataStream(outputTable);
         output.addSink(new MockSinkFunction<>(outputId));
 
-        Table modelDataTable = streamingModel.getModelData()[0];
+        Table modelDataTable = onlineModel.getModelData()[0];
         DataStream<KMeansModelData> modelDataStream =
                 KMeansModelData.getModelDataStream(modelDataTable);
         modelDataStream.addSink(new MockSinkFunction<>(modelDataId));
@@ -252,8 +255,9 @@ public class OnlineKMeansTest {
     private void predictAndAssert(
             List<Set<DenseVector>> expectedGroups, String featuresCol, String predictionCol)
             throws Exception {
-        MockMessageQueues.offerAll(predictId, OnlineKMeansTest.predictData);
-        List<Row> rawResult = MockMessageQueues.poll(outputId, OnlineKMeansTest.predictData.length);
+        GlobalBlockingQueues.offerAll(predictId, OnlineKMeansTest.predictData);
+        List<Row> rawResult =
+                GlobalBlockingQueues.poll(outputId, OnlineKMeansTest.predictData.length);
         List<Set<DenseVector>> actualGroups =
                 groupFeaturesByPrediction(rawResult, featuresCol, predictionCol);
         Assert.assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
@@ -306,46 +310,46 @@ public class OnlineKMeansTest {
                         .setBatchSize(6)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
-        OnlineKMeansModel streamingModel = onlineKMeans.fit(trainTable);
-        configModelSink(streamingModel);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+        configTransformAndSink(onlineModel);
 
         clients.add(env.executeAsync());
         waitInitModelDataSetup();
 
-        MockMessageQueues.offerAll(trainId, trainData1);
+        GlobalBlockingQueues.offerAll(trainId, trainData1);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
-        MockMessageQueues.offerAll(trainId, trainData2);
+        GlobalBlockingQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
     }
 
     @Test
-    public void testInitWithOfflineKMeans() throws Exception {
-        KMeans offlineKMeans =
-                new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
-        KMeansModel offlineModel = offlineKMeans.fit(offlineTrainTable);
+    public void testInitWithKMeans() throws Exception {
+        KMeans kMeans = new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
+        KMeansModel kMeansModel = kMeans.fit(offlineTrainTable);
 
         OnlineKMeans onlineKMeans =
-                new OnlineKMeans(offlineModel.getModelData())
+                new OnlineKMeans(kMeansModel.getModelData())
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction")
                         .setInitMode("direct")
                         .setDims(2)
                         .setInitWeights(new Double[] {0., 0.})
                         .setBatchSize(6);
-        ReadWriteUtils.updateExistingParams(onlineKMeans, offlineKMeans.getParamMap());
 
-        OnlineKMeansModel streamingModel = onlineKMeans.fit(trainTable);
-        configModelSink(streamingModel);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+        configTransformAndSink(onlineModel);
 
         clients.add(env.executeAsync());
         waitInitModelDataSetup();
         predictAndAssert(
                 expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
-        MockMessageQueues.offerAll(trainId, trainData2);
+        GlobalBlockingQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
@@ -362,18 +366,18 @@ public class OnlineKMeansTest {
                         .setBatchSize(6)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
-        OnlineKMeansModel streamingModel = onlineKMeans.fit(trainTable);
-        configModelSink(streamingModel);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+        configTransformAndSink(onlineModel);
 
         clients.add(env.executeAsync());
         waitInitModelDataSetup();
 
-        MockMessageQueues.offerAll(trainId, trainData1);
+        GlobalBlockingQueues.offerAll(trainId, trainData1);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
-        MockMessageQueues.offerAll(trainId, trainData2);
+        GlobalBlockingQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
@@ -381,29 +385,29 @@ public class OnlineKMeansTest {
 
     @Test
     public void testSaveAndReload() throws Exception {
-        KMeans offlineKMeans =
+        KMeans kMeansModel1 =
                 new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
-        KMeansModel offlineModel = offlineKMeans.fit(offlineTrainTable);
+        KMeansModel kMeansModel = kMeansModel1.fit(offlineTrainTable);
 
         OnlineKMeans onlineKMeans =
-                new OnlineKMeans(offlineModel.getModelData())
+                new OnlineKMeans(kMeansModel.getModelData())
                         .setDims(2)
                         .setBatchSize(6)
                         .setInitWeights(new Double[] {0., 0.});
-        ReadWriteUtils.updateExistingParams(onlineKMeans, offlineKMeans.getParamMap());
+        ReadWriteUtils.updateExistingParams(onlineKMeans, kMeansModel1.getParamMap());
 
         OnlineKMeans loadedKMeans =
                 StageTestUtils.saveAndReload(
                         env, onlineKMeans, tempFolder.newFolder().getAbsolutePath());
 
-        OnlineKMeansModel streamingModel = loadedKMeans.fit(trainTable);
+        OnlineKMeansModel onlineModel = loadedKMeans.fit(trainTable);
 
-        String modelDataPassId = MockMessageQueues.createMessageQueue();
+        String modelDataPassId = GlobalBlockingQueues.createBlockingQueue();
         queueIds.add(modelDataPassId);
 
         String modelSavePath = tempFolder.newFolder().getAbsolutePath();
-        streamingModel.save(modelSavePath);
-        KMeansModelData.getModelDataStream(streamingModel.getModelData()[0])
+        onlineModel.save(modelSavePath);
+        KMeansModelData.getModelDataStream(onlineModel.getModelData()[0])
                 .addSink(new MockSinkFunction<>(modelDataPassId));
         clients.add(env.executeAsync());
 
@@ -414,14 +418,14 @@ public class OnlineKMeansTest {
                         TypeInformation.of(KMeansModelData.class));
         loadedModel.setModelData(tEnv.fromDataStream(loadedModelData));
 
-        configModelSink(loadedModel);
+        configTransformAndSink(loadedModel);
 
         clients.add(env.executeAsync());
         waitInitModelDataSetup();
         predictAndAssert(
                 expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
 
-        MockMessageQueues.offerAll(trainId, trainData2);
+        GlobalBlockingQueues.offerAll(trainId, trainData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
@@ -437,14 +441,14 @@ public class OnlineKMeansTest {
                         .setBatchSize(6)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
-        OnlineKMeansModel streamingModel = onlineKMeans.fit(trainTable);
-        configModelSink(streamingModel);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+        configTransformAndSink(onlineModel);
 
         clients.add(env.executeAsync());
-        MockMessageQueues.poll(modelDataId);
+        GlobalBlockingQueues.poll(modelDataId);
 
-        MockMessageQueues.offerAll(trainId, trainData1);
-        KMeansModelData actualModelData = MockMessageQueues.poll(modelDataId);
+        GlobalBlockingQueues.offerAll(trainId, trainData1);
+        KMeansModelData actualModelData = GlobalBlockingQueues.poll(modelDataId);
 
         KMeansModelData expectedModelData =
                 new KMeansModelData(
@@ -472,7 +476,7 @@ public class OnlineKMeansTest {
                             Vectors.dense(10.1, 100.1), Vectors.dense(-10.2, -100.2)
                         });
 
-        String modelDataInputId = MockMessageQueues.createMessageQueue();
+        String modelDataInputId = GlobalBlockingQueues.createBlockingQueue();
         queueIds.add(modelDataInputId);
         Table modelDataTable =
                 tEnv.fromDataStream(
@@ -480,27 +484,27 @@ public class OnlineKMeansTest {
                                 new MockSourceFunction<>(modelDataInputId),
                                 TypeInformation.of(KMeansModelData.class)));
 
-        OnlineKMeansModel streamingModel =
+        OnlineKMeansModel onlineModel =
                 new OnlineKMeansModel()
                         .setModelData(modelDataTable)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
-        configModelSink(streamingModel);
+        configTransformAndSink(onlineModel);
 
         clients.add(env.executeAsync());
 
-        MockMessageQueues.offerAll(modelDataInputId, modelData1);
+        GlobalBlockingQueues.offerAll(modelDataInputId, modelData1);
         waitInitModelDataSetup();
         predictAndAssert(
                 expectedGroups1,
-                streamingModel.getFeaturesCol(),
-                streamingModel.getPredictionCol());
+                onlineModel.getFeaturesCol(),
+                onlineModel.getPredictionCol());
 
-        MockMessageQueues.offerAll(modelDataInputId, modelData2);
+        GlobalBlockingQueues.offerAll(modelDataInputId, modelData2);
         waitModelDataUpdate();
         predictAndAssert(
                 expectedGroups2,
-                streamingModel.getFeaturesCol(),
-                streamingModel.getPredictionCol());
+                onlineModel.getFeaturesCol(),
+                onlineModel.getPredictionCol());
     }
 }
