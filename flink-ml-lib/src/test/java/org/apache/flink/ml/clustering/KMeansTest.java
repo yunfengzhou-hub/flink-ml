@@ -212,6 +212,9 @@ public class KMeansTest extends AbstractTestBase {
                 StageTestUtils.saveAndReload(env, model, tempFolder.newFolder().getAbsolutePath());
         Table output = loadedModel.transform(dataTable)[0];
         assertEquals(
+                Collections.singletonList("centroids"),
+                loadedModel.getModelData()[0].getResolvedSchema().getColumnNames());
+        assertEquals(
                 Arrays.asList("features", "prediction"),
                 output.getResolvedSchema().getColumnNames());
 
