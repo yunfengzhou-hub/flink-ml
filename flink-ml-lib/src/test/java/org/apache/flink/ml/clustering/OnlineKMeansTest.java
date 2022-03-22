@@ -345,12 +345,14 @@ public class OnlineKMeansTest {
 
     @Test
     public void testDecayFactor() throws Exception {
+        KMeans kMeans = new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
+        KMeansModel kMeansModel = kMeans.fit(offlineTrainTable);
+
         OnlineKMeans onlineKMeans =
-                new OnlineKMeans()
-                        .setInitMode("random")
+                new OnlineKMeans(kMeansModel.getModelData())
                         .setDims(2)
-                        .setInitWeights(new Double[] {0., 0.})
-                        .setDecayFactor(100.0)
+                        .setInitWeights(new Double[] {3., 3.})
+                        .setDecayFactor(0.5)
                         .setBatchSize(6)
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction");
@@ -358,17 +360,25 @@ public class OnlineKMeansTest {
         configTransformAndSink(onlineModel);
 
         miniCluster.submitJob(env.getStreamGraph().getJobGraph());
-        waitInitModelDataSetup();
-
-        GlobalBlockingQueues.offerAll(trainId, trainData1);
-        waitModelDataUpdate();
-        predictAndAssert(
-                expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
+        GlobalBlockingQueues.poll(modelDataId);
 
         GlobalBlockingQueues.offerAll(trainId, trainData2);
-        waitModelDataUpdate();
-        predictAndAssert(
-                expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
+        KMeansModelData actualModelData = GlobalBlockingQueues.poll(modelDataId);
+
+        KMeansModelData expectedModelData =
+                new KMeansModelData(
+                        new DenseVector[] {
+                            Vectors.dense(10.1, 200.3 / 3), Vectors.dense(-10.2, -200.2 / 3)
+                        });
+
+        Assert.assertEquals(expectedModelData.centroids.length, actualModelData.centroids.length);
+        Arrays.sort(actualModelData.centroids, (o1, o2) -> (int) (o2.values[0] - o1.values[0]));
+        for (int i = 0; i < expectedModelData.centroids.length; i++) {
+            Assert.assertArrayEquals(
+                    expectedModelData.centroids[i].values,
+                    actualModelData.centroids[i].values,
+                    1e-5);
+        }
     }
 
     @Test

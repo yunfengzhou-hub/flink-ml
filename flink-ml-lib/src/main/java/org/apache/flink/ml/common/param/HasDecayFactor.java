@@ -30,7 +30,7 @@ public interface HasDecayFactor<T> extends WithParams<T> {
                     "decayFactor",
                     "The forgetfulness of the previous centroids.",
                     0.,
-                    ParamValidators.gtEq(0));
+                    ParamValidators.inRange(0, 1));
 
     default double getDecayFactor() {
         return get(DECAY_FACTOR);
