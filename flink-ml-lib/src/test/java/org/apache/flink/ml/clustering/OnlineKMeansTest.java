@@ -21,12 +21,10 @@ package org.apache.flink.ml.clustering;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.execution.JobClient;
-import org.apache.flink.ml.clustering.kmeans.KMeans;
-import org.apache.flink.ml.clustering.kmeans.KMeansModel;
-import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
-import org.apache.flink.ml.clustering.kmeans.OnlineKMeans;
-import org.apache.flink.ml.clustering.kmeans.OnlineKMeansModel;
+import org.apache.flink.configuration.RestOptions;
+import org.apache.flink.metrics.Gauge;
+import org.apache.flink.metrics.Metric;
+import org.apache.flink.ml.clustering.kmeans.*;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
@@ -34,9 +32,9 @@ import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.ml.util.GlobalBlockingQueues;
 import org.apache.flink.ml.util.MockSinkFunction;
 import org.apache.flink.ml.util.MockSourceFunction;
-import org.apache.flink.ml.util.ReadWriteUtils;
-import org.apache.flink.ml.util.StageTestUtils;
-import org.apache.flink.ml.util.TestMetricReporter;
+import org.apache.flink.runtime.minicluster.MiniCluster;
+import org.apache.flink.runtime.minicluster.MiniClusterConfiguration;
+import org.apache.flink.runtime.testutils.InMemoryReporter;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -47,20 +45,10 @@ import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.*;
 
 import static org.apache.flink.ml.clustering.KMeansTest.groupFeaturesByPrediction;
 
@@ -118,31 +106,30 @@ public class OnlineKMeansTest {
                                     Vectors.dense(-10.3, 10.0),
                                     Vectors.dense(-10.0, 10.3))));
 
-    private static final AtomicInteger prefixCount = new AtomicInteger(0);
+    private static final int defaultParallelism = 4;
+    private static final int numTaskManagers = 2;
+    private static final int numSlotsPerTaskManager = 2;
+
+    private String currentModelDataVersion;
+
     private String trainId;
     private String predictId;
     private String outputId;
     private String modelDataId;
-    private String modelDataVersionGaugeKey;
-    private String currentModelDataVersion;
     private List<String> queueIds;
-    private List<String> kvStoreKeys;
-    private List<JobClient> clients;
+
+    private Configuration config;
+    private InMemoryReporter reporter;
+    private MiniCluster miniCluster;
     private StreamExecutionEnvironment env;
     private StreamTableEnvironment tEnv;
+
     private Table offlineTrainTable;
     private Table trainTable;
     private Table predictTable;
 
     @Before
-    public void before() {
-        String metricReporterPrefix =
-                this.getClass().getSimpleName() + prefixCount.getAndIncrement();
-        modelDataVersionGaugeKey =
-                TestMetricReporter.getGlobalKey(metricReporterPrefix, "modelDataVersion");
-        kvStoreKeys = new ArrayList<>();
-        kvStoreKeys.add(modelDataVersionGaugeKey);
-
+    public void before() throws Exception {
         currentModelDataVersion = "0";
 
         trainId = GlobalBlockingQueues.createBlockingQueue();
@@ -152,18 +139,23 @@ public class OnlineKMeansTest {
         queueIds = new ArrayList<>();
         queueIds.addAll(Arrays.asList(trainId, predictId, outputId, modelDataId));
 
-        clients = new ArrayList<>();
-
-        Configuration config = new Configuration();
+        config = new Configuration();
+        config.set(RestOptions.BIND_PORT, "18081-19091");
         config.set(ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
-        config.setString("metrics.reporters", "test_reporter");
-        config.setString(
-                "metrics.reporter.test_reporter.class", TestMetricReporter.class.getName());
-        config.setString("metrics.reporter.test_reporter.interval", "100 MILLISECONDS");
-        config.setString("metrics.reporter.test_reporter.prefix", metricReporterPrefix);
+        reporter = InMemoryReporter.createWithRetainedMetrics();
+        reporter.addToConfiguration(config);
+
+        miniCluster =
+                new MiniCluster(
+                        new MiniClusterConfiguration.Builder()
+                                .setConfiguration(config)
+                                .setNumTaskManagers(numTaskManagers)
+                                .setNumSlotsPerTaskManager(numSlotsPerTaskManager)
+                                .build());
+        miniCluster.start();
 
         env = StreamExecutionEnvironment.getExecutionEnvironment(config);
-        env.setParallelism(4);
+        env.setParallelism(defaultParallelism);
         env.enableCheckpointing(100);
         env.setRestartStrategy(RestartStrategies.noRestart());
         tEnv = StreamTableEnvironment.create(env);
@@ -189,28 +181,13 @@ public class OnlineKMeansTest {
     }
 
     @After
-    public void after() {
-        for (JobClient client : clients) {
-            try {
-                client.cancel();
-            } catch (IllegalStateException e) {
-                if (!e.getMessage()
-                        .equals("MiniCluster is not yet running or has already been shut down.")) {
-                    throw e;
-                }
-            }
-        }
-        clients.clear();
+    public void after() throws Exception {
+        miniCluster.close();
 
         for (String queueId : queueIds) {
             GlobalBlockingQueues.deleteBlockingQueue(queueId);
         }
         queueIds.clear();
-
-        for (String key : kvStoreKeys) {
-            TestMetricReporter.remove(key);
-        }
-        kvStoreKeys.clear();
     }
 
     /**
@@ -230,7 +207,7 @@ public class OnlineKMeansTest {
 
     /** Blocks the thread until Model has set up init model data. */
     private void waitInitModelDataSetup() {
-        while (!TestMetricReporter.containsKey(modelDataVersionGaugeKey)) {
+        while (reporter.findMetrics("modelDataVersion").size() < defaultParallelism) {
             Thread.yield();
         }
         waitModelDataUpdate();
@@ -239,7 +216,13 @@ public class OnlineKMeansTest {
     /** Blocks the thread until the Model has received the next model-data-update event. */
     private void waitModelDataUpdate() {
         do {
-            String tmpModelDataVersion = (String) TestMetricReporter.get(modelDataVersionGaugeKey);
+            String tmpModelDataVersion = Integer.toString(Integer.MAX_VALUE);
+            for (Metric metric : reporter.findMetrics("modelDataVersion").values()) {
+                if (Integer.parseInt(tmpModelDataVersion)
+                        > Integer.parseInt(((Gauge<String>) metric).getValue())) {
+                    tmpModelDataVersion = ((Gauge<String>) metric).getValue();
+                }
+            }
             if (tmpModelDataVersion.equals(currentModelDataVersion)) {
                 Thread.yield();
             } else {
@@ -318,7 +301,7 @@ public class OnlineKMeansTest {
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         configTransformAndSink(onlineModel);
 
-        clients.add(env.executeAsync());
+        miniCluster.submitJob(env.getStreamGraph().getJobGraph());
         waitInitModelDataSetup();
 
         GlobalBlockingQueues.offerAll(trainId, trainData1);
@@ -349,7 +332,7 @@ public class OnlineKMeansTest {
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         configTransformAndSink(onlineModel);
 
-        clients.add(env.executeAsync());
+        miniCluster.submitJob(env.getStreamGraph().getJobGraph());
         waitInitModelDataSetup();
         predictAndAssert(
                 expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
@@ -374,7 +357,7 @@ public class OnlineKMeansTest {
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         configTransformAndSink(onlineModel);
 
-        clients.add(env.executeAsync());
+        miniCluster.submitJob(env.getStreamGraph().getJobGraph());
         waitInitModelDataSetup();
 
         GlobalBlockingQueues.offerAll(trainId, trainData1);
@@ -390,20 +373,22 @@ public class OnlineKMeansTest {
 
     @Test
     public void testSaveAndReload() throws Exception {
-        KMeans kMeansModel1 =
-                new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
-        KMeansModel kMeansModel = kMeansModel1.fit(offlineTrainTable);
+        KMeans kMeans = new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
+        KMeansModel kMeansModel = kMeans.fit(offlineTrainTable);
 
         OnlineKMeans onlineKMeans =
                 new OnlineKMeans(kMeansModel.getModelData())
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction")
+                        .setInitMode("direct")
                         .setDims(2)
-                        .setBatchSize(6)
-                        .setInitWeights(new Double[] {0., 0.});
-        ReadWriteUtils.updateExistingParams(onlineKMeans, kMeansModel1.getParamMap());
+                        .setInitWeights(new Double[] {0., 0.})
+                        .setBatchSize(6);
 
-        OnlineKMeans loadedKMeans =
-                StageTestUtils.saveAndReload(
-                        env, onlineKMeans, tempFolder.newFolder().getAbsolutePath());
+        String savePath = tempFolder.newFolder().getAbsolutePath();
+        onlineKMeans.save(savePath);
+        miniCluster.executeJobBlocking(env.getStreamGraph().getJobGraph());
+        OnlineKMeans loadedKMeans = OnlineKMeans.load(env, savePath);
 
         OnlineKMeansModel onlineModel = loadedKMeans.fit(trainTable);
 
@@ -414,7 +399,6 @@ public class OnlineKMeansTest {
         onlineModel.save(modelSavePath);
         KMeansModelData.getModelDataStream(onlineModel.getModelData()[0])
                 .addSink(new MockSinkFunction<>(modelDataPassId));
-        clients.add(env.executeAsync());
 
         OnlineKMeansModel loadedModel = OnlineKMeansModel.load(env, modelSavePath);
         DataStream<KMeansModelData> loadedModelData =
@@ -425,7 +409,7 @@ public class OnlineKMeansTest {
 
         configTransformAndSink(loadedModel);
 
-        clients.add(env.executeAsync());
+        miniCluster.submitJob(env.getStreamGraph().getJobGraph());
         waitInitModelDataSetup();
         predictAndAssert(
                 expectedGroups1, onlineKMeans.getFeaturesCol(), onlineKMeans.getPredictionCol());
@@ -449,7 +433,7 @@ public class OnlineKMeansTest {
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         configTransformAndSink(onlineModel);
 
-        clients.add(env.executeAsync());
+        miniCluster.submitJob(env.getStreamGraph().getJobGraph());
         GlobalBlockingQueues.poll(modelDataId);
 
         GlobalBlockingQueues.offerAll(trainId, trainData1);
@@ -496,7 +480,7 @@ public class OnlineKMeansTest {
                         .setPredictionCol("prediction");
         configTransformAndSink(onlineModel);
 
-        clients.add(env.executeAsync());
+        miniCluster.submitJob(env.getStreamGraph().getJobGraph());
 
         GlobalBlockingQueues.offerAll(modelDataInputId, modelData1);
         waitInitModelDataSetup();
