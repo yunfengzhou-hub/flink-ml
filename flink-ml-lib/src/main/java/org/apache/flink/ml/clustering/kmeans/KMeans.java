@@ -106,7 +106,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                 new KMeansIterationBody(
                         getMaxIter(), DistanceMeasure.getInstance(getDistanceMeasure()));
 
-        DataStream<DenseVector[]> finalCentroids =
+        DataStream<KMeansModelData> finalModelData =
                 Iterations.iterateBoundedStreamsUntilTermination(
                                 DataStreamList.of(initCentroids),
                                 ReplayableDataStreamList.notReplay(points),
@@ -114,8 +114,8 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                 body)
                         .get(0);
 
-        Table finalCentroidsTable = tEnv.fromDataStream(finalCentroids.map(KMeansModelData::new));
-        KMeansModel model = new KMeansModel().setModelData(finalCentroidsTable);
+        Table finalModelDataTable = tEnv.fromDataStream(finalModelData);
+        KMeansModel model = new KMeansModel().setModelData(finalModelDataTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;
     }
@@ -161,25 +161,13 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                             DenseVectorTypeInfo.INSTANCE),
                                     new SelectNearestCentroidOperator(distanceMeasure));
 
-            AllWindowFunction<DenseVector, DenseVector[], TimeWindow> toList =
-                    new AllWindowFunction<DenseVector, DenseVector[], TimeWindow>() {
-                        @Override
-                        public void apply(
-                                TimeWindow timeWindow,
-                                Iterable<DenseVector> iterable,
-                                Collector<DenseVector[]> out) {
-                            List<DenseVector> centroids = IteratorUtils.toList(iterable.iterator());
-                            out.collect(centroids.toArray(new DenseVector[0]));
-                        }
-                    };
-
             PerRoundSubBody perRoundSubBody =
                     new PerRoundSubBody() {
                         @Override
                         public DataStreamList process(DataStreamList inputs) {
                             DataStream<Tuple2<Integer, DenseVector>> centroidIdAndPoints =
                                     inputs.get(0);
-                            DataStream<DenseVector[]> newCentroids =
+                            DataStream<KMeansModelData> modelDataStream =
                                     centroidIdAndPoints
                                             .map(new CountAppender())
                                             .keyBy(t -> t.f0)
@@ -187,33 +175,56 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                             .reduce(new CentroidAccumulator())
                                             .map(new CentroidAverager())
                                             .windowAll(EndOfStreamWindows.get())
-                                            .apply(toList);
-                            return DataStreamList.of(newCentroids);
+                                            .apply(new ModelDataGenerator());
+                            return DataStreamList.of(modelDataStream);
                         }
                     };
-
-            DataStream<DenseVector[]> newCentroids =
+            DataStream<KMeansModelData> newModelData =
                     IterationBody.forEachRound(
                                     DataStreamList.of(centroidIdAndPoints), perRoundSubBody)
                             .get(0);
-            DataStream<DenseVector[]> finalCentroids =
-                    newCentroids.flatMap(new ForwardInputsOfLastRound<>());
+
+            DataStream<DenseVector[]> newCentroids =
+                    newModelData.map(x -> x.centroids).setParallelism(1);
+
+            DataStream<KMeansModelData> finalModelData =
+                    newModelData.flatMap(new ForwardInputsOfLastRound<>());
 
             return new IterationBodyResult(
                     DataStreamList.of(newCentroids),
-                    DataStreamList.of(finalCentroids),
+                    DataStreamList.of(finalModelData),
                     terminationCriteria);
         }
     }
 
-    private static class CentroidAverager
-            implements MapFunction<Tuple3<Integer, DenseVector, Long>, DenseVector> {
+    private static class ModelDataGenerator
+            implements AllWindowFunction<Tuple2<DenseVector, Double>, KMeansModelData, TimeWindow> {
         @Override
-        public DenseVector map(Tuple3<Integer, DenseVector, Long> value) {
+        public void apply(
+                TimeWindow timeWindow,
+                Iterable<Tuple2<DenseVector, Double>> iterable,
+                Collector<KMeansModelData> collector) {
+            List<Tuple2<DenseVector, Double>> centroidsAndWeights =
+                    IteratorUtils.toList(iterable.iterator());
+            DenseVector[] centroids = new DenseVector[centroidsAndWeights.size()];
+            DenseVector weights = new DenseVector(centroidsAndWeights.size());
+            for (int i = 0; i < centroidsAndWeights.size(); i++) {
+                centroids[i] = centroidsAndWeights.get(i).f0;
+                weights.values[i] = centroidsAndWeights.get(i).f1;
+            }
+            collector.collect(new KMeansModelData(centroids, weights));
+        }
+    }
+
+    private static class CentroidAverager
+            implements MapFunction<
+                    Tuple3<Integer, DenseVector, Long>, Tuple2<DenseVector, Double>> {
+        @Override
+        public Tuple2<DenseVector, Double> map(Tuple3<Integer, DenseVector, Long> value) {
             for (int i = 0; i < value.f1.size(); i++) {
                 value.f1.values[i] /= value.f2;
             }
-            return value.f1;
+            return Tuple2.of(value.f1, value.f2.doubleValue());
         }
     }
 

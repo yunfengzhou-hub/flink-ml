@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.distance;
 
 import org.apache.flink.ml.linalg.Vector;
+import org.apache.flink.util.Preconditions;
 
 /** Interface for measuring the Euclidean distance between two vectors. */
 public class EuclideanDistanceMeasure implements DistanceMeasure {
@@ -34,6 +35,7 @@ public class EuclideanDistanceMeasure implements DistanceMeasure {
 
     @Override
     public double distance(Vector v1, Vector v2) {
+        Preconditions.checkArgument(v1.size() == v2.size());
         double squaredDistance = 0.0;
 
         for (int i = 0; i < v1.size(); i++) {

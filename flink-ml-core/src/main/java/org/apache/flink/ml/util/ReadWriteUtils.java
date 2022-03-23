@@ -124,7 +124,7 @@ public class ReadWriteUtils {
     }
 
     /** Returns a subdirectory of the given path for saving/loading model data. */
-    private static String getDataPath(String path) {
+    public static String getDataPath(String path) {
         return Paths.get(path, "data").toString();
     }
 

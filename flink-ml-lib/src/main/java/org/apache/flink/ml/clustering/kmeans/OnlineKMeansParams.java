@@ -22,11 +22,6 @@ import org.apache.flink.ml.common.param.HasBatchStrategy;
 import org.apache.flink.ml.common.param.HasDecayFactor;
 import org.apache.flink.ml.common.param.HasGlobalBatchSize;
 import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.ml.param.DoubleArrayParam;
-import org.apache.flink.ml.param.IntParam;
-import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.param.ParamValidators;
-import org.apache.flink.ml.param.StringParam;
 
 /**
  * Params of {@link OnlineKMeans}.
@@ -38,49 +33,4 @@ public interface OnlineKMeansParams<T>
                 HasGlobalBatchSize<T>,
                 HasDecayFactor<T>,
                 HasSeed<T>,
-                KMeansModelParams<T> {
-    Param<String> INIT_MODE =
-            new StringParam(
-                    "initMode",
-                    "How to initialize the model data of the online KMeans algorithm. Supported options: 'random', 'direct'.",
-                    "random",
-                    ParamValidators.inArray("random", "direct"));
-
-    Param<Integer> DIM =
-            new IntParam(
-                    "dim",
-                    "The number of dimensions of centroids. Used when initializing random centroids.",
-                    1,
-                    ParamValidators.gt(0));
-
-    Param<Double[]> INIT_WEIGHTS =
-            new DoubleArrayParam(
-                    "initWeights",
-                    "The weight of the initial centroids.",
-                    null,
-                    ParamValidators.nonEmptyArray());
-
-    default String getInitMode() {
-        return get(INIT_MODE);
-    }
-
-    default T setInitMode(String value) {
-        return set(INIT_MODE, value);
-    }
-
-    default int getDim() {
-        return get(DIM);
-    }
-
-    default T setDim(int value) {
-        return set(DIM, value);
-    }
-
-    default Double[] getInitWeights() {
-        return get(INIT_WEIGHTS);
-    }
-
-    default T setInitWeights(Double[] value) {
-        return set(INIT_WEIGHTS, value);
-    }
-}
+                KMeansModelParams<T> {}

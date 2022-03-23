@@ -247,11 +247,8 @@ public class OnlineKMeansTest extends AbstractTestBase {
         OnlineKMeans onlineKMeans = new OnlineKMeans();
         Assert.assertEquals("features", onlineKMeans.getFeaturesCol());
         Assert.assertEquals("prediction", onlineKMeans.getPredictionCol());
-        Assert.assertEquals("random", onlineKMeans.getInitMode());
         Assert.assertEquals("count", onlineKMeans.getBatchStrategy());
         Assert.assertEquals(EuclideanDistanceMeasure.NAME, onlineKMeans.getDistanceMeasure());
-        Assert.assertEquals(2, onlineKMeans.getK());
-        Assert.assertEquals(1, onlineKMeans.getDim());
         Assert.assertEquals(32, onlineKMeans.getGlobalBatchSize());
         Assert.assertEquals(0., onlineKMeans.getDecayFactor(), 1e-5);
         Assert.assertEquals(OnlineKMeans.class.getName().hashCode(), onlineKMeans.getSeed());
@@ -259,25 +256,17 @@ public class OnlineKMeansTest extends AbstractTestBase {
         onlineKMeans
                 .setFeaturesCol("test_feature")
                 .setPredictionCol("test_prediction")
-                .setInitMode("direct")
-                .setK(3)
-                .setDim(5)
                 .setGlobalBatchSize(5)
                 .setDecayFactor(0.25)
-                .setSeed(100)
-                .setInitWeights(new Double[] {1.0, 2.0});
+                .setSeed(100);
 
         Assert.assertEquals("test_feature", onlineKMeans.getFeaturesCol());
         Assert.assertEquals("test_prediction", onlineKMeans.getPredictionCol());
-        Assert.assertEquals("direct", onlineKMeans.getInitMode());
         Assert.assertEquals("count", onlineKMeans.getBatchStrategy());
         Assert.assertEquals(EuclideanDistanceMeasure.NAME, onlineKMeans.getDistanceMeasure());
-        Assert.assertEquals(3, onlineKMeans.getK());
-        Assert.assertEquals(5, onlineKMeans.getDim());
         Assert.assertEquals(5, onlineKMeans.getGlobalBatchSize());
         Assert.assertEquals(0.25, onlineKMeans.getDecayFactor(), 1e-5);
         Assert.assertEquals(100, onlineKMeans.getSeed());
-        Assert.assertArrayEquals(new Double[] {1.0, 2.0}, onlineKMeans.getInitWeights());
     }
 
     @Test
@@ -286,10 +275,8 @@ public class OnlineKMeansTest extends AbstractTestBase {
                 new OnlineKMeans()
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
-                        .setInitMode("random")
-                        .setDim(2)
                         .setGlobalBatchSize(6)
-                        .setInitWeights(new Double[] {0., 0.});
+                        .setRandomCentroids(tEnv, 2, 2, 0.);
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         transformAndOutputData(onlineModel);
 
@@ -313,12 +300,11 @@ public class OnlineKMeansTest extends AbstractTestBase {
         KMeansModel model = kMeans.fit(offlineTrainTable);
 
         OnlineKMeans onlineKMeans =
-                new OnlineKMeans(model.getModelData()[0])
+                new OnlineKMeans()
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
-                        .setDim(2)
                         .setGlobalBatchSize(6)
-                        .setInitWeights(new Double[] {0., 0.});
+                        .setInitialModelData(model.getModelData()[0]);
 
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         transformAndOutputData(onlineModel);
@@ -340,13 +326,12 @@ public class OnlineKMeansTest extends AbstractTestBase {
         KMeansModel model = kMeans.fit(offlineTrainTable);
 
         OnlineKMeans onlineKMeans =
-                new OnlineKMeans(model.getModelData()[0])
+                new OnlineKMeans()
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
-                        .setDim(2)
                         .setGlobalBatchSize(6)
                         .setDecayFactor(0.5)
-                        .setInitWeights(new Double[] {3., 3.});
+                        .setInitialModelData(model.getModelData()[0]);
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         transformAndOutputData(onlineModel);
 
@@ -378,12 +363,11 @@ public class OnlineKMeansTest extends AbstractTestBase {
         KMeansModel model = kMeans.fit(offlineTrainTable);
 
         OnlineKMeans onlineKMeans =
-                new OnlineKMeans(model.getModelData()[0])
+                new OnlineKMeans()
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
-                        .setDim(2)
                         .setGlobalBatchSize(6)
-                        .setInitWeights(new Double[] {0., 0.});
+                        .setInitialModelData(model.getModelData()[0]);
 
         String savePath = tempFolder.newFolder().getAbsolutePath();
         onlineKMeans.save(savePath);
@@ -416,10 +400,8 @@ public class OnlineKMeansTest extends AbstractTestBase {
                 new OnlineKMeans()
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
-                        .setInitMode("random")
-                        .setDim(2)
                         .setGlobalBatchSize(6)
-                        .setInitWeights(new Double[] {0., 0.});
+                        .setRandomCentroids(tEnv, 2, 2, 0.);
         OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
         transformAndOutputData(onlineModel);
 

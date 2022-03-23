@@ -18,16 +18,13 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
-import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.ObjectArrayTypeInfo;
-import org.apache.flink.api.java.typeutils.TupleTypeInfo;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
@@ -37,7 +34,6 @@ import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.DenseVector;
-import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
@@ -45,8 +41,10 @@ import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.windowing.AllWindowFunction;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -57,11 +55,9 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.collections.IteratorUtils;
-import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -96,12 +92,6 @@ public class OnlineKMeans
         ParamUtils.initializeMapWithDefaultValues(paramMap, this);
     }
 
-    public OnlineKMeans(Table initModelDataTable) {
-        this.initModelDataTable = initModelDataTable;
-        ParamUtils.initializeMapWithDefaultValues(paramMap, this);
-        setInitMode("direct");
-    }
-
     @Override
     public OnlineKMeansModel fit(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
@@ -113,53 +103,28 @@ public class OnlineKMeans
         DataStream<DenseVector> points =
                 tEnv.toDataStream(inputs[0]).map(new FeaturesExtractor(getFeaturesCol()));
 
-        DataStream<KMeansModelData> initModelDataStream;
-        if (getInitMode().equals("random")) {
-            Preconditions.checkState(initModelDataTable == null);
-            initModelDataStream = createRandomCentroids(env, getDim(), getK(), getSeed());
-        } else {
-            initModelDataStream = KMeansModelData.getModelDataStream(initModelDataTable);
-        }
-        DataStream<Tuple2<KMeansModelData, DenseVector>> initModelDataWithWeightsStream =
-                initModelDataStream.map(new InitWeightAssigner(getInitWeights()));
-        initModelDataWithWeightsStream.getTransformation().setParallelism(1);
+        DataStream<KMeansModelData> initModelData =
+                KMeansModelData.getModelDataStream(initModelDataTable);
+        initModelData.getTransformation().setParallelism(1);
 
         IterationBody body =
                 new OnlineKMeansIterationBody(
                         DistanceMeasure.getInstance(getDistanceMeasure()),
                         getDecayFactor(),
-                        getGlobalBatchSize(),
-                        getK(),
-                        getDim());
+                        getGlobalBatchSize());
 
-        DataStream<KMeansModelData> finalModelDataStream =
+        DataStream<KMeansModelData> finalModelData =
                 Iterations.iterateUnboundedStreams(
-                                DataStreamList.of(initModelDataWithWeightsStream),
-                                DataStreamList.of(points),
-                                body)
+                                DataStreamList.of(initModelData), DataStreamList.of(points), body)
                         .get(0);
 
-        Table finalModelDataTable = tEnv.fromDataStream(finalModelDataStream);
+        Table finalModelDataTable = tEnv.fromDataStream(finalModelData);
         OnlineKMeansModel model = new OnlineKMeansModel().setModelData(finalModelDataTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;
     }
 
-    private static class InitWeightAssigner
-            implements MapFunction<KMeansModelData, Tuple2<KMeansModelData, DenseVector>> {
-        private final double[] initWeights;
-
-        private InitWeightAssigner(Double[] initWeights) {
-            this.initWeights = ArrayUtils.toPrimitive(initWeights);
-        }
-
-        @Override
-        public Tuple2<KMeansModelData, DenseVector> map(KMeansModelData modelData)
-                throws Exception {
-            return Tuple2.of(modelData, Vectors.dense(initWeights));
-        }
-    }
-
+    /** Saves the metadata AND bounded model data table (if exists) to the given path. */
     @Override
     public void save(String path) throws IOException {
         if (initModelDataTable != null) {
@@ -176,15 +141,14 @@ public class OnlineKMeans
             throws IOException {
         OnlineKMeans kMeans = ReadWriteUtils.loadStageParam(path);
 
-        Path initModelDataPath = Paths.get(path, "data");
-        if (Files.exists(initModelDataPath)) {
+        String initModelDataPath = ReadWriteUtils.getDataPath(path);
+        if (Files.exists(Paths.get(initModelDataPath))) {
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
             DataStream<KMeansModelData> initModelDataStream =
                     ReadWriteUtils.loadModelData(env, path, new KMeansModelData.ModelDataDecoder());
 
             kMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
-            kMeans.setInitMode("direct");
         }
 
         return kMeans;
@@ -199,83 +163,55 @@ public class OnlineKMeans
         private final DistanceMeasure distanceMeasure;
         private final double decayFactor;
         private final int batchSize;
-        private final int k;
-        private final int dim;
 
         public OnlineKMeansIterationBody(
-                DistanceMeasure distanceMeasure,
-                double decayFactor,
-                int batchSize,
-                int k,
-                int dim) {
+                DistanceMeasure distanceMeasure, double decayFactor, int batchSize) {
             this.distanceMeasure = distanceMeasure;
             this.decayFactor = decayFactor;
             this.batchSize = batchSize;
-            this.k = k;
-            this.dim = dim;
         }
 
         @Override
         public IterationBodyResult process(
                 DataStreamList variableStreams, DataStreamList dataStreams) {
-            DataStream<Tuple2<KMeansModelData, DenseVector>> modelDataWithWeights =
-                    variableStreams.get(0);
+            DataStream<KMeansModelData> modelData = variableStreams.get(0);
             DataStream<DenseVector> points = dataStreams.get(0);
 
             int parallelism = points.getParallelism();
 
-            DataStream<Tuple2<KMeansModelData, DenseVector>> newModelDataWithWeights =
+            DataStream<KMeansModelData> newModelData =
                     points.countWindowAll(batchSize)
-                            .aggregate(new MiniBatchCreator())
-                            .flatMap(new MiniBatchDistributor(parallelism))
+                            .apply(new GlobalBatchCreator())
+                            .flatMap(new GlobalBatchSplitter(parallelism))
                             .rebalance()
-                            .connect(modelDataWithWeights.broadcast())
+                            .connect(modelData.broadcast())
                             .transform(
-                                    "ModelDataPartialUpdater",
-                                    new TupleTypeInfo<>(
-                                            TypeInformation.of(KMeansModelData.class),
-                                            DenseVectorTypeInfo.INSTANCE),
-                                    new ModelDataPartialUpdater(distanceMeasure, k))
+                                    "ModelDataLocalUpdater",
+                                    TypeInformation.of(KMeansModelData.class),
+                                    new ModelDataLocalUpdater(distanceMeasure))
                             .setParallelism(parallelism)
-                            .connect(modelDataWithWeights.broadcast())
+                            .connect(modelData.broadcast())
                             .transform(
                                     "ModelDataGlobalUpdater",
-                                    new TupleTypeInfo<>(
-                                            TypeInformation.of(KMeansModelData.class),
-                                            DenseVectorTypeInfo.INSTANCE),
-                                    new ModelDataGlobalUpdater(k, dim, parallelism, decayFactor))
+                                    TypeInformation.of(KMeansModelData.class),
+                                    new ModelDataGlobalUpdater(parallelism, decayFactor))
                             .setParallelism(1);
 
-            DataStream<KMeansModelData> outputModelData =
-                    modelDataWithWeights.map(
-                            (MapFunction<Tuple2<KMeansModelData, DenseVector>, KMeansModelData>)
-                                    x -> x.f0);
-
             return new IterationBodyResult(
-                    DataStreamList.of(newModelDataWithWeights), DataStreamList.of(outputModelData));
+                    DataStreamList.of(newModelData), DataStreamList.of(modelData));
         }
     }
 
-    private static class ModelDataGlobalUpdater
-            extends AbstractStreamOperator<Tuple2<KMeansModelData, DenseVector>>
-            implements TwoInputStreamOperator<
-                    Tuple2<KMeansModelData, DenseVector>,
-                    Tuple2<KMeansModelData, DenseVector>,
-                    Tuple2<KMeansModelData, DenseVector>> {
-        private final int k;
-        private final int dim;
+    private static class ModelDataGlobalUpdater extends AbstractStreamOperator<KMeansModelData>
+            implements TwoInputStreamOperator<KMeansModelData, KMeansModelData, KMeansModelData> {
         private final int upstreamParallelism;
         private final double decayFactor;
 
-        private ListState<Integer> partialModelDataReceivingState;
+        private ListState<Integer> localModelDataReceivingState;
         private ListState<Boolean> initModelDataReceivingState;
         private ListState<KMeansModelData> modelDataState;
-        private ListState<DenseVector> weightsState;
 
-        private ModelDataGlobalUpdater(
-                int k, int dim, int upstreamParallelism, double decayFactor) {
-            this.k = k;
-            this.dim = dim;
+        private ModelDataGlobalUpdater(int upstreamParallelism, double decayFactor) {
             this.upstreamParallelism = upstreamParallelism;
             this.decayFactor = decayFactor;
         }
@@ -284,11 +220,11 @@ public class OnlineKMeans
         public void initializeState(StateInitializationContext context) throws Exception {
             super.initializeState(context);
 
-            partialModelDataReceivingState =
+            localModelDataReceivingState =
                     context.getOperatorStateStore()
                             .getListState(
                                     new ListStateDescriptor<>(
-                                            "partialModelDataReceiving",
+                                            "localModelDataReceiving",
                                             BasicTypeInfo.INT_TYPE_INFO));
 
             initModelDataReceivingState =
@@ -303,63 +239,55 @@ public class OnlineKMeans
                             .getListState(
                                     new ListStateDescriptor<>("modelData", KMeansModelData.class));
 
-            weightsState =
-                    context.getOperatorStateStore()
-                            .getListState(
-                                    new ListStateDescriptor<>(
-                                            "weights", DenseVectorTypeInfo.INSTANCE));
-
             initStateValues();
         }
 
         private void initStateValues() throws Exception {
-            partialModelDataReceivingState.update(Collections.singletonList(0));
+            localModelDataReceivingState.update(Collections.singletonList(0));
             initModelDataReceivingState.update(Collections.singletonList(false));
-            DenseVector[] emptyCentroids = new DenseVector[k];
-            for (int i = 0; i < k; i++) {
-                emptyCentroids[i] = new DenseVector(dim);
-            }
-            modelDataState.update(Collections.singletonList(new KMeansModelData(emptyCentroids)));
-            weightsState.update(Collections.singletonList(new DenseVector(k)));
+            modelDataState.update(Collections.singletonList(new KMeansModelData()));
         }
 
         @Override
-        public void processElement1(
-                StreamRecord<Tuple2<KMeansModelData, DenseVector>> partialModelDataUpdateRecord)
+        public void processElement1(StreamRecord<KMeansModelData> localModelDataUpdateRecord)
                 throws Exception {
-            int partialModelDataReceiving =
-                    getUniqueElement(partialModelDataReceivingState, "partialModelDataReceiving");
-            Preconditions.checkState(partialModelDataReceiving < upstreamParallelism);
-            partialModelDataReceivingState.update(
-                    Collections.singletonList(partialModelDataReceiving + 1));
-            processElement(
-                    partialModelDataUpdateRecord.getValue().f0.centroids,
-                    partialModelDataUpdateRecord.getValue().f1,
-                    1.0);
+            int localModelDataReceiving =
+                    getUniqueElement(localModelDataReceivingState, "localModelDataReceiving");
+            Preconditions.checkState(localModelDataReceiving < upstreamParallelism);
+            localModelDataReceivingState.update(
+                    Collections.singletonList(localModelDataReceiving + 1));
+            aggregateWeightedAverageModelData(localModelDataUpdateRecord.getValue());
         }
 
         @Override
-        public void processElement2(
-                StreamRecord<Tuple2<KMeansModelData, DenseVector>> initModelDataRecord)
+        public void processElement2(StreamRecord<KMeansModelData> initModelDataRecord)
                 throws Exception {
             boolean initModelDataReceiving =
                     getUniqueElement(initModelDataReceivingState, "initModelDataReceiving");
             Preconditions.checkState(!initModelDataReceiving);
             initModelDataReceivingState.update(Collections.singletonList(true));
-            processElement(
-                    initModelDataRecord.getValue().f0.centroids,
-                    initModelDataRecord.getValue().f1,
-                    decayFactor);
+            KMeansModelData initModelData = initModelDataRecord.getValue();
+            BLAS.scal(decayFactor, initModelData.weights);
+            aggregateWeightedAverageModelData(initModelData);
         }
 
-        private void processElement(
-                DenseVector[] newCentroids, DenseVector newWeights, double decayFactor)
+        private void aggregateWeightedAverageModelData(KMeansModelData newModelData)
                 throws Exception {
-            DenseVector weights = getUniqueElement(weightsState, "weights");
-            DenseVector[] centroids = getUniqueElement(modelDataState, "modelData").centroids;
+            KMeansModelData modelData = getUniqueElement(modelDataState, "modelData");
+            if (modelData.centroids == null) {
+                modelDataState.update(Collections.singletonList(newModelData));
+                return;
+            }
+
+            DenseVector weights = modelData.weights;
+            DenseVector[] centroids = modelData.centroids;
+            DenseVector newWeights = newModelData.weights;
+            DenseVector[] newCentroids = newModelData.centroids;
+
+            int k = newCentroids.length;
+            int dim = newCentroids[0].size();
 
             for (int i = 0; i < k; i++) {
-                newWeights.values[i] *= decayFactor;
                 for (int j = 0; j < dim; j++) {
                     centroids[i].values[j] =
                             (centroids[i].values[j] * weights.values[i]
@@ -370,14 +298,13 @@ public class OnlineKMeans
             }
 
             if (getUniqueElement(initModelDataReceivingState, "initModelDataReceiving")
-                    && getUniqueElement(partialModelDataReceivingState, "partialModelDataReceiving")
+                    && getUniqueElement(localModelDataReceivingState, "localModelDataReceiving")
                             >= upstreamParallelism) {
-                output.collect(
-                        new StreamRecord<>(Tuple2.of(new KMeansModelData(centroids), weights)));
+                output.collect(new StreamRecord<>(new KMeansModelData(centroids, weights)));
                 initStateValues();
             } else {
-                modelDataState.update(Collections.singletonList(new KMeansModelData(centroids)));
-                weightsState.update(Collections.singletonList(weights));
+                modelDataState.update(
+                        Collections.singletonList(new KMeansModelData(centroids, weights)));
             }
         }
     }
@@ -387,20 +314,14 @@ public class OnlineKMeans
         return Objects.requireNonNull(value);
     }
 
-    private static class ModelDataPartialUpdater
-            extends AbstractStreamOperator<Tuple2<KMeansModelData, DenseVector>>
-            implements TwoInputStreamOperator<
-                    DenseVector[],
-                    Tuple2<KMeansModelData, DenseVector>,
-                    Tuple2<KMeansModelData, DenseVector>> {
+    private static class ModelDataLocalUpdater extends AbstractStreamOperator<KMeansModelData>
+            implements TwoInputStreamOperator<DenseVector[], KMeansModelData, KMeansModelData> {
         private final DistanceMeasure distanceMeasure;
-        private final int k;
-        private ListState<DenseVector[]> miniBatchState;
+        private ListState<DenseVector[]> localBatchState;
         private ListState<KMeansModelData> modelDataState;
 
-        private ModelDataPartialUpdater(DistanceMeasure distanceMeasure, int k) {
+        private ModelDataLocalUpdater(DistanceMeasure distanceMeasure) {
             this.distanceMeasure = distanceMeasure;
-            this.k = k;
         }
 
         @Override
@@ -409,9 +330,9 @@ public class OnlineKMeans
 
             TypeInformation<DenseVector[]> type =
                     ObjectArrayTypeInfo.getInfoFor(DenseVectorTypeInfo.INSTANCE);
-            miniBatchState =
+            localBatchState =
                     context.getOperatorStateStore()
-                            .getListState(new ListStateDescriptor<>("miniBatch", type));
+                            .getListState(new ListStateDescriptor<>("localBatch", type));
 
             modelDataState =
                     context.getOperatorStateStore()
@@ -421,36 +342,35 @@ public class OnlineKMeans
 
         @Override
         public void processElement1(StreamRecord<DenseVector[]> pointsRecord) throws Exception {
-            miniBatchState.add(pointsRecord.getValue());
-            processElement();
+            localBatchState.add(pointsRecord.getValue());
+            alignAndComputeModelData();
         }
 
         @Override
-        public void processElement2(
-                StreamRecord<Tuple2<KMeansModelData, DenseVector>> modelDataAndWeightsRecord)
+        public void processElement2(StreamRecord<KMeansModelData> modelDataRecord)
                 throws Exception {
-            modelDataState.add(modelDataAndWeightsRecord.getValue().f0);
-            processElement();
+            modelDataState.add(modelDataRecord.getValue());
+            alignAndComputeModelData();
         }
 
-        private void processElement() throws Exception {
+        private void alignAndComputeModelData() throws Exception {
             if (!modelDataState.get().iterator().hasNext()
-                    || !miniBatchState.get().iterator().hasNext()) {
+                    || !localBatchState.get().iterator().hasNext()) {
                 return;
             }
 
             DenseVector[] centroids = getUniqueElement(modelDataState, "modelData").centroids;
             modelDataState.clear();
 
-            List<DenseVector[]> pointsList = IteratorUtils.toList(miniBatchState.get().iterator());
-            DenseVector[] points = pointsList.get(0);
-            pointsList.remove(0);
-            miniBatchState.clear();
-            miniBatchState.addAll(pointsList);
+            List<DenseVector[]> pointsList = IteratorUtils.toList(localBatchState.get().iterator());
+            DenseVector[] points = pointsList.remove(0);
+            localBatchState.update(pointsList);
+
+            int dim = centroids[0].size();
+            int k = centroids.length;
 
             // Computes new centroids.
             DenseVector[] sums = new DenseVector[k];
-            int dim = centroids[0].size();
             DenseVector counts = new DenseVector(k);
 
             for (int i = 0; i < k; i++) {
@@ -473,7 +393,7 @@ public class OnlineKMeans
                 BLAS.scal(1.0 / counts.values[i], sums[i]);
             }
 
-            output.collect(new StreamRecord<>(Tuple2.of(new KMeansModelData(sums), counts)));
+            output.collect(new StreamRecord<>(new KMeansModelData(sums, counts)));
         }
     }
 
@@ -490,12 +410,13 @@ public class OnlineKMeans
         }
     }
 
-    private static class MiniBatchDistributor
+    // An operator that splits a global batch into evenly-sized local batches, and distributes them
+    // to downstream operator.
+    private static class GlobalBatchSplitter
             implements FlatMapFunction<DenseVector[], DenseVector[]> {
         private final int downStreamParallelism;
-        private int shift = 0;
 
-        private MiniBatchDistributor(int downStreamParallelism) {
+        private GlobalBatchSplitter(int downStreamParallelism) {
             this.downStreamParallelism = downStreamParallelism;
         }
 
@@ -509,11 +430,6 @@ public class OnlineKMeans
                 sizes.add(end - start);
             }
 
-            // Reduce accumulated imbalance among distributed batches.
-            Collections.rotate(sizes, shift);
-            shift++;
-            shift %= downStreamParallelism;
-
             int offset = 0;
             for (Integer size : sizes) {
                 collector.collect(Arrays.copyOfRange(values, offset, offset + size));
@@ -522,41 +438,38 @@ public class OnlineKMeans
         }
     }
 
-    private static class MiniBatchCreator
-            implements AggregateFunction<DenseVector, List<DenseVector>, DenseVector[]> {
+    private static class GlobalBatchCreator
+            implements AllWindowFunction<DenseVector, DenseVector[], GlobalWindow> {
         @Override
-        public List<DenseVector> createAccumulator() {
-            return new ArrayList<>();
-        }
-
-        @Override
-        public List<DenseVector> add(DenseVector value, List<DenseVector> acc) {
-            acc.add(value);
-            return acc;
-        }
-
-        @Override
-        public DenseVector[] getResult(List<DenseVector> acc) {
-            return acc.toArray(new DenseVector[0]);
-        }
-
-        @Override
-        public List<DenseVector> merge(List<DenseVector> acc, List<DenseVector> acc1) {
-            acc.addAll(acc1);
-            return acc;
+        public void apply(
+                GlobalWindow timeWindow,
+                Iterable<DenseVector> iterable,
+                Collector<DenseVector[]> collector) {
+            List<DenseVector> points = IteratorUtils.toList(iterable.iterator());
+            collector.collect(points.toArray(new DenseVector[0]));
         }
     }
 
-    private static DataStream<KMeansModelData> createRandomCentroids(
-            StreamExecutionEnvironment env, int dim, int k, long seed) {
+    public OnlineKMeans setInitialModelData(Table initModelDataTable) {
+        this.initModelDataTable = initModelDataTable;
+        return this;
+    }
+
+    public OnlineKMeans setRandomCentroids(
+            StreamTableEnvironment tEnv, int dim, int k, double weight) {
+        StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
         DenseVector[] centroids = new DenseVector[k];
-        Random random = new Random(seed);
+        Random random = new Random(getSeed());
         for (int i = 0; i < k; i++) {
             centroids[i] = new DenseVector(dim);
             for (int j = 0; j < dim; j++) {
                 centroids[i].values[j] = random.nextDouble();
             }
         }
-        return env.fromElements(new KMeansModelData(centroids));
+        DenseVector weights = new DenseVector(k);
+        Arrays.fill(weights.values, weight);
+        this.initModelDataTable =
+                tEnv.fromDataStream(env.fromElements(new KMeansModelData(centroids, weights)));
+        return this;
     }
 }

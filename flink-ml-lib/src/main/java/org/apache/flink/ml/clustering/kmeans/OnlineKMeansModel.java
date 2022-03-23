@@ -163,6 +163,12 @@ public class OnlineKMeansModel
         return paramMap;
     }
 
+    /**
+     * Saves the metadata to the given path.
+     *
+     * <p>NOTE: the unbounded model data table will not be saved. Model data needs be explicitly
+     * exported with {@link OnlineKMeansModel#getModelData()}.
+     */
     @Override
     public void save(String path) throws IOException {
         ReadWriteUtils.saveMetadata(this, path);
