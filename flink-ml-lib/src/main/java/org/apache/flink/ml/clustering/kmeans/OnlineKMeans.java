@@ -239,10 +239,6 @@ public class OnlineKMeans
                             .getListState(
                                     new ListStateDescriptor<>("modelData", KMeansModelData.class));
 
-            initStateValues();
-        }
-
-        private void initStateValues() throws Exception {
             localModelDataReceivingState.update(Collections.singletonList(0));
             initModelDataReceivingState.update(Collections.singletonList(false));
             modelDataState.update(Collections.singletonList(new KMeansModelData()));
@@ -262,9 +258,9 @@ public class OnlineKMeans
         @Override
         public void processElement2(StreamRecord<KMeansModelData> initModelDataRecord)
                 throws Exception {
-            boolean initModelDataReceiving =
-                    getUniqueElement(initModelDataReceivingState, "initModelDataReceiving");
-            Preconditions.checkState(!initModelDataReceiving);
+            if (getUniqueElement(initModelDataReceivingState, "initModelDataReceiving")) {
+                return;
+            }
             initModelDataReceivingState.update(Collections.singletonList(true));
             KMeansModelData initModelData = initModelDataRecord.getValue();
             BLAS.scal(decayFactor, initModelData.weights);
@@ -301,11 +297,11 @@ public class OnlineKMeans
                     && getUniqueElement(localModelDataReceivingState, "localModelDataReceiving")
                             >= upstreamParallelism) {
                 output.collect(new StreamRecord<>(new KMeansModelData(centroids, weights)));
-                initStateValues();
-            } else {
-                modelDataState.update(
-                        Collections.singletonList(new KMeansModelData(centroids, weights)));
+                localModelDataReceivingState.update(Collections.singletonList(0));
+                BLAS.scal(decayFactor, weights);
             }
+            modelDataState.update(
+                    Collections.singletonList(new KMeansModelData(centroids, weights)));
         }
     }
 
