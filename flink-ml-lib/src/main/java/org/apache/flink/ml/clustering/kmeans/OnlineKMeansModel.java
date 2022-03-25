@@ -53,6 +53,8 @@ import java.util.Map;
  */
 public class OnlineKMeansModel
         implements Model<OnlineKMeansModel>, KMeansModelParams<OnlineKMeansModel> {
+    public static final String MODEL_DATA_VERSION_GAUGE_KEY = "modelDataVersion";
+
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
     private Table modelDataTable;
 
@@ -92,7 +94,8 @@ public class OnlineKMeansModel
                         .process(
                                 new PredictLabelFunction(
                                         getFeaturesCol(),
-                                        DistanceMeasure.getInstance(getDistanceMeasure())),
+                                        DistanceMeasure.getInstance(getDistanceMeasure()),
+                                        getK()),
                                 outputTypeInfo);
 
         return new Table[] {tEnv.fromDataStream(predictionResult)};
@@ -104,19 +107,32 @@ public class OnlineKMeansModel
 
         private final DistanceMeasure distanceMeasure;
 
+        private final int k;
+
         private DenseVector[] centroids;
 
         // TODO: replace this with a complete solution of reading first model data from unbounded
         // model data stream before processing the first predict data.
         private final List<Row> bufferedPoints = new ArrayList<>();
 
+        /**
+         * Basic implementation of the model data version with the following rules.
+         *
+         * <ul>
+         *   <li>Negative value is regarded as illegal value.
+         *   <li>Zero value means the version has not been initialized yet.
+         *   <li>Positive value represents valid version.
+         *   <li>A larger value represents a newer version.
+         * </ul>
+         */
         // TODO: replace this simple implementation of model data version with the formal API to
         // track model version after its design is settled.
-        private int modelDataVersion;
+        private int modelDataVersion = 0;
 
-        public PredictLabelFunction(String featuresCol, DistanceMeasure distanceMeasure) {
+        public PredictLabelFunction(String featuresCol, DistanceMeasure distanceMeasure, int k) {
             this.featuresCol = featuresCol;
             this.distanceMeasure = distanceMeasure;
+            this.k = k;
         }
 
         @Override
@@ -126,7 +142,7 @@ public class OnlineKMeansModel
             getRuntimeContext()
                     .getMetricGroup()
                     .gauge(
-                            "modelDataVersion",
+                            MODEL_DATA_VERSION_GAUGE_KEY,
                             (Gauge<String>) () -> Integer.toString(modelDataVersion));
         }
 
@@ -135,6 +151,7 @@ public class OnlineKMeansModel
                 KMeansModelData modelData,
                 CoProcessFunction<KMeansModelData, Row, Row>.Context context,
                 Collector<Row> collector) {
+            Preconditions.checkArgument(modelData.centroids.length == k);
             centroids = modelData.centroids;
             modelDataVersion++;
             for (Row dataPoint : bufferedPoints) {

@@ -40,6 +40,7 @@ import org.apache.flink.types.Row;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.IteratorUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -47,7 +48,6 @@ import org.junit.rules.TemporaryFolder;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -177,13 +177,20 @@ public class KMeansTest extends AbstractTestBase {
         KMeans kmeans = new KMeans().setK(2);
         KMeansModel model = kmeans.fit(input);
         Table output = model.transform(input)[0];
-        List<Set<DenseVector>> expectedGroups =
-                Collections.singletonList(Collections.singleton(Vectors.dense(0.0, 0.1)));
-        List<Row> results = IteratorUtils.toList(output.execute().collect());
-        List<Set<DenseVector>> actualGroups =
-                groupFeaturesByPrediction(
-                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
-        assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
+
+        try {
+            output.execute().collect().next();
+            Assert.fail("Expected IllegalStateException");
+        } catch (Exception e) {
+            Throwable exception = e;
+            while (exception.getCause() != null) {
+                exception = exception.getCause();
+            }
+            assertEquals(IllegalStateException.class, exception.getClass());
+            assertEquals(
+                    "Generated model data has 1 centroids. Less than expected 2 centroids.",
+                    exception.getMessage());
+        }
     }
 
     @Test

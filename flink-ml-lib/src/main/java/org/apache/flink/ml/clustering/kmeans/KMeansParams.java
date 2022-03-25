@@ -20,7 +20,6 @@ package org.apache.flink.ml.clustering.kmeans;
 
 import org.apache.flink.ml.common.param.HasMaxIter;
 import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.ml.param.IntParam;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.ParamValidators;
 import org.apache.flink.ml.param.StringParam;
@@ -31,7 +30,6 @@ import org.apache.flink.ml.param.StringParam;
  * @param <T> The class type of this instance.
  */
 public interface KMeansParams<T> extends HasSeed<T>, HasMaxIter<T>, KMeansModelParams<T> {
-
     Param<String> INIT_MODE =
             new StringParam(
                     "initMode",
@@ -39,24 +37,12 @@ public interface KMeansParams<T> extends HasSeed<T>, HasMaxIter<T>, KMeansModelP
                     "random",
                     ParamValidators.inArray("random"));
 
-    Param<Integer> K =
-            new IntParam("k", "The number of clusters to create.", 2, ParamValidators.gt(1));
-
     default String getInitMode() {
         return get(INIT_MODE);
     }
 
     default T setInitMode(String value) {
         set(INIT_MODE, value);
-        return (T) this;
-    }
-
-    default int getK() {
-        return get(K);
-    }
-
-    default T setK(int value) {
-        set(K, value);
         return (T) this;
     }
 }

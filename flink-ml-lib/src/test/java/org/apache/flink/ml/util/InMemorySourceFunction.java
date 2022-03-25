@@ -21,22 +21,22 @@ package org.apache.flink.ml.util;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.source.RichSourceFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.util.Preconditions;
 
-import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 /** A {@link SourceFunction} implementation that can directly receive records from tests. */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class InMemorySourceFunction<T> extends RichSourceFunction<T> {
     private static final Map<UUID, BlockingQueue> queueMap = new ConcurrentHashMap<>();
     private final UUID id;
-    private BlockingQueue<T> queue;
-    private boolean isRunning = true;
+    private BlockingQueue<Optional<T>> queue;
+    private volatile boolean isRunning = true;
 
     public InMemorySourceFunction() {
         id = UUID.randomUUID();
@@ -59,17 +59,25 @@ public class InMemorySourceFunction<T> extends RichSourceFunction<T> {
     @Override
     public void run(SourceContext<T> context) throws InterruptedException {
         while (isRunning) {
-            context.collect(queue.poll(1, TimeUnit.MINUTES));
+            Optional<T> maybeValue = queue.take();
+            if (!maybeValue.isPresent()) {
+                continue;
+            }
+            context.collect(maybeValue.get());
         }
     }
 
     @Override
     public void cancel() {
         isRunning = false;
+        queue.add(Optional.empty());
     }
 
     @SafeVarargs
     public final void addAll(T... values) {
-        queue.addAll(Arrays.asList(values));
+        Preconditions.checkState(isRunning);
+        for (T value : values) {
+            queue.add(Optional.of(value));
+        }
     }
 }

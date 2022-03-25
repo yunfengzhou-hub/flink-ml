@@ -43,8 +43,8 @@ import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
+import org.apache.flink.util.TestLogger;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.junit.After;
@@ -64,7 +64,7 @@ import java.util.Set;
 import static org.apache.flink.ml.clustering.KMeansTest.groupFeaturesByPrediction;
 
 /** Tests {@link OnlineKMeans} and {@link OnlineKMeansModel}. */
-public class OnlineKMeansTest extends AbstractTestBase {
+public class OnlineKMeansTest extends TestLogger {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
     private static final DenseVector[] trainData1 =
@@ -128,14 +128,16 @@ public class OnlineKMeansTest extends AbstractTestBase {
     private InMemorySinkFunction<Row> outputSink;
     private InMemorySinkFunction<KMeansModelData> modelDataSink;
 
+    // TODO: creates static mini cluster once for whole test class after dependency upgrades to
+    // Flink 1.15.
     private InMemoryReporter reporter;
     private MiniCluster miniCluster;
     private StreamExecutionEnvironment env;
     private StreamTableEnvironment tEnv;
 
     private Table offlineTrainTable;
-    private Table trainTable;
-    private Table predictTable;
+    private Table onlineTrainTable;
+    private Table onlinePredictTable;
 
     @Before
     public void before() throws Exception {
@@ -171,11 +173,11 @@ public class OnlineKMeansTest extends AbstractTestBase {
 
         offlineTrainTable =
                 tEnv.fromDataStream(env.fromElements(trainData1), schema).as("features");
-        trainTable =
+        onlineTrainTable =
                 tEnv.fromDataStream(
                                 env.addSource(trainSource, DenseVectorTypeInfo.INSTANCE), schema)
                         .as("features");
-        predictTable =
+        onlinePredictTable =
                 tEnv.fromDataStream(
                                 env.addSource(predictSource, DenseVectorTypeInfo.INSTANCE), schema)
                         .as("features");
@@ -191,7 +193,7 @@ public class OnlineKMeansTest extends AbstractTestBase {
      * OnlineKMeansModel's transform output and model data.
      */
     private void transformAndOutputData(OnlineKMeansModel onlineModel) {
-        Table outputTable = onlineModel.transform(predictTable)[0];
+        Table outputTable = onlineModel.transform(onlinePredictTable)[0];
         tEnv.toDataStream(outputTable).addSink(outputSink);
 
         Table modelDataTable = onlineModel.getModelData()[0];
@@ -200,7 +202,8 @@ public class OnlineKMeansTest extends AbstractTestBase {
 
     /** Blocks the thread until Model has set up init model data. */
     private void waitInitModelDataSetup() throws InterruptedException {
-        while (reporter.findMetrics("modelDataVersion").size() < defaultParallelism) {
+        while (reporter.findMetrics(OnlineKMeansModel.MODEL_DATA_VERSION_GAUGE_KEY).size()
+                < defaultParallelism) {
             Thread.sleep(100);
         }
         waitModelDataUpdate();
@@ -211,10 +214,11 @@ public class OnlineKMeansTest extends AbstractTestBase {
     private void waitModelDataUpdate() throws InterruptedException {
         do {
             int tmpModelDataVersion =
-                    reporter.findMetrics("modelDataVersion").values().stream()
+                    reporter.findMetrics(OnlineKMeansModel.MODEL_DATA_VERSION_GAUGE_KEY).values()
+                            .stream()
                             .map(x -> Integer.parseInt(((Gauge<String>) x).getValue()))
                             .min(Integer::compareTo)
-                            .orElse(currentModelDataVersion);
+                            .get();
             if (tmpModelDataVersion == currentModelDataVersion) {
                 Thread.sleep(100);
             } else {
@@ -276,8 +280,8 @@ public class OnlineKMeansTest extends AbstractTestBase {
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
                         .setGlobalBatchSize(6)
-                        .setRandomCentroids(tEnv, 2, 2, 0.);
-        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+                        .setRandomCentroids(2, 0.);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 
         miniCluster.submitJob(env.getStreamGraph().getJobGraph());
@@ -306,7 +310,7 @@ public class OnlineKMeansTest extends AbstractTestBase {
                         .setGlobalBatchSize(6)
                         .setInitialModelData(model.getModelData()[0]);
 
-        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 
         miniCluster.submitJob(env.getStreamGraph().getJobGraph());
@@ -332,7 +336,7 @@ public class OnlineKMeansTest extends AbstractTestBase {
                         .setGlobalBatchSize(6)
                         .setDecayFactor(0.5)
                         .setInitialModelData(model.getModelData()[0]);
-        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 
         miniCluster.submitJob(env.getStreamGraph().getJobGraph());
@@ -345,8 +349,11 @@ public class OnlineKMeansTest extends AbstractTestBase {
                 new KMeansModelData(
                         new DenseVector[] {
                             Vectors.dense(-10.2, -200.2 / 3), Vectors.dense(10.1, 200.3 / 3)
-                        });
+                        },
+                        Vectors.dense(4.5, 4.5));
 
+        Assert.assertArrayEquals(
+                expectedModelData.weights.values, actualModelData.weights.values, 1e-5);
         Assert.assertEquals(expectedModelData.centroids.length, actualModelData.centroids.length);
         Arrays.sort(actualModelData.centroids, Comparator.comparingDouble(vector -> vector.get(0)));
         for (int i = 0; i < expectedModelData.centroids.length; i++) {
@@ -374,7 +381,7 @@ public class OnlineKMeansTest extends AbstractTestBase {
         miniCluster.executeJobBlocking(env.getStreamGraph().getJobGraph());
         OnlineKMeans loadedOnlineKMeans = OnlineKMeans.load(env, savePath);
 
-        OnlineKMeansModel onlineModel = loadedOnlineKMeans.fit(trainTable);
+        OnlineKMeansModel onlineModel = loadedOnlineKMeans.fit(onlineTrainTable);
 
         String modelSavePath = tempFolder.newFolder().getAbsolutePath();
         onlineModel.save(modelSavePath);
@@ -401,8 +408,8 @@ public class OnlineKMeansTest extends AbstractTestBase {
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
                         .setGlobalBatchSize(6)
-                        .setRandomCentroids(tEnv, 2, 2, 0.);
-        OnlineKMeansModel onlineModel = onlineKMeans.fit(trainTable);
+                        .setRandomCentroids(2, 0.);
+        OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 
         miniCluster.submitJob(env.getStreamGraph().getJobGraph());
@@ -413,8 +420,11 @@ public class OnlineKMeansTest extends AbstractTestBase {
 
         KMeansModelData expectedModelData =
                 new KMeansModelData(
-                        new DenseVector[] {Vectors.dense(-10.2, 0.2), Vectors.dense(10.1, 0.1)});
+                        new DenseVector[] {Vectors.dense(-10.2, 0.2), Vectors.dense(10.1, 0.1)},
+                        Vectors.dense(3, 3));
 
+        Assert.assertArrayEquals(
+                expectedModelData.weights.values, actualModelData.weights.values, 1e-5);
         Assert.assertEquals(expectedModelData.centroids.length, actualModelData.centroids.length);
         Arrays.sort(actualModelData.centroids, Comparator.comparingDouble(vector -> vector.get(0)));
         for (int i = 0; i < expectedModelData.centroids.length; i++) {
@@ -429,13 +439,15 @@ public class OnlineKMeansTest extends AbstractTestBase {
     public void testSetModelData() throws Exception {
         KMeansModelData modelData1 =
                 new KMeansModelData(
-                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)});
+                        new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)},
+                        null);
 
         KMeansModelData modelData2 =
                 new KMeansModelData(
                         new DenseVector[] {
                             Vectors.dense(10.1, 100.1), Vectors.dense(-10.2, -100.2)
-                        });
+                        },
+                        null);
 
         InMemorySourceFunction<KMeansModelData> modelDataSource = new InMemorySourceFunction<>();
         Table modelDataTable =

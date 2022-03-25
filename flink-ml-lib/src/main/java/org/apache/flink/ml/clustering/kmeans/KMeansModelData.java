@@ -54,11 +54,6 @@ public class KMeansModelData {
         this.weights = weights;
     }
 
-    public KMeansModelData(DenseVector[] centroids) {
-        this.centroids = centroids;
-        this.weights = new DenseVector(centroids.length);
-    }
-
     public KMeansModelData() {}
 
     /**

@@ -21,6 +21,9 @@ package org.apache.flink.ml.clustering.kmeans;
 import org.apache.flink.ml.common.param.HasDistanceMeasure;
 import org.apache.flink.ml.common.param.HasFeaturesCol;
 import org.apache.flink.ml.common.param.HasPredictionCol;
+import org.apache.flink.ml.param.IntParam;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.param.ParamValidators;
 
 /**
  * Params of {@link KMeansModel} and {@link OnlineKMeansModel}.
@@ -28,4 +31,16 @@ import org.apache.flink.ml.common.param.HasPredictionCol;
  * @param <T> The class type of this instance.
  */
 public interface KMeansModelParams<T>
-        extends HasDistanceMeasure<T>, HasFeaturesCol<T>, HasPredictionCol<T> {}
+        extends HasDistanceMeasure<T>, HasFeaturesCol<T>, HasPredictionCol<T> {
+    Param<Integer> K =
+            new IntParam("k", "The number of clusters to create.", 2, ParamValidators.gt(1));
+
+    default int getK() {
+        return get(K);
+    }
+
+    default T setK(int value) {
+        set(K, value);
+        return (T) this;
+    }
+}

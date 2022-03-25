@@ -62,12 +62,11 @@ import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.commons.collections.IteratorUtils;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -104,7 +103,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
 
         IterationBody body =
                 new KMeansIterationBody(
-                        getMaxIter(), DistanceMeasure.getInstance(getDistanceMeasure()));
+                        getMaxIter(), getK(), DistanceMeasure.getInstance(getDistanceMeasure()));
 
         DataStream<KMeansModelData> finalModelData =
                 Iterations.iterateBoundedStreamsUntilTermination(
@@ -136,10 +135,12 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
 
     private static class KMeansIterationBody implements IterationBody {
         private final int maxIterationNum;
+        private final int k;
         private final DistanceMeasure distanceMeasure;
 
-        public KMeansIterationBody(int maxIterationNum, DistanceMeasure distanceMeasure) {
+        public KMeansIterationBody(int maxIterationNum, int k, DistanceMeasure distanceMeasure) {
             this.maxIterationNum = maxIterationNum;
+            this.k = k;
             this.distanceMeasure = distanceMeasure;
         }
 
@@ -175,7 +176,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                             .reduce(new CentroidAccumulator())
                                             .map(new CentroidAverager())
                                             .windowAll(EndOfStreamWindows.get())
-                                            .apply(new ModelDataGenerator());
+                                            .apply(new ModelDataGenerator(k));
                             return DataStreamList.of(modelDataStream);
                         }
                     };
@@ -199,19 +200,35 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
 
     private static class ModelDataGenerator
             implements AllWindowFunction<Tuple2<DenseVector, Double>, KMeansModelData, TimeWindow> {
+        private final int k;
+
+        private ModelDataGenerator(int k) {
+            this.k = k;
+        }
+
         @Override
         public void apply(
                 TimeWindow timeWindow,
                 Iterable<Tuple2<DenseVector, Double>> iterable,
                 Collector<KMeansModelData> collector) {
-            List<Tuple2<DenseVector, Double>> centroidsAndWeights =
-                    IteratorUtils.toList(iterable.iterator());
-            DenseVector[] centroids = new DenseVector[centroidsAndWeights.size()];
-            DenseVector weights = new DenseVector(centroidsAndWeights.size());
-            for (int i = 0; i < centroidsAndWeights.size(); i++) {
-                centroids[i] = centroidsAndWeights.get(i).f0;
-                weights.values[i] = centroidsAndWeights.get(i).f1;
+            Iterator<Tuple2<DenseVector, Double>> iterator = iterable.iterator();
+            DenseVector[] centroids = new DenseVector[k];
+            DenseVector weights = new DenseVector(k);
+            for (int i = 0; i < k; i++) {
+                Preconditions.checkState(
+                        iterator.hasNext(),
+                        "Generated model data has "
+                                + i
+                                + " centroids. Less than expected "
+                                + k
+                                + " centroids.");
+                Tuple2<DenseVector, Double> tuple2 = iterator.next();
+                centroids[i] = tuple2.f0;
+                weights.values[i] = tuple2.f1;
             }
+            Preconditions.checkState(
+                    !iterator.hasNext(),
+                    "Generated model data has more than expected " + k + " centroids.");
             collector.collect(new KMeansModelData(centroids, weights));
         }
     }
