@@ -25,6 +25,7 @@ import org.apache.flink.ml.param.WithParams;
 
 /** Interface for the shared batch strategy param. */
 public interface HasBatchStrategy<T> extends WithParams<T> {
+    /** Strategy to create mini batches with a fixed batch size. */
     String COUNT_STRATEGY = "count";
 
     Param<String> BATCH_STRATEGY =

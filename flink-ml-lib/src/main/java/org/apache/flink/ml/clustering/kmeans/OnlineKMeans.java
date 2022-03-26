@@ -48,7 +48,6 @@ import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Collector;
@@ -59,12 +58,10 @@ import org.apache.commons.collections.IteratorUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.function.Supplier;
 
 /**
@@ -78,9 +75,9 @@ import java.util.function.Supplier;
  * them. The weight of the original centroids is also the number of points, but additionally
  * multiplying with the decay factor.
  *
- * <p>The decay factor scales the contribution of the clusters as estimated thus far. If decay
- * factor is 1, all batches are weighted equally. If decay factor is 0, new centroids are determined
- * entirely by recent data. Lower values correspond to more forgetting.
+ * <p>The decay factor scales the contribution of the clusters as estimated thus far. If the decay
+ * factor is 1, all batches are weighted equally. If the decay factor is 0, new centroids are
+ * determined entirely by recent data. Lower values correspond to more forgetting.
  */
 public class OnlineKMeans
         implements Estimator<OnlineKMeans, OnlineKMeansModel>, OnlineKMeansParams<OnlineKMeans> {
@@ -101,17 +98,8 @@ public class OnlineKMeans
         DataStream<DenseVector> points =
                 tEnv.toDataStream(inputs[0]).map(new FeaturesExtractor(getFeaturesCol()));
 
-        DataStream<KMeansModelData> initModelData;
-        if (initModelDataTable == null) {
-            StreamExecutionEnvironment env = ((StreamTableEnvironmentImpl) tEnv).execEnv();
-            initModelData =
-                    env.fromElements(1)
-                            .map(
-                                    new RandomCentroidsCreator(
-                                            getK(), get(DIM), getSeed(), get(INIT_WEIGHT)));
-        } else {
-            initModelData = KMeansModelData.getModelDataStream(initModelDataTable);
-        }
+        DataStream<KMeansModelData> initModelData =
+                KMeansModelData.getModelDataStream(initModelDataTable);
         initModelData.getTransformation().setParallelism(1);
 
         IterationBody body =
@@ -121,13 +109,13 @@ public class OnlineKMeans
                         getDecayFactor(),
                         getGlobalBatchSize());
 
-        DataStream<KMeansModelData> finalModelData =
+        DataStream<KMeansModelData> onlineModelData =
                 Iterations.iterateUnboundedStreams(
                                 DataStreamList.of(initModelData), DataStreamList.of(points), body)
                         .get(0);
 
-        Table finalModelDataTable = tEnv.fromDataStream(finalModelData);
-        OnlineKMeansModel model = new OnlineKMeansModel().setModelData(finalModelDataTable);
+        Table onlineModelDataTable = tEnv.fromDataStream(onlineModelData);
+        OnlineKMeansModel model = new OnlineKMeansModel().setModelData(onlineModelDataTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
         return model;
     }
@@ -147,7 +135,7 @@ public class OnlineKMeans
 
     public static OnlineKMeans load(StreamExecutionEnvironment env, String path)
             throws IOException {
-        OnlineKMeans kMeans = ReadWriteUtils.loadStageParam(path);
+        OnlineKMeans onlineKMeans = ReadWriteUtils.loadStageParam(path);
 
         String initModelDataPath = ReadWriteUtils.getDataPath(path);
         if (Files.exists(Paths.get(initModelDataPath))) {
@@ -156,10 +144,10 @@ public class OnlineKMeans
             DataStream<KMeansModelData> initModelDataStream =
                     ReadWriteUtils.loadModelData(env, path, new KMeansModelData.ModelDataDecoder());
 
-            kMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
+            onlineKMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
         }
 
-        return kMeans;
+        return onlineKMeans;
     }
 
     @Override
@@ -256,7 +244,7 @@ public class OnlineKMeans
         private final DistanceMeasure distanceMeasure;
         private final int k;
         private final double decayFactor;
-        private ListState<DenseVector[]> localBatchState;
+        private ListState<DenseVector[]> localBatchDataState;
         private ListState<KMeansModelData> modelDataState;
 
         private ModelDataLocalUpdater(DistanceMeasure distanceMeasure, int k, double decayFactor) {
@@ -271,7 +259,7 @@ public class OnlineKMeans
 
             TypeInformation<DenseVector[]> type =
                     ObjectArrayTypeInfo.getInfoFor(DenseVectorTypeInfo.INSTANCE);
-            localBatchState =
+            localBatchDataState =
                     context.getOperatorStateStore()
                             .getListState(new ListStateDescriptor<>("localBatch", type));
 
@@ -283,7 +271,7 @@ public class OnlineKMeans
 
         @Override
         public void processElement1(StreamRecord<DenseVector[]> pointsRecord) throws Exception {
-            localBatchState.add(pointsRecord.getValue());
+            localBatchDataState.add(pointsRecord.getValue());
             alignAndComputeModelData();
         }
 
@@ -297,7 +285,7 @@ public class OnlineKMeans
 
         private void alignAndComputeModelData() throws Exception {
             if (!modelDataState.get().iterator().hasNext()
-                    || !localBatchState.get().iterator().hasNext()) {
+                    || !localBatchDataState.get().iterator().hasNext()) {
                 return;
             }
 
@@ -308,9 +296,10 @@ public class OnlineKMeans
             DenseVector weights = modelData.weights;
             modelDataState.clear();
 
-            List<DenseVector[]> pointsList = IteratorUtils.toList(localBatchState.get().iterator());
+            List<DenseVector[]> pointsList =
+                    IteratorUtils.toList(localBatchDataState.get().iterator());
             DenseVector[] points = pointsList.remove(0);
-            localBatchState.update(pointsList);
+            localBatchDataState.update(pointsList);
 
             int dim = centroids[0].size();
             int parallelism = getRuntimeContext().getNumberOfParallelSubtasks();
@@ -321,15 +310,12 @@ public class OnlineKMeans
 
             for (int i = 0; i < k; i++) {
                 sums[i] = new DenseVector(dim);
-                counts[i] = 0;
             }
             for (DenseVector point : points) {
                 int closestCentroidId =
                         KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
                 counts[closestCentroidId]++;
-                for (int j = 0; j < dim; j++) {
-                    sums[closestCentroidId].values[j] += point.values[j];
-                }
+                BLAS.axpy(1.0, point, sums[closestCentroidId]);
             }
 
             // Considers weight and decay factor when updating centroids.
@@ -364,8 +350,10 @@ public class OnlineKMeans
         }
     }
 
-    // An operator that splits a global batch into evenly-sized local batches, and distributes them
-    // to downstream operator.
+    /**
+     * An operator that splits a global batch into evenly-sized local batches, and distributes them
+     * to downstream operator.
+     */
     private static class GlobalBatchSplitter
             implements FlatMapFunction<DenseVector[], DenseVector[]> {
         private final int downStreamParallelism;
@@ -376,16 +364,20 @@ public class OnlineKMeans
 
         @Override
         public void flatMap(DenseVector[] values, Collector<DenseVector[]> collector) {
-            // Calculate the batch sizes to be distributed on each subtask.
-            List<Integer> sizes = new ArrayList<>();
-            for (int i = 0; i < downStreamParallelism; i++) {
-                int start = i * values.length / downStreamParallelism;
-                int end = (i + 1) * values.length / downStreamParallelism;
-                sizes.add(end - start);
-            }
+            int div = values.length / downStreamParallelism;
+            int mod = values.length % downStreamParallelism;
 
             int offset = 0;
-            for (Integer size : sizes) {
+            int i = 0;
+
+            int size = div + 1;
+            for (; i < mod; i++) {
+                collector.collect(Arrays.copyOfRange(values, offset, offset + size));
+                offset += size;
+            }
+
+            size = div;
+            for (; i < downStreamParallelism; i++) {
                 collector.collect(Arrays.copyOfRange(values, offset, offset + size));
                 offset += size;
             }
@@ -407,57 +399,9 @@ public class OnlineKMeans
     /**
      * Sets the initial model data of the online training process with the provided model data
      * table.
-     *
-     * <p>This would override the effect of previously invoked {@link #setInitialModelData(Table)}
-     * or {@link #setRandomCentroids(int, double)}.
      */
     public OnlineKMeans setInitialModelData(Table initModelDataTable) {
         this.initModelDataTable = initModelDataTable;
         return this;
-    }
-
-    /**
-     * Sets the initial model data of the online training process with randomly created centroids.
-     *
-     * <p>This would override the effect of previously invoked {@link #setInitialModelData(Table)}
-     * or {@link #setRandomCentroids(int, double)}.
-     *
-     * @param dim The dimension of the centroids to create.
-     * @param weight The weight of the centroids to create.
-     */
-    public OnlineKMeans setRandomCentroids(int dim, double weight) {
-        set(DIM, dim);
-        set(INIT_WEIGHT, weight);
-        initModelDataTable = null;
-        return this;
-    }
-
-    private static class RandomCentroidsCreator implements MapFunction<Integer, KMeansModelData> {
-        private final int k;
-        private final int dim;
-        private final long seed;
-        private final double weight;
-
-        private RandomCentroidsCreator(int k, int dim, long seed, double weight) {
-            this.k = k;
-            this.dim = dim;
-            this.seed = seed;
-            this.weight = weight;
-        }
-
-        @Override
-        public KMeansModelData map(Integer integer) {
-            DenseVector[] centroids = new DenseVector[k];
-            Random random = new Random(seed);
-            for (int i = 0; i < k; i++) {
-                centroids[i] = new DenseVector(dim);
-                for (int j = 0; j < dim; j++) {
-                    centroids[i].values[j] = random.nextDouble();
-                }
-            }
-            DenseVector weights = new DenseVector(k);
-            Arrays.fill(weights.values, weight);
-            return new KMeansModelData(centroids, weights);
-        }
     }
 }

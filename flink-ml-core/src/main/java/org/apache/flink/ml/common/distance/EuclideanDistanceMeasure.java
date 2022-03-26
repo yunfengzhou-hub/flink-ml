@@ -33,6 +33,7 @@ public class EuclideanDistanceMeasure implements DistanceMeasure {
         return instance;
     }
 
+    // TODO: Improve distance calculation with BLAS.
     @Override
     public double distance(Vector v1, Vector v2) {
         Preconditions.checkArgument(v1.size() == v2.size());

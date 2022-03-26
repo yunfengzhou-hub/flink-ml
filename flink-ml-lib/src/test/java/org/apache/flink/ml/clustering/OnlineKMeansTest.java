@@ -26,6 +26,7 @@ import org.apache.flink.metrics.Gauge;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
+import org.apache.flink.ml.clustering.kmeans.KMeansUtils;
 import org.apache.flink.ml.clustering.kmeans.OnlineKMeans;
 import org.apache.flink.ml.clustering.kmeans.OnlineKMeansModel;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
@@ -39,8 +40,6 @@ import org.apache.flink.runtime.minicluster.MiniClusterConfiguration;
 import org.apache.flink.runtime.testutils.InMemoryReporter;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
@@ -169,17 +168,12 @@ public class OnlineKMeansTest extends TestLogger {
         env.setRestartStrategy(RestartStrategies.noRestart());
         tEnv = StreamTableEnvironment.create(env);
 
-        Schema schema = Schema.newBuilder().column("f0", DataTypes.of(DenseVector.class)).build();
-
-        offlineTrainTable =
-                tEnv.fromDataStream(env.fromElements(trainData1), schema).as("features");
+        offlineTrainTable = tEnv.fromDataStream(env.fromElements(trainData1)).as("features");
         onlineTrainTable =
-                tEnv.fromDataStream(
-                                env.addSource(trainSource, DenseVectorTypeInfo.INSTANCE), schema)
+                tEnv.fromDataStream(env.addSource(trainSource, DenseVectorTypeInfo.INSTANCE))
                         .as("features");
         onlinePredictTable =
-                tEnv.fromDataStream(
-                                env.addSource(predictSource, DenseVectorTypeInfo.INSTANCE), schema)
+                tEnv.fromDataStream(env.addSource(predictSource, DenseVectorTypeInfo.INSTANCE))
                         .as("features");
     }
 
@@ -280,7 +274,8 @@ public class OnlineKMeansTest extends TestLogger {
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
                         .setGlobalBatchSize(6)
-                        .setRandomCentroids(2, 0.);
+                        .setInitialModelData(
+                                KMeansUtils.generateRandomModelData(env, 2, 2, 0.0, 0));
         OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 
@@ -408,7 +403,8 @@ public class OnlineKMeansTest extends TestLogger {
                         .setFeaturesCol("features")
                         .setPredictionCol("prediction")
                         .setGlobalBatchSize(6)
-                        .setRandomCentroids(2, 0.);
+                        .setInitialModelData(
+                                KMeansUtils.generateRandomModelData(env, 2, 2, 0.0, 0));
         OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 
@@ -440,14 +436,14 @@ public class OnlineKMeansTest extends TestLogger {
         KMeansModelData modelData1 =
                 new KMeansModelData(
                         new DenseVector[] {Vectors.dense(10.1, 0.1), Vectors.dense(-10.2, 0.2)},
-                        null);
+                        Vectors.dense(0.0, 0.0));
 
         KMeansModelData modelData2 =
                 new KMeansModelData(
                         new DenseVector[] {
                             Vectors.dense(10.1, 100.1), Vectors.dense(-10.2, -100.2)
                         },
-                        null);
+                        Vectors.dense(0.0, 0.0));
 
         InMemorySourceFunction<KMeansModelData> modelDataSource = new InMemorySourceFunction<>();
         Table modelDataTable =
