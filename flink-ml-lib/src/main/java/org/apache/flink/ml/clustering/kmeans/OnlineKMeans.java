@@ -56,13 +56,10 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.collections.IteratorUtils;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
 
 /**
  * OnlineKMeans extends the function of {@link KMeans}, supporting to train a K-Means model
@@ -123,30 +120,22 @@ public class OnlineKMeans
     /** Saves the metadata AND bounded model data table (if exists) to the given path. */
     @Override
     public void save(String path) throws IOException {
-        if (initModelDataTable != null) {
-            ReadWriteUtils.saveModelData(
-                    KMeansModelData.getModelDataStream(initModelDataTable),
-                    path,
-                    new KMeansModelData.ModelDataEncoder());
-        }
-
+        Preconditions.checkNotNull(
+                initModelDataTable, "Initial Model Data Table should have been set.");
         ReadWriteUtils.saveMetadata(this, path);
+        ReadWriteUtils.saveModelData(
+                KMeansModelData.getModelDataStream(initModelDataTable),
+                path,
+                new KMeansModelData.ModelDataEncoder());
     }
 
     public static OnlineKMeans load(StreamExecutionEnvironment env, String path)
             throws IOException {
         OnlineKMeans onlineKMeans = ReadWriteUtils.loadStageParam(path);
-
-        String initModelDataPath = ReadWriteUtils.getDataPath(path);
-        if (Files.exists(Paths.get(initModelDataPath))) {
-            StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-
-            DataStream<KMeansModelData> initModelDataStream =
-                    ReadWriteUtils.loadModelData(env, path, new KMeansModelData.ModelDataDecoder());
-
-            onlineKMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
-        }
-
+        DataStream<KMeansModelData> initModelDataStream =
+                ReadWriteUtils.loadModelData(env, path, new KMeansModelData.ModelDataDecoder());
+        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+        onlineKMeans.initModelDataTable = tEnv.fromDataStream(initModelDataStream);
         return onlineKMeans;
     }
 
@@ -176,6 +165,11 @@ public class OnlineKMeans
             DataStream<DenseVector> points = dataStreams.get(0);
 
             int parallelism = points.getParallelism();
+
+            Preconditions.checkState(
+                    parallelism <= batchSize,
+                    "There are more subtasks in the training process than the number "
+                            + "of elements in each batch. Some subtasks might be idling forever.");
 
             DataStream<KMeansModelData> newModelData =
                     points.countWindowAll(batchSize)
@@ -229,9 +223,9 @@ public class OnlineKMeans
      * An operator that updates KMeans model data locally. It mainly does the following operations.
      *
      * <ul>
-     *   <li>Finds the closest centroid id (cluster) of the input points
+     *   <li>Finds the closest centroid id (cluster) of the input points.
      *   <li>Computes the new centroids from the average of input points that belongs to the same
-     *       cluster
+     *       cluster.
      *   <li>Computes the weighted average of current and new centroids. The weight of a new
      *       centroid is the number of input points that belong to this cluster. The weight of a
      *       current centroid is its original weight scaled by $ decayFactor / parallelism $.
@@ -290,8 +284,7 @@ public class OnlineKMeans
             }
 
             KMeansModelData modelData =
-                    OperatorStateUtils.getUniqueElement(modelDataState, "modelData")
-                            .orElseThrow((Supplier<Exception>) NullPointerException::new);
+                    OperatorStateUtils.getUniqueElement(modelDataState, "modelData").get();
             DenseVector[] centroids = modelData.centroids;
             DenseVector weights = modelData.weights;
             modelDataState.clear();

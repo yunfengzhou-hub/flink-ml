@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
@@ -29,6 +30,7 @@ import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorSerializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
@@ -37,6 +39,8 @@ import org.apache.flink.util.Preconditions;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Arrays;
+import java.util.Random;
 
 /**
  * Model data of {@link KMeansModel} and {@link OnlineKMeansModel}.
@@ -64,6 +68,52 @@ public class KMeansModelData {
     }
 
     public KMeansModelData() {}
+
+    /**
+     * Generates a Table containing a {@link KMeansModelData} instance with randomly generated
+     * centroids.
+     *
+     * @param env The environment where to create the table.
+     * @param k The number of generated centroids.
+     * @param dim The size of generated centroids.
+     * @param weight The weight of the centroids.
+     * @param seed Random seed.
+     */
+    public static Table generateRandomModelData(
+            StreamExecutionEnvironment env, int k, int dim, double weight, long seed) {
+        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+        return tEnv.fromDataStream(
+                env.fromElements(1).map(new RandomCentroidsCreator(k, dim, weight, seed)));
+    }
+
+    private static class RandomCentroidsCreator implements MapFunction<Integer, KMeansModelData> {
+        private final int k;
+        private final int dim;
+        private final long seed;
+        private final double weight;
+
+        private RandomCentroidsCreator(int k, int dim, double weight, long seed) {
+            this.k = k;
+            this.dim = dim;
+            this.seed = seed;
+            this.weight = weight;
+        }
+
+        @Override
+        public KMeansModelData map(Integer integer) {
+            DenseVector[] centroids = new DenseVector[k];
+            Random random = new Random(seed);
+            for (int i = 0; i < k; i++) {
+                centroids[i] = new DenseVector(dim);
+                for (int j = 0; j < dim; j++) {
+                    centroids[i].values[j] = random.nextDouble();
+                }
+            }
+            DenseVector weights = new DenseVector(k);
+            Arrays.fill(weights.values, weight);
+            return new KMeansModelData(centroids, weights);
+        }
+    }
 
     /**
      * Converts the table model to a data stream.

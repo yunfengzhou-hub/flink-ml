@@ -73,11 +73,7 @@ public class InMemorySinkFunction<T> extends RichSinkFunction<T> {
     }
 
     public T poll() throws InterruptedException {
-        return poll(1, TimeUnit.MINUTES);
-    }
-
-    public T poll(long timeout, TimeUnit unit) throws InterruptedException {
-        T value = queue.poll(timeout, unit);
+        T value = queue.poll(1, TimeUnit.MINUTES);
         if (value == null) {
             throw new RuntimeException("Failed to poll next value from blocking queue.");
         }

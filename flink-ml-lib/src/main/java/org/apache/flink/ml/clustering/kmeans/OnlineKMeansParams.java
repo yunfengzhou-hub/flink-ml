@@ -22,10 +22,6 @@ import org.apache.flink.ml.common.param.HasBatchStrategy;
 import org.apache.flink.ml.common.param.HasDecayFactor;
 import org.apache.flink.ml.common.param.HasGlobalBatchSize;
 import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.ml.param.DoubleParam;
-import org.apache.flink.ml.param.IntParam;
-import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.param.ParamValidators;
 
 /**
  * Params of {@link OnlineKMeans}.
@@ -37,18 +33,4 @@ public interface OnlineKMeansParams<T>
                 HasGlobalBatchSize<T>,
                 HasDecayFactor<T>,
                 HasSeed<T>,
-                KMeansModelParams<T> {
-    Param<Integer> DIM =
-            new IntParam(
-                    "dim",
-                    "The dimension of random centroids to create.",
-                    2,
-                    ParamValidators.gtEq(1));
-
-    Param<Double> INIT_WEIGHT =
-            new DoubleParam(
-                    "initWeight",
-                    "The initial weight of random centroids to create.",
-                    0.,
-                    ParamValidators.gtEq(0));
-}
+                KMeansModelParams<T> {}

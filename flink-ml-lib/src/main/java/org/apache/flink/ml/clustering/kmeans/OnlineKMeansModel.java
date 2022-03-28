@@ -18,9 +18,10 @@
 
 package org.apache.flink.ml.clustering.kmeans;
 
+import org.apache.flink.api.common.state.ListState;
+import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.ml.api.Model;
 import org.apache.flink.ml.common.datastream.TableUtils;
@@ -29,22 +30,22 @@ import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.co.CoProcessFunction;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
-import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -88,21 +89,25 @@ public class OnlineKMeansModel
                         ArrayUtils.addAll(inputTypeInfo.getFieldNames(), getPredictionCol()));
 
         DataStream<Row> predictionResult =
-                KMeansModelData.getModelDataStream(modelDataTable)
-                        .broadcast()
-                        .connect(tEnv.toDataStream(inputs[0]))
-                        .process(
-                                new PredictLabelFunction(
+                tEnv.toDataStream(inputs[0])
+                        .connect(KMeansModelData.getModelDataStream(modelDataTable).broadcast())
+                        .transform(
+                                "PredictLabelOperator",
+                                outputTypeInfo,
+                                new PredictLabelOperator(
+                                        inputTypeInfo,
                                         getFeaturesCol(),
                                         DistanceMeasure.getInstance(getDistanceMeasure()),
-                                        getK()),
-                                outputTypeInfo);
+                                        getK()));
 
         return new Table[] {tEnv.fromDataStream(predictionResult)};
     }
 
-    /** A utility function used for prediction. */
-    private static class PredictLabelFunction extends CoProcessFunction<KMeansModelData, Row, Row> {
+    /** A utility operator used for prediction. */
+    private static class PredictLabelOperator extends AbstractStreamOperator<Row>
+            implements TwoInputStreamOperator<Row, KMeansModelData, Row> {
+        private final RowTypeInfo inputTypeInfo;
+
         private final String featuresCol;
 
         private final DistanceMeasure distanceMeasure;
@@ -113,7 +118,7 @@ public class OnlineKMeansModel
 
         // TODO: replace this with a complete solution of reading first model data from unbounded
         // model data stream before processing the first predict data.
-        private final List<Row> bufferedPoints = new ArrayList<>();
+        private ListState<Row> bufferedPointsState;
 
         /**
          * Basic implementation of the model data version with the following rules.
@@ -122,22 +127,36 @@ public class OnlineKMeansModel
          *   <li>Negative value is regarded as illegal value.
          *   <li>Zero value means the version has not been initialized yet.
          *   <li>Positive value represents valid version.
-         *   <li>A larger value represents a newer version.
          * </ul>
          */
         // TODO: replace this simple implementation of model data version with the formal API to
         // track model version after its design is settled.
         private int modelDataVersion = 0;
 
-        public PredictLabelFunction(String featuresCol, DistanceMeasure distanceMeasure, int k) {
+        public PredictLabelOperator(
+                RowTypeInfo inputTypeInfo,
+                String featuresCol,
+                DistanceMeasure distanceMeasure,
+                int k) {
+            this.inputTypeInfo = inputTypeInfo;
             this.featuresCol = featuresCol;
             this.distanceMeasure = distanceMeasure;
             this.k = k;
         }
 
         @Override
-        public void open(Configuration parameters) throws Exception {
-            super.open(parameters);
+        public void initializeState(StateInitializationContext context) throws Exception {
+            super.initializeState(context);
+
+            bufferedPointsState =
+                    context.getOperatorStateStore()
+                            .getListState(
+                                    new ListStateDescriptor<>("bufferedPoints", inputTypeInfo));
+        }
+
+        @Override
+        public void open() throws Exception {
+            super.open();
 
             getRuntimeContext()
                     .getMetricGroup()
@@ -147,31 +166,27 @@ public class OnlineKMeansModel
         }
 
         @Override
-        public void processElement1(
-                KMeansModelData modelData,
-                CoProcessFunction<KMeansModelData, Row, Row>.Context context,
-                Collector<Row> collector) {
-            Preconditions.checkArgument(modelData.centroids.length == k);
-            centroids = modelData.centroids;
-            modelDataVersion++;
-            for (Row dataPoint : bufferedPoints) {
-                processElement2(dataPoint, context, collector);
-            }
-            bufferedPoints.clear();
-        }
-
-        @Override
-        public void processElement2(
-                Row dataPoint,
-                CoProcessFunction<KMeansModelData, Row, Row>.Context context,
-                Collector<Row> collector) {
+        public void processElement1(StreamRecord<Row> streamRecord) throws Exception {
+            Row dataPoint = streamRecord.getValue();
             if (centroids == null) {
-                bufferedPoints.add(dataPoint);
+                bufferedPointsState.add(dataPoint);
                 return;
             }
             DenseVector point = (DenseVector) dataPoint.getField(featuresCol);
             int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
-            collector.collect(Row.join(dataPoint, Row.of(closestCentroidId)));
+            output.collect(new StreamRecord<>(Row.join(dataPoint, Row.of(closestCentroidId))));
+        }
+
+        @Override
+        public void processElement2(StreamRecord<KMeansModelData> streamRecord) throws Exception {
+            KMeansModelData modelData = streamRecord.getValue();
+            Preconditions.checkArgument(modelData.centroids.length == k);
+            centroids = modelData.centroids;
+            modelDataVersion++;
+            for (Row dataPoint : bufferedPointsState.get()) {
+                processElement1(new StreamRecord<>(dataPoint));
+            }
+            bufferedPointsState.clear();
         }
     }
 

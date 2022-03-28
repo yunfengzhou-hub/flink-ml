@@ -26,7 +26,6 @@ import org.apache.flink.metrics.Gauge;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
-import org.apache.flink.ml.clustering.kmeans.KMeansUtils;
 import org.apache.flink.ml.clustering.kmeans.OnlineKMeans;
 import org.apache.flink.ml.clustering.kmeans.OnlineKMeansModel;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
@@ -61,6 +60,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.apache.flink.ml.clustering.KMeansTest.groupFeaturesByPrediction;
+import static org.junit.Assert.assertEquals;
 
 /** Tests {@link OnlineKMeans} and {@link OnlineKMeansModel}. */
 public class OnlineKMeansTest extends TestLogger {
@@ -275,7 +275,7 @@ public class OnlineKMeansTest extends TestLogger {
                         .setPredictionCol("prediction")
                         .setGlobalBatchSize(6)
                         .setInitialModelData(
-                                KMeansUtils.generateRandomModelData(env, 2, 2, 0.0, 0));
+                                KMeansModelData.generateRandomModelData(env, 2, 2, 0.0, 0));
         OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 
@@ -360,6 +360,32 @@ public class OnlineKMeansTest extends TestLogger {
     }
 
     @Test
+    public void testFewerPointsThanSubtask() {
+        OnlineKMeans onlineKMeans =
+                new OnlineKMeans()
+                        .setFeaturesCol("features")
+                        .setPredictionCol("prediction")
+                        .setGlobalBatchSize(2)
+                        .setInitialModelData(
+                                KMeansModelData.generateRandomModelData(env, 2, 2, 0.0, 0));
+
+        try {
+            onlineKMeans.fit(onlineTrainTable);
+            Assert.fail("Expected IllegalStateException");
+        } catch (Exception e) {
+            Throwable exception = e;
+            while (exception.getCause() != null) {
+                exception = exception.getCause();
+            }
+            assertEquals(IllegalStateException.class, exception.getClass());
+            assertEquals(
+                    "There are more subtasks in the training process than the number "
+                            + "of elements in each batch. Some subtasks might be idling forever.",
+                    exception.getMessage());
+        }
+    }
+
+    @Test
     public void testSaveAndReload() throws Exception {
         KMeans kMeans = new KMeans().setFeaturesCol("features").setPredictionCol("prediction");
         KMeansModel model = kMeans.fit(offlineTrainTable);
@@ -404,7 +430,7 @@ public class OnlineKMeansTest extends TestLogger {
                         .setPredictionCol("prediction")
                         .setGlobalBatchSize(6)
                         .setInitialModelData(
-                                KMeansUtils.generateRandomModelData(env, 2, 2, 0.0, 0));
+                                KMeansModelData.generateRandomModelData(env, 2, 2, 0.0, 0));
         OnlineKMeansModel onlineModel = onlineKMeans.fit(onlineTrainTable);
         transformAndOutputData(onlineModel);
 

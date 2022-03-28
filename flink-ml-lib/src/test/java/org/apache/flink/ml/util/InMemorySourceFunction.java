@@ -61,7 +61,7 @@ public class InMemorySourceFunction<T> extends RichSourceFunction<T> {
         while (isRunning) {
             Optional<T> maybeValue = queue.take();
             if (!maybeValue.isPresent()) {
-                continue;
+                break;
             }
             context.collect(maybeValue.get());
         }
