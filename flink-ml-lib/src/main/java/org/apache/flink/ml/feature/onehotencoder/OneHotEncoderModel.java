@@ -118,14 +118,13 @@ public class OneHotEncoderModel
                 new OneHotEncoderModelData.ModelDataEncoder());
     }
 
-    public static OneHotEncoderModel load(StreamExecutionEnvironment env, String path)
+    public static OneHotEncoderModel load(StreamTableEnvironment tEnv, String path)
             throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         OneHotEncoderModel model = ReadWriteUtils.loadStageParam(path);
-        DataStream<Tuple2<Integer, Integer>> modelData =
+        Table modelDataTable =
                 ReadWriteUtils.loadModelData(
-                        env, path, new OneHotEncoderModelData.ModelDataStreamFormat());
-        return model.setModelData(tEnv.fromDataStream(modelData));
+                        tEnv, path, new OneHotEncoderModelData.ModelDataStreamFormat());
+        return model.setModelData(modelDataTable);
     }
 
     @Override

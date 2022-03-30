@@ -103,14 +103,13 @@ public class ExampleStages {
             ReadWriteUtils.saveMetadata(this, path);
         }
 
-        public static SumModel load(StreamExecutionEnvironment env, String path)
+        public static SumModel load(StreamTableEnvironment tEnv, String path)
                 throws IOException {
-            StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-            DataStream<Integer> modelData =
-                    ReadWriteUtils.loadModelData(env, path, new TestUtils.IntegerStreamFormat());
+            Table modelDataTable =
+                    ReadWriteUtils.loadModelData(tEnv, path, new TestUtils.IntegerStreamFormat());
 
             SumModel model = ReadWriteUtils.loadStageParam(path);
-            return model.setModelData(tEnv.fromDataStream(modelData));
+            return model.setModelData(modelDataTable);
         }
     }
 
@@ -196,7 +195,7 @@ public class ExampleStages {
             ReadWriteUtils.saveMetadata(this, path);
         }
 
-        public static SumEstimator load(StreamExecutionEnvironment env, String path)
+        public static SumEstimator load(StreamTableEnvironment tEnv, String path)
                 throws IOException {
             return ReadWriteUtils.loadStageParam(path);
         }
@@ -250,7 +249,7 @@ public class ExampleStages {
             ReadWriteUtils.saveMetadata(this, path);
         }
 
-        public static UnionAlgoOperator load(StreamExecutionEnvironment env, String path)
+        public static UnionAlgoOperator load(StreamTableEnvironment tEnv, String path)
                 throws IOException {
             return ReadWriteUtils.loadStageParam(path);
         }

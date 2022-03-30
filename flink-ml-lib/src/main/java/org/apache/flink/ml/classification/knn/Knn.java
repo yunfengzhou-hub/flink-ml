@@ -81,7 +81,7 @@ public class Knn implements Estimator<Knn, KnnModel>, KnnParams<Knn> {
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static Knn load(StreamExecutionEnvironment env, String path) throws IOException {
+    public static Knn load(StreamTableEnvironment tEnv, String path) throws IOException {
         return ReadWriteUtils.loadStageParam(path);
     }
 

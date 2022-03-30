@@ -196,7 +196,7 @@ public class MinMaxScaler
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static MinMaxScaler load(StreamExecutionEnvironment env, String path)
+    public static MinMaxScaler load(StreamTableEnvironment tEnv, String path)
             throws IOException {
         return ReadWriteUtils.loadStageParam(path);
     }

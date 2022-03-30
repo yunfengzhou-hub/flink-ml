@@ -113,16 +113,15 @@ public class KnnModel implements Model<KnnModel>, KnnModelParams<KnnModel> {
     /**
      * Loads model data from path.
      *
-     * @param env Stream execution environment.
+     * @param tEnv A StreamTableEnvironment instance.
      * @param path Model path.
      * @return Knn model.
      */
-    public static KnnModel load(StreamExecutionEnvironment env, String path) throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+    public static KnnModel load(StreamTableEnvironment tEnv, String path) throws IOException {
         KnnModel model = ReadWriteUtils.loadStageParam(path);
-        DataStream<KnnModelData> modelData =
-                ReadWriteUtils.loadModelData(env, path, new KnnModelData.ModelDataDecoder());
-        return model.setModelData(tEnv.fromDataStream(modelData));
+        Table modelDataTable =
+                ReadWriteUtils.loadModelData(tEnv, path, new KnnModelData.ModelDataDecoder());
+        return model.setModelData(modelDataTable);
     }
 
     /** This operator loads model data and predicts result. */

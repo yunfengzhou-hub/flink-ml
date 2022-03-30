@@ -115,7 +115,7 @@ public class NaiveBayes
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static NaiveBayes load(StreamExecutionEnvironment env, String path) throws IOException {
+    public static NaiveBayes load(StreamTableEnvironment tEnv, String path) throws IOException {
         return ReadWriteUtils.loadStageParam(path);
     }
 

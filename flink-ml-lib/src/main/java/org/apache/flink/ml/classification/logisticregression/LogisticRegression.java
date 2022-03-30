@@ -93,7 +93,7 @@ public class LogisticRegression
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static LogisticRegression load(StreamExecutionEnvironment env, String path)
+    public static LogisticRegression load(StreamTableEnvironment tEnv, String path)
             throws IOException {
         return ReadWriteUtils.loadStageParam(path);
     }

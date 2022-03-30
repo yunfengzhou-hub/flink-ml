@@ -85,7 +85,7 @@ public class OneHotEncoder
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static OneHotEncoder load(StreamExecutionEnvironment env, String path)
+    public static OneHotEncoder load(StreamTableEnvironment tEnv, String path)
             throws IOException {
         return ReadWriteUtils.loadStageParam(path);
     }

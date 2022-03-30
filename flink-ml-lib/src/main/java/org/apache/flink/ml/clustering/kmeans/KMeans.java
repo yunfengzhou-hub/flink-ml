@@ -123,7 +123,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static KMeans load(StreamExecutionEnvironment env, String path) throws IOException {
+    public static KMeans load(StreamTableEnvironment tEnv, String path) throws IOException {
         return ReadWriteUtils.loadStageParam(path);
     }
 

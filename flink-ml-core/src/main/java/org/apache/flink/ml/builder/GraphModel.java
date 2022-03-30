@@ -28,6 +28,7 @@ import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
@@ -142,7 +143,7 @@ public final class GraphModel implements Model<GraphModel> {
         ReadWriteUtils.saveGraph(this, graphData, path);
     }
 
-    public static GraphModel load(StreamExecutionEnvironment env, String path) throws IOException {
-        return (GraphModel) ReadWriteUtils.loadGraph(env, path, GraphModel.class.getName());
+    public static GraphModel load(StreamTableEnvironment tEnv, String path) throws IOException {
+        return (GraphModel) ReadWriteUtils.loadGraph(tEnv, path, GraphModel.class.getName());
     }
 }

@@ -67,16 +67,13 @@ public class IndexToStringModel
                 new StringIndexerModelData.ModelDataEncoder());
     }
 
-    public static IndexToStringModel load(StreamExecutionEnvironment env, String path)
+    public static IndexToStringModel load(StreamTableEnvironment tEnv, String path)
             throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-
         IndexToStringModel model = ReadWriteUtils.loadStageParam(path);
-        DataStream<StringIndexerModelData> modelData =
+        Table modelDataTable =
                 ReadWriteUtils.loadModelData(
-                        env, path, new StringIndexerModelData.ModelDataDecoder());
-
-        return model.setModelData(tEnv.fromDataStream(modelData));
+                        tEnv, path, new StringIndexerModelData.ModelDataDecoder());
+        return model.setModelData(modelDataTable);
     }
 
     @Override

@@ -155,11 +155,10 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
     }
 
     // TODO: Add INFO level logging.
-    public static KMeansModel load(StreamExecutionEnvironment env, String path) throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-        DataStream<KMeansModelData> modelData =
-                ReadWriteUtils.loadModelData(env, path, new ModelDataDecoder());
+    public static KMeansModel load(StreamTableEnvironment tEnv, String path) throws IOException {
+        Table modelDataTable =
+                ReadWriteUtils.loadModelData(tEnv, path, new ModelDataDecoder());
         KMeansModel model = ReadWriteUtils.loadStageParam(path);
-        return model.setModelData(tEnv.fromDataStream(modelData));
+        return model.setModelData(modelDataTable);
     }
 }

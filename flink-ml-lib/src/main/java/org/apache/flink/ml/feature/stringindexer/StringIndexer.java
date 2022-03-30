@@ -70,7 +70,7 @@ public class StringIndexer
         ReadWriteUtils.saveMetadata(this, path);
     }
 
-    public static StringIndexer load(StreamExecutionEnvironment env, String path)
+    public static StringIndexer load(StreamTableEnvironment tEnv, String path)
             throws IOException {
         return ReadWriteUtils.loadStageParam(path);
     }

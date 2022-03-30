@@ -121,14 +121,13 @@ public class MinMaxScalerModel
      * @param path Model path.
      * @return MinMaxScalerModel model.
      */
-    public static MinMaxScalerModel load(StreamExecutionEnvironment env, String path)
+    public static MinMaxScalerModel load(StreamTableEnvironment tEnv, String path)
             throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         MinMaxScalerModel model = ReadWriteUtils.loadStageParam(path);
-        DataStream<MinMaxScalerModelData> modelData =
+        Table modelDataTable =
                 ReadWriteUtils.loadModelData(
-                        env, path, new MinMaxScalerModelData.ModelDataDecoder());
-        return model.setModelData(tEnv.fromDataStream(modelData));
+                        tEnv, path, new MinMaxScalerModelData.ModelDataDecoder());
+        return model.setModelData(modelDataTable);
     }
 
     /** This operator loads model data and predicts result. */

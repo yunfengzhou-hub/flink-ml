@@ -74,14 +74,13 @@ public class LogisticRegressionModel
                 new LogisticRegressionModelData.ModelDataEncoder());
     }
 
-    public static LogisticRegressionModel load(StreamExecutionEnvironment env, String path)
+    public static LogisticRegressionModel load(StreamTableEnvironment tEnv, String path)
             throws IOException {
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         LogisticRegressionModel model = ReadWriteUtils.loadStageParam(path);
-        DataStream<LogisticRegressionModelData> modelData =
+        Table modelDataTable =
                 ReadWriteUtils.loadModelData(
-                        env, path, new LogisticRegressionModelData.ModelDataDecoder());
-        return model.setModelData(tEnv.fromDataStream(modelData));
+                        tEnv, path, new LogisticRegressionModelData.ModelDataDecoder());
+        return model.setModelData(modelDataTable);
     }
 
     @Override
