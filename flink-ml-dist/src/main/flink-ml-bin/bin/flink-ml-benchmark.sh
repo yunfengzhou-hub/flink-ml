@@ -24,7 +24,7 @@ flink_ml_root_path="$(dirname "$flink_ml_bin_path")"
 # Checks flink command.
 flink_cmd="flink"
 if ! command -v $flink_cmd &> /dev/null; then
-    echo "$flink_cmd: command not found" 1>&2
+    echo "$flink_cmd: command not found"
     exit 1
 fi
 
@@ -35,7 +35,7 @@ unsorted_versions="${expected_version}\n${actual_version}\n"
 sorted_versions=`printf ${unsorted_versions} | sort -V`
 unsorted_versions=`printf ${unsorted_versions}`
 if [ "${unsorted_versions}" != "${sorted_versions}" ]; then
-    echo "$flink_cmd $expected_version or a higher version is required, but found $actual_version" 1>&2
+    echo "$flink_cmd $expected_version or a higher version is required, but found $actual_version"
     exit 1
 fi
 
@@ -43,7 +43,7 @@ fi
 cd $flink_ml_root_path/lib
 flink_ml_fat_jar_name="flink-ml-fat.jar"
 if ! [ -f $flink_ml_fat_jar_name ]; then
-    echo "Creating fat jar containing all flink ml dependencies to be submitted." 1>&2
+    echo "Creating fat jar containing all flink ml dependencies to be submitted."
     mkdir tmp
     cd tmp
     for entry in "$flink_ml_root_path"/lib/*; do

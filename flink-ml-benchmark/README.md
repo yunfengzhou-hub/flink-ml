@@ -1,138 +1,38 @@
-# Flink ML Benchmark Guideline
+# Flink ML Benchmark Getting Started
 
 This document provides instructions about how to run benchmarks on Flink ML's
-stages.
+stages in a Linux/MacOS environment.
 
-## Write Benchmark Programs
+## Prerequisites
 
-### Add Maven Dependencies
+### Installing Flink
 
-In order to write Flink ML's java benchmark programs, first make sure that the
-following dependencies have been added to your maven project's `pom.xml`.
+Please make sure Flink 1.14 or higher version has been installed in your local
+environment. You can refer to the [local
+installation](https://nightlies.apache.org/flink/flink-docs-master/docs/try-flink/local_installation/)
+instruction on Flink's document website for how to achieve this.
 
-```xml
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-ml-core_${scala.binary.version}</artifactId>
-  <version>${flink.ml.version}</version>
-</dependency>
+### Setting Up Flink Environment Variables
 
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-ml-iteration_${scala.binary.version}</artifactId>
-  <version>${flink.ml.version}</version>
-</dependency>
-
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-ml-lib_${scala.binary.version}</artifactId>
-  <version>${flink.ml.version}</version>
-</dependency>
-
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-ml-benchmark_${scala.binary.version}</artifactId>
-  <version>${flink.ml.version}</version>
-</dependency>
-
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>statefun-flink-core</artifactId>
-  <version>3.1.0</version>
-  <exclusions>
-    <exclusion>
-      <groupId>org.apache.flink</groupId>
-      <artifactId>flink-streaming-java_2.12</artifactId>
-    </exclusion>
-  </exclusions>
-</dependency>
-
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-streaming-java_${scala.binary.version}</artifactId>
-  <version>${flink.version}</version>
-</dependency>
-
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-table-api-java-bridge_${scala.binary.version}</artifactId>
-  <version>${flink.version}</version>
-</dependency>
-
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-table-planner_${scala.binary.version}</artifactId>
-  <version>${flink.version}</version>
-</dependency>
-
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <artifactId>flink-clients_${scala.binary.version}</artifactId>
-  <version>${flink.version}</version>
-</dependency>
-```
-
-### Write Java Program
-
-Then you can write a program as follows to run benchmark on Flink ML stages. The
-example code below tests the performance of Flink ML's KMeans algorithm, with
-the default configuration parameters used.
-
-```java
-public class Main {
-    public static void main(String[] args) throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-
-        KMeans kMeans = new KMeans();
-        KMeansInputsGenerator inputsGenerator = new KMeansInputsGenerator();
-
-        BenchmarkResult result =
-                BenchmarkUtils.runBenchmark("exampleBenchmark", tEnv, kMeans, inputsGenerator);
-
-        BenchmarkUtils.printResult(result);
-    }
-}
-```
-
-### Execute Benchmark Program
-
-After executing the `main()` method above, you will see benchmark results
-printed out in your terminal. An example of the printed content is as follows.
-
-```
-Benchmark Name: exampleBenchmark
-Total Execution Time(ms): 828.0
-```
-
-### Configure Benchmark Parameters
-
-If you want to run benchmark on customed configuration parameters, you can set
-them with Flink ML's `WithParams` API as follows.
-
-```java
-KMeans kMeans = new KMeans()
-  .setK(5)
-  .setMaxIter(50);
-KMeansInputsGenerator inputsGenerator = new KMeansInputsGenerator()
-  .setDims(3)
-  .setDataSize(10000);
-```
-
-## Execute Benchmark through Command-Line Interface (CLI)
-
-You can also configure and execute benchmarks through Command-Line Interface
-(CLI) without writing java programs.
-
-### Prerequisites
-
-Before using Flink ML's CLI, make sure you have installed Flink 1.14 in your
-local environment, and that you have started a Flink cluster locally. If not,
-you can start a standalone session with the following command.
+After having installed Flink, please register `$FLINK_HOME` as an environment
+variable into your local environment, and add `$FLINK_HOME` into your `$PATH`
+variable. This can be completed by running the following commands in the Flink's
+folder.
 
 ```bash
-$ start-cluster
+export FLINK_HOME=`pwd`
+export PATH=$FLINK_HOME/bin:$PATH
 ```
+
+Then please run the following command. If this command returns 1.14.0 or a
+higher version, then it means that the required Flink environment has been
+successfully installed and registered in your local environment.
+
+```bash
+flink --version
+```
+
+### Acquiring Flink ML Binary Distribution
 
 In order to use Flink ML's CLI you need to have the latest binary distribution
 of Flink ML. You can acquire the distribution by building Flink ML's source code
@@ -147,13 +47,26 @@ After executing the command above, you will be able to find the binary
 distribution under
 `./flink-ml-dist/target/flink-ml-<version>-bin/flink-ml-<version>/`.
 
-### Run Benchmark CLI
+### Starting Flink Cluster
 
-In the binary distribution's folder, execute the following command to run an
-example benchmark.
+Please start a Flink standalone session in your local environment with the
+following command.
 
 ```bash
-$ ./bin/flink-ml-benchmark.sh ./examples/benchmark-example-conf.json
+start-cluster.sh
+```
+
+You should be able to navigate to the web UI at
+[localhost:8081](http://localhost:8081/) to view the Flink dashboard and see
+that the cluster is up and running.
+
+## Run Benchmark Example
+
+In Flink ML's binary distribution's folder, execute the following command to run
+an example benchmark.
+
+```bash
+$ ./bin/flink-ml-benchmark.sh ./examples/benchmark-example-conf.json ./output/results.json
 ```
 
 You will notice that some Flink job is submitted to your Flink cluster, and the
@@ -161,98 +74,93 @@ following information is printed out in your terminal. This means that you have
 successfully executed a benchmark on `KMeansModel`.
 
 ```
-Job has been submitted with JobID 85b4a33df5c00a315e0d1142e1d743be
+Creating fat jar containing all flink ml dependencies to be submitted.
+Job has been submitted with JobID bdaa54b065adf2c813619113a00337de
 Program execution finished
-Job with JobID 85b4a33df5c00a315e0d1142e1d743be has finished.
-Job Runtime: 828 ms
+Job with JobID bdaa54b065adf2c813619113a00337de has finished.
+Job Runtime: 215 ms
+Accumulator Results: 
+- numElements (java.lang.Long): 10000
+
 
 Benchmark Name: KMeansModel-1
-Total Execution Time(ms): 828.0
+Total Execution Time: 215.0 ms
+Total Input Record Number: 10000
+Average Input Throughput: 46511.62790697674 events per second
+Total Output Record Number: 10000
+Average Output Throughput: 46511.62790697674 events per second
 
 ```
 
-### Save Benchmark Result to File
+The command above would save the results into `./output/results.json` as below.
 
-`flink-ml-benchmark.sh` has redirected all warnings and process logs to stderr,
-and the benchmark results to stdout. So if you write the command in the
-following way
-
-```bash
-$ ./bin/flink-ml-benchmark.sh ./examples/benchmark-example-conf.json > output.txt
+```json
+[ {
+  "name" : "KMeansModel-1",
+  "totalTimeMs" : 215.0,
+  "inputRecordNum" : 10000,
+  "inputThroughput" : 46511.62790697674,
+  "outputRecordNum" : 10000,
+  "outputThroughput" : 46511.62790697674
+} ]
 ```
 
-You will get a clean benchmark result saved in `output.txt` as follows.
+## Custom Benchmark Configuration File
 
-```
-Benchmark Name: KMeansModel-1
-Total Execution Time(ms): 828.0
-
-```
-
-### Configuration File Format
-
-The benchmark CLI creates stages and test data according to the input
-configuration file. The configuration file should contain a JSON object in the
+`flink-ml-benchmark.sh` parses benchmarks to be executed according to the input
+configuration file, like `./examples/benchmark-example-conf.json`. It can also
+parse your custom configuration file so long as it contains a JSON object in the
 following format.
 
-First of all, the file should contain the following configurations as the
-metadata of the JSON object.
-
-- `"_version"`: The version of the json format. Currently its value must be 1.
-
-Then, each benchmark should be specified through key-object pairs.
-
-The key for each benchmark JSON object will be regarded as the name of the
-benchmark. The benchmark name can contain English letters, numbers, hyphens(-)
-and underscores(_), but should not start with a hyphen or underscore.
-
-The value of each benchmark name should be a JSON object containing at least
-`"stage"` and `"inputs"`. If the stage to be tested is a `Model` and its model
-data needs to be explicitly set, the JSON object should also contain
-`"modelData"`.
-
-The value of `"stage"`, `"inputs"` or `"modelData"` should be a JSON object
-containing `"className"` and `paramMap`.
-
-- `"className"`'s value should be the full classpath of a `WithParams` subclass.
-  For `"stage"`, the class should be a subclass of `Stage`. For `"inputs"` or
-  `"modelData"`, the class should be a subclass of `DataGenerator`.
-
-- `"paramMap"`'s value should be a JSON object containing the parameters related
-  to the specific `Stage` or `DataGenerator`. Note that all parameter values
-  should be wrapped as strings.
+- The file should contain the following as the metadata of the JSON object.
+  - `"version"`: The version of the json format. Currently its value must be 1.
+- Keys in the JSON object, except `"version"`, are regarded as the names of the
+  benchmarks.
+- The value of each benchmark name should be a JSON object containing the
+  following keys.
+  - `"stage"`: The stage to be benchmarked.
+  - `"inputs"`: The input data of the stage to be benchmarked.
+  - `"modelData"`(Optional): The model data of the stage to be benchmarked, if
+    the stage is a `Model` and needs to have its model data explicitly set.
+- The value of `"stage"`, `"inputs"` or `"modelData"` should be a JSON object
+  containing the following keys.
+  - `"className"`: The full classpath of a `WithParams` subclass. For `"stage"`,
+    the class should be a subclass of `Stage`. For `"inputs"` or `"modelData"`,
+    the class should be a subclass of `DataGenerator`.
+  - `"paramMap"`: A JSON object containing the parameters related to the
+    specific `Stage` or `DataGenerator`.
 
 Combining the format requirements above, an example configuration file is as
 follows.
 
 ```json
 {
-  "_version": 1,
+  "version": 1,
   "KMeansModel-1": {
     "stage": {
       "className": "org.apache.flink.ml.clustering.kmeans.KMeansModel",
       "paramMap": {
-        "featuresCol": "\"features\"",
-        "k": "2",
-        "distanceMeasure": "\"euclidean\"",
-        "predictionCol": "\"prediction\""
+        "featuresCol": "features",
+        "k": 2,
+        "distanceMeasure": "euclidean",
+        "predictionCol": "prediction"
       }
     },
     "modelData":  {
       "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelDataGenerator",
       "paramMap": {
-        "seed": "null",
-        "k": "2",
-        "dims": "10"
+        "seed": null,
+        "k": 2,
+        "dims": 10
       }
     },
     "inputs": {
       "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator",
       "paramMap": {
-        "seed": "null",
-        "featuresCol": "\"features\"",
-        "numData": "10000",
-        "dims": "10"
+        "seed": null,
+        "featuresCol": "features",
+        "numData": 10000,
+        "dims": 10
       }
     }
   }

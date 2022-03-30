@@ -18,41 +18,59 @@
 
 package org.apache.flink.ml.benchmark;
 
+import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.util.Preconditions;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
-import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-
-import static org.apache.flink.ml.util.ReadWriteUtils.OBJECT_MAPPER;
+import java.util.stream.Collectors;
 
 /** Entry class for benchmark execution. */
 public class Benchmark {
+    private static final Logger LOG = LoggerFactory.getLogger(Benchmark.class);
+
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
-        final PrintStream originalOut = System.out;
-
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         InputStream inputStream = new FileInputStream(args[0]);
-        Map<String, ?> jsonMap = OBJECT_MAPPER.readValue(inputStream, Map.class);
-        Map<String, Map<String, ?>> benchmarkParamsMap =
-                BenchmarkUtils.parseBenchmarkParams(jsonMap);
-        System.err.println("Found benchmarks " + benchmarkParamsMap.keySet());
+        Map<String, ?> jsonMap = ReadWriteUtils.OBJECT_MAPPER.readValue(inputStream, Map.class);
+        Preconditions.checkArgument(
+                jsonMap.containsKey("version") && jsonMap.get("version").equals(1));
 
-        for (String benchmarkName : benchmarkParamsMap.keySet()) {
-            System.err.println("Running benchmark " + benchmarkName + ".");
+        List<String> benchmarkNames =
+                jsonMap.keySet().stream()
+                        .filter(x -> !x.equals("version"))
+                        .collect(Collectors.toList());
+        LOG.info("Found benchmarks " + benchmarkNames);
 
-            // Redirect all flink execution logs to stderr.
-            System.setOut(System.err);
+        List<BenchmarkResult> results = new ArrayList<>();
+
+        for (String benchmarkName : benchmarkNames) {
+            LOG.info("Running benchmark " + benchmarkName + ".");
+
             BenchmarkResult result =
                     BenchmarkUtils.runBenchmark(
-                            env, benchmarkName, benchmarkParamsMap.get(benchmarkName));
-            System.setOut(originalOut);
+                            env, benchmarkName, (Map<String, ?>) jsonMap.get(benchmarkName));
 
-            System.err.println("Completed benchmark " + benchmarkName + ".");
+            results.add(result);
+        }
+
+        for (BenchmarkResult result : results) {
             BenchmarkUtils.printResult(result);
+        }
+
+        if (args.length > 1) {
+            String savePath = args[1];
+            BenchmarkUtils.saveResultsAsJson(savePath, results);
+            LOG.info("Benchmark results saved as json in " + savePath + ".");
         }
     }
 }

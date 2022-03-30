@@ -18,22 +18,14 @@
 
 package org.apache.flink.ml.benchmark.generator;
 
-import org.apache.flink.ml.param.WithParams;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
 /** Interface for generating data as table arrays. */
-public interface DataGenerator<T extends DataGenerator<T>> extends WithParams<T> {
+public interface DataGenerator<T extends DataGenerator<T>> extends GeneratorParams<T> {
     /**
      * Gets an array of Tables containing the data to be generated in the provided stream table
      * environment.
      */
     Table[] getData(StreamTableEnvironment tEnv);
-
-    /**
-     * Gets the number of elements in the generated Tables.
-     *
-     * When there are multiple tables, the returned value should be the sum of the number of elements in each table.
-     */
-    long getNumElements();
 }

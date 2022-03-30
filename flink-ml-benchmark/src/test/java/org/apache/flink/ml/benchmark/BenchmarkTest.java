@@ -23,9 +23,8 @@ import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.param.WithParams;
 import org.apache.flink.ml.util.ReadWriteUtils;
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.test.util.AbstractTestBase;
 
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -38,16 +37,21 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.ml.util.ReadWriteUtils.OBJECT_MAPPER;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Tests benchmarks. */
 @SuppressWarnings("unchecked")
-public class BenchmarkTest {
+public class BenchmarkTest extends AbstractTestBase {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
     private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
@@ -67,7 +71,6 @@ public class BenchmarkTest {
     @Test
     public void testCreateAndExecute() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         KMeans kMeans = new KMeans().setK(5).setFeaturesCol("test_feature");
         KMeansInputsGenerator inputsGenerator =
@@ -86,27 +89,32 @@ public class BenchmarkTest {
     }
 
     @Test
-    public void testLoadAndPrint() throws Exception {
+    public void testLoadAndSave() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         InputStream inputStream =
                 this.getClass().getClassLoader().getResourceAsStream("benchmark-example-conf.json");
         Map<String, ?> jsonMap = OBJECT_MAPPER.readValue(inputStream, Map.class);
-        Map<String, Map<String, ?>> benchmarkParamsMap =
-                BenchmarkUtils.parseBenchmarkParams(jsonMap);
+        List<String> benchmarkNames =
+                jsonMap.keySet().stream()
+                        .filter(x -> !x.equals("version"))
+                        .collect(Collectors.toList());
 
-        assertEquals(1, benchmarkParamsMap.size());
-        assertTrue(benchmarkParamsMap.containsKey("KMeansModel-1"));
+        assertEquals(1, benchmarkNames.size());
+        assertTrue(benchmarkNames.contains("KMeansModel-1"));
 
         KMeansModel expectedStage = new KMeansModel();
         WithParams<?> actualStage =
-                BenchmarkUtils.instantiateWithParams(
-                        (Map<String, ?>) benchmarkParamsMap.get("KMeansModel-1").get("stage"));
+                ReadWriteUtils.instantiateWithParams(
+                        (Map<String, ?>)
+                                ((Map<String, ?>) jsonMap.get(benchmarkNames.get(0))).get("stage"));
         assertEquals(expectedStage.getClass(), actualStage.getClass());
         assertEquals(expectedStage.getParamMap(), actualStage.getParamMap());
 
-        for (String benchmarkName : benchmarkParamsMap.keySet()) {
+        List<String> expectedContents = new ArrayList<>();
+        List<BenchmarkResult> results = new ArrayList<>();
+
+        for (String benchmarkName : benchmarkNames) {
             long estimatedTime = System.currentTimeMillis();
             BenchmarkResult result =
                     BenchmarkUtils.runBenchmark(
@@ -116,9 +124,18 @@ public class BenchmarkTest {
             assertTrue(result.totalTimeMs > 0);
             assertTrue(result.totalTimeMs <= estimatedTime);
 
-            BenchmarkUtils.printResult(result);
-            assertTrue(outContent.toString().contains(benchmarkName));
-            assertTrue(outContent.toString().contains(result.totalTimeMs.toString()));
+            results.add(result);
+            expectedContents.add(benchmarkName);
+            expectedContents.add(result.totalTimeMs.toString());
+        }
+
+        Path savePath = Paths.get(tempFolder.newFolder().getAbsolutePath(), "result.json");
+
+        BenchmarkUtils.saveResultsAsJson(savePath.toString(), results);
+        String actualContent = new String(Files.readAllBytes(savePath));
+
+        for (String expectedContent : expectedContents) {
+            assertTrue(actualContent.contains(expectedContent));
         }
     }
 
@@ -129,15 +146,15 @@ public class BenchmarkTest {
                 this.getClass().getClassLoader().getResourceAsStream("benchmark-example-conf.json");
         FileUtils.copyInputStreamToFile(inputStream, configFile);
 
-        Benchmark.main(new String[] {configFile.getAbsolutePath()});
+        Path savePath = Paths.get(tempFolder.newFolder().getAbsolutePath(), "conf.json");
+
+        Benchmark.main(new String[] {configFile.getAbsolutePath(), savePath.toString()});
+
+        String actualContent = new String(Files.readAllBytes(savePath));
 
         assertTrue(outContent.toString().contains("KMeansModel-1"));
-    }
-
-    @Test
-    public void test() throws JsonProcessingException {
-        String value = "test";
-        originalOut.println(value);
-        originalOut.println(ReadWriteUtils.OBJECT_MAPPER.writeValueAsString(value));
+        assertTrue(actualContent.contains("KMeansModel-1"));
+        // Checks saved content is valid JSON.
+        OBJECT_MAPPER.readValue(actualContent, List.class);
     }
 }

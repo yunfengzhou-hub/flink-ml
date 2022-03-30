@@ -18,6 +18,9 @@
 
 package org.apache.flink.ml.benchmark;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /** The result of executing a benchmark. */
 public class BenchmarkResult {
     /** The name of the benchmark. */
@@ -29,15 +32,30 @@ public class BenchmarkResult {
     /** The total number of records input into the benchmark flink job. */
     public Long inputRecordNum;
 
-    /** The average input throughput of the benchmark flink job. Unit: number of records processed per second */
+    /**
+     * The average input throughput of the benchmark flink job. Unit: number of records processed
+     * per second
+     */
     public Double inputThroughput;
 
     /** The total number of records output from the benchmark flink job. */
     public Long outputRecordNum;
 
-    /** The average output throughput of the benchmark flink job. Unit: number of records processed per second */
+    /**
+     * The average output throughput of the benchmark flink job. Unit: number of records processed
+     * per second
+     */
     public Double outputThroughput;
 
-    /** The average latency of the benchmark flink job. Unit: milliseconds */
-    public Double latencyMs;
+    /** Converts the object to a Map. */
+    public Map<String, ?> toMap() {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("name", name);
+        map.put("totalTimeMs", totalTimeMs);
+        map.put("inputRecordNum", inputRecordNum);
+        map.put("inputThroughput", inputThroughput);
+        map.put("outputRecordNum", outputRecordNum);
+        map.put("outputThroughput", outputThroughput);
+        return map;
+    }
 }

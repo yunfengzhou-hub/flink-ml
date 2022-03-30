@@ -19,7 +19,6 @@
 package org.apache.flink.ml.benchmark.clustering.kmeans;
 
 import org.apache.flink.ml.benchmark.generator.DataGenerator;
-import org.apache.flink.ml.benchmark.generator.GeneratorParams;
 import org.apache.flink.ml.benchmark.generator.GeneratorUtils;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
 import org.apache.flink.ml.clustering.kmeans.KMeansParams;
@@ -39,9 +38,7 @@ import java.util.Map;
  * org.apache.flink.ml.clustering.kmeans.KMeansModel}.
  */
 public class KMeansModelDataGenerator
-        implements DataGenerator<KMeansModelDataGenerator>,
-                GeneratorParams<KMeansModelDataGenerator>,
-                KMeansParams<KMeansModelDataGenerator> {
+        implements DataGenerator<KMeansModelDataGenerator>, KMeansParams<KMeansModelDataGenerator> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
 
     public KMeansModelDataGenerator() {
@@ -57,11 +54,6 @@ public class KMeansModelDataGenerator
                         .map(KMeansModelData::new);
         Table table = tEnv.fromDataStream(stream);
         return new Table[] {table};
-    }
-
-    @Override
-    public long getNumElements() {
-        return 1;
     }
 
     @Override
