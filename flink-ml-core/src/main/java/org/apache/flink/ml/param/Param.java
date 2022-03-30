@@ -67,7 +67,6 @@ public class Param<T> implements Serializable {
         return ReadWriteUtils.OBJECT_MAPPER.writeValueAsString(value);
     }
 
-
     /**
      * Decodes the given string into an object of class type T.
      *
