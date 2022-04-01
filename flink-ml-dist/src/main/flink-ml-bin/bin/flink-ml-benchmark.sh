@@ -22,7 +22,7 @@ flink_ml_bin_path="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 flink_ml_root_path="$(dirname "$flink_ml_bin_path")"
 
 # Checks flink command.
-flink_cmd="flink"
+flink_cmd="$FLINK_HOME/bin/flink"
 if ! command -v $flink_cmd &> /dev/null; then
     echo "$flink_cmd: command not found. Please make sure you have installed Flink and configured Flink in your environment path."
     exit 1
@@ -30,7 +30,7 @@ fi
 
 # Checks flink version.
 expected_version="1.14"
-actual_version=`flink --version | cut -d" " -f2 | tr -d ","`
+actual_version=`$FLINK_HOME/bin/flink --version | cut -d" " -f2 | tr -d ","`
 unsorted_versions="${expected_version}\n${actual_version}\n"
 sorted_versions=`printf ${unsorted_versions} | sort -V`
 unsorted_versions=`printf ${unsorted_versions}`
@@ -58,4 +58,4 @@ fi
 cd $current_path
 
 # Submits benchmark flink job.
-flink run -c org.apache.flink.ml.benchmark.Benchmark $flink_ml_root_path/lib/$flink_ml_fat_jar_name ${@:1}
+$FLINK_HOME/bin/flink run -c org.apache.flink.ml.benchmark.Benchmark $flink_ml_root_path/lib/$flink_ml_fat_jar_name ${@:1}

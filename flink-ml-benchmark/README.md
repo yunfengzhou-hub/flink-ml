@@ -1,27 +1,26 @@
 # Flink ML Benchmark Getting Started
 
-This document provides instructions about how to run benchmarks on Flink ML's
+This document provides instructions on how to run benchmarks on Flink ML's
 stages in a Linux/MacOS environment.
 
 ## Prerequisites
 
-### Installing Flink
+### Install Flink
 
 Please make sure Flink 1.14 or higher version has been installed in your local
 environment. You can refer to the [local
 installation](https://nightlies.apache.org/flink/flink-docs-master/docs/try-flink/local_installation/)
 instruction on Flink's document website for how to achieve this.
 
-### Setting Up Flink Environment Variables
+### Set Up Flink Environment Variables
 
 After having installed Flink, please register `$FLINK_HOME` as an environment
-variable into your local environment, and add `$FLINK_HOME` into your `$PATH`
-variable. This can be completed by running the following commands in the Flink's
-folder.
+variable into your local environment. For example, suppose you have downloaded
+Flink 1.14.0 and placed Flink's binary folder under `/usr/local/`, then you need
+to run the following command:
 
 ```bash
-export FLINK_HOME=`pwd`
-export PATH=$FLINK_HOME/bin:$PATH
+export FLINK_HOME=`/usr/local/flink-1.14.0`
 ```
 
 Then please run the following command. If this command returns 1.14.0 or a
@@ -29,10 +28,10 @@ higher version, then it means that the required Flink environment has been
 successfully installed and registered in your local environment.
 
 ```bash
-flink --version
+$FLINK_HOME/bin/flink --version
 ```
 
-### Acquiring Flink ML Binary Distribution
+### Acquire Flink ML Binary Distribution
 
 In order to use Flink ML's CLI you need to have the latest binary distribution
 of Flink ML. You can acquire the distribution by building Flink ML's source code
@@ -40,20 +39,17 @@ locally, which means to execute the following command in Flink ML repository's
 root directory.
 
 ```bash
-$ mvn clean package -DskipTests
+mvn clean package -DskipTests
+cd ./flink-ml-dist/target/flink-ml-*-bin/flink-ml*/
 ```
 
-After executing the command above, you will be able to find the binary
-distribution under
-`./flink-ml-dist/target/flink-ml-<version>-bin/flink-ml-<version>/`.
-
-### Starting Flink Cluster
+### Start Flink Cluster
 
 Please start a Flink standalone session in your local environment with the
 following command.
 
 ```bash
-start-cluster.sh
+$FLINK_HOME/bin/start-cluster.sh
 ```
 
 You should be able to navigate to the web UI at
@@ -66,7 +62,7 @@ In Flink ML's binary distribution's folder, execute the following command to run
 an example benchmark.
 
 ```bash
-$ ./bin/flink-ml-benchmark.sh ./examples/benchmark-example-conf.json ./output/results.json
+./bin/flink-ml-benchmark.sh ./examples/benchmark-example-conf.json --output-file ./output/results.json
 ```
 
 You will notice that some Flink job is submitted to your Flink cluster, and the
@@ -75,21 +71,22 @@ successfully executed a benchmark on `KMeansModel`.
 
 ```
 Creating fat jar containing all flink ml dependencies to be submitted.
-Job has been submitted with JobID bdaa54b065adf2c813619113a00337de
+Job has been submitted with JobID a5d8868d808eecfb357eb904c961c3bf
 Program execution finished
-Job with JobID bdaa54b065adf2c813619113a00337de has finished.
-Job Runtime: 215 ms
+Job with JobID a5d8868d808eecfb357eb904c961c3bf has finished.
+Job Runtime: 897 ms
 Accumulator Results: 
 - numElements (java.lang.Long): 10000
 
 
-Benchmark Name: KMeansModel-1
-Total Execution Time: 215.0 ms
-Total Input Record Number: 10000
-Average Input Throughput: 46511.62790697674 events per second
-Total Output Record Number: 10000
-Average Output Throughput: 46511.62790697674 events per second
-
+{
+  "name" : "KMeansModel-1",
+  "totalTimeMs" : 897.0,
+  "inputRecordNum" : 10000,
+  "inputThroughput" : 11148.272017837235,
+  "outputRecordNum" : 10000,
+  "outputThroughput" : 11148.272017837235
+}
 ```
 
 The command above would save the results into `./output/results.json` as below.
@@ -97,15 +94,15 @@ The command above would save the results into `./output/results.json` as below.
 ```json
 [ {
   "name" : "KMeansModel-1",
-  "totalTimeMs" : 215.0,
+  "totalTimeMs" : 897.0,
   "inputRecordNum" : 10000,
-  "inputThroughput" : 46511.62790697674,
+  "inputThroughput" : 11148.272017837235,
   "outputRecordNum" : 10000,
-  "outputThroughput" : 46511.62790697674
+  "outputThroughput" : 11148.272017837235
 } ]
 ```
 
-## Custom Benchmark Configuration File
+## Customize Benchmark Configuration
 
 `flink-ml-benchmark.sh` parses benchmarks to be executed according to the input
 configuration file, like `./examples/benchmark-example-conf.json`. It can also
@@ -130,8 +127,8 @@ following format.
   - `"paramMap"`: A JSON object containing the parameters related to the
     specific `Stage` or `DataGenerator`.
 
-Combining the format requirements above, an example configuration file is as
-follows.
+Combining the format requirements above, the example configuration in
+`./examples/benchmark-example-conf.json` is as follows.
 
 ```json
 {
@@ -150,20 +147,26 @@ follows.
       "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelDataGenerator",
       "paramMap": {
         "seed": null,
-        "k": 2,
-        "dims": 10
+        "numValues": 1,
+        "arraySize": 2,
+        "vectorDim": 10
       }
     },
     "inputs": {
-      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator",
+      "className": "org.apache.flink.ml.benchmark.data.DenseVectorGenerator",
       "paramMap": {
         "seed": null,
-        "featuresCol": "features",
-        "numData": 10000,
-        "dims": 10
+        "outputCols": ["features"],
+        "numValues": 10000,
+        "vectorDim": 10
       }
     }
   }
 }
-
 ```
+
+Looking back into this configuration file, it is now clear that this
+configuration file contains one benchmark. The benchmark name is
+"KMeansModel-1", and is executed on `KMeansModel` stage. The model data of the
+stage is 2 vector-typed centroids with 10 dimensions, and the stage is
+benchmarked against 10000 randomly generated vectors.

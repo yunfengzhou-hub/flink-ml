@@ -18,34 +18,46 @@
 
 package org.apache.flink.ml.benchmark;
 
+import org.apache.flink.util.Preconditions;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** The result of executing a benchmark. */
 public class BenchmarkResult {
-    /** The name of the benchmark. */
-    public String name;
+    /** The benchmark name. */
+    public final String name;
 
-    /** The total execution time of the benchmark flink job. Unit: milliseconds */
-    public Double totalTimeMs;
+    /** The total execution time of the benchmark in milliseconds. */
+    public final Double totalTimeMs;
 
-    /** The total number of records input into the benchmark flink job. */
-    public Long inputRecordNum;
+    /** The total number of input records. */
+    public final Long inputRecordNum;
 
-    /**
-     * The average input throughput of the benchmark flink job. Unit: number of records processed
-     * per second
-     */
-    public Double inputThroughput;
+    /** The average input throughput in number of records per second. */
+    public final Double inputThroughput;
 
-    /** The total number of records output from the benchmark flink job. */
-    public Long outputRecordNum;
+    /** The total number of output records. */
+    public final Long outputRecordNum;
 
-    /**
-     * The average output throughput of the benchmark flink job. Unit: number of records processed
-     * per second
-     */
-    public Double outputThroughput;
+    /** The average output throughput in number of records per second. */
+    public final Double outputThroughput;
+
+    private BenchmarkResult(
+            String name,
+            Double totalTimeMs,
+            Long inputRecordNum,
+            Double inputThroughput,
+            Long outputRecordNum,
+            Double outputThroughput) {
+        Preconditions.checkNotNull(name);
+        this.name = name;
+        this.totalTimeMs = totalTimeMs;
+        this.inputRecordNum = inputRecordNum;
+        this.inputThroughput = inputThroughput;
+        this.outputRecordNum = outputRecordNum;
+        this.outputThroughput = outputThroughput;
+    }
 
     /** Converts the object to a Map. */
     public Map<String, ?> toMap() {
@@ -57,5 +69,57 @@ public class BenchmarkResult {
         map.put("outputRecordNum", outputRecordNum);
         map.put("outputThroughput", outputThroughput);
         return map;
+    }
+
+    /**
+     * A nested builder class to create {@link BenchmarkResult} instances using descriptive methods.
+     */
+    public static class Builder {
+        private String name;
+        private Double totalTimeMs;
+        private Long inputRecordNum;
+        private Double inputThroughput;
+        private Long outputRecordNum;
+        private Double outputThroughput;
+
+        public BenchmarkResult build() {
+            return new BenchmarkResult(
+                    name,
+                    totalTimeMs,
+                    inputRecordNum,
+                    inputThroughput,
+                    outputRecordNum,
+                    outputThroughput);
+        }
+
+        public Builder setName(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder setTotalTimeMs(Double totalTimeMs) {
+            this.totalTimeMs = totalTimeMs;
+            return this;
+        }
+
+        public Builder setInputRecordNum(Long inputRecordNum) {
+            this.inputRecordNum = inputRecordNum;
+            return this;
+        }
+
+        public Builder setInputThroughput(Double inputThroughput) {
+            this.inputThroughput = inputThroughput;
+            return this;
+        }
+
+        public Builder setOutputRecordNum(Long outputRecordNum) {
+            this.outputRecordNum = outputRecordNum;
+            return this;
+        }
+
+        public Builder setOutputThroughput(Double outputThroughput) {
+            this.outputThroughput = outputThroughput;
+            return this;
+        }
     }
 }

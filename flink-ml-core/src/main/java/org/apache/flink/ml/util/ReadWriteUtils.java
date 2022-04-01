@@ -325,14 +325,15 @@ public class ReadWriteUtils {
         instance.set(param, (T) value);
     }
 
-    // A helper method that updates stage's param map using values from the paramOverrides. This
-    // method only
-    // updates values for parameters already defined in the stage's param map.
-    public static void updateExistingParams(Stage<?> stage, Map<Param<?>, Object> paramOverrides) {
-        Set<Param<?>> existingParams = stage.getParamMap().keySet();
+    // A helper method that updates WithParams instance's param map using values from the
+    // paramOverrides. This method only updates values for parameters already defined in the
+    // instance's param map.
+    public static void updateExistingParams(
+            WithParams<?> instance, Map<Param<?>, Object> paramOverrides) {
+        Set<Param<?>> existingParams = instance.getParamMap().keySet();
         for (Map.Entry<Param<?>, Object> entry : paramOverrides.entrySet()) {
             if (existingParams.contains(entry.getKey())) {
-                setParam(stage, entry.getKey(), entry.getValue());
+                setParam(instance, entry.getKey(), entry.getValue());
             }
         }
     }

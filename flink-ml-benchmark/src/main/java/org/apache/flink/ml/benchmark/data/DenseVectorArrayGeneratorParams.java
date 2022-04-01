@@ -16,39 +16,26 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark.generator;
+package org.apache.flink.ml.benchmark.data;
 
-import org.apache.flink.ml.common.param.HasSeed;
 import org.apache.flink.ml.param.IntParam;
-import org.apache.flink.ml.param.LongParam;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.ParamValidators;
 
-/** Interface for the generator params. */
-public interface GeneratorParams<T> extends HasSeed<T> {
-    Param<Long> NUM_DATA =
-            new LongParam("numData", "Number of data to be generated.", 10L, ParamValidators.gt(0));
-
-    Param<Integer> DIMS =
+/** Interface for the vector array generator params. */
+public interface DenseVectorArrayGeneratorParams<T> extends DenseVectorGeneratorParams<T> {
+    Param<Integer> ARRAY_SIZE =
             new IntParam(
-                    "dims",
-                    "Dimension of vector-typed data to be generated.",
+                    "arraySize",
+                    "Number of elements in the generated array.",
                     1,
                     ParamValidators.gt(0));
 
-    default long getNumData() {
-        return get(NUM_DATA);
+    default int getArraySize() {
+        return get(ARRAY_SIZE);
     }
 
-    default T setNumData(long value) {
-        return set(NUM_DATA, value);
-    }
-
-    default int getDims() {
-        return get(DIMS);
-    }
-
-    default T setDims(int value) {
-        return set(DIMS, value);
+    default T setArraySize(int value) {
+        return set(ARRAY_SIZE, value);
     }
 }

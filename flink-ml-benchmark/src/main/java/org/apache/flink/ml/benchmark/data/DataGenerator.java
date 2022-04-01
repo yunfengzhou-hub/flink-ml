@@ -16,22 +16,16 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.param;
+package org.apache.flink.ml.benchmark.data;
 
-import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.param.StringArrayParam;
-import org.apache.flink.ml.param.WithParams;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
-/** Interface for the shared outputCols param. */
-public interface HasOutputCols<T> extends WithParams<T> {
-    Param<String[]> OUTPUT_COLS =
-            new StringArrayParam("outputCols", "Output column names.", new String[0]);
-
-    default String[] getOutputCols() {
-        return get(OUTPUT_COLS);
-    }
-
-    default T setOutputCols(String... value) {
-        return set(OUTPUT_COLS, value);
-    }
+/** Interface for generating data as table arrays. */
+public interface DataGenerator<T extends DataGenerator<T>> extends CommonDataGeneratorParams<T> {
+    /**
+     * Gets an array of Tables containing the data to be generated in the provided stream table
+     * environment.
+     */
+    Table[] getData(StreamTableEnvironment tEnv);
 }

@@ -18,7 +18,8 @@
 
 package org.apache.flink.ml.benchmark;
 
-import org.apache.flink.ml.benchmark.clustering.kmeans.KMeansInputsGenerator;
+import org.apache.flink.ml.benchmark.data.DataGenerator;
+import org.apache.flink.ml.benchmark.data.DenseVectorGenerator;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.param.WithParams;
@@ -55,18 +56,21 @@ import static org.junit.Assert.assertTrue;
 public class BenchmarkTest extends AbstractTestBase {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
-    private final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+    private static final String exampleConfigFile = "benchmark-example-conf.json";
+    private static final String expectedBenchmarkName = "KMeansModel-1";
+
+    private final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     private final PrintStream originalOut = System.out;
 
     @Before
     public void before() {
-        System.setOut(new PrintStream(outContent));
+        System.setOut(new PrintStream(outputStream));
     }
 
     @After
     public void after() {
         System.setOut(originalOut);
-        outContent.reset();
+        outputStream.reset();
     }
 
     @Test
@@ -75,19 +79,18 @@ public class BenchmarkTest extends AbstractTestBase {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         KMeans kMeans = new KMeans().setK(5).setFeaturesCol("test_feature");
-        KMeansInputsGenerator inputsGenerator =
-                new KMeansInputsGenerator()
-                        .setK(5)
-                        .setFeaturesCol("test_feature")
-                        .setNumData(1000)
-                        .setDims(10);
+        DataGenerator<?> inputsGenerator =
+                new DenseVectorGenerator()
+                        .setOutputCols("test_feature")
+                        .setNumValues(1000)
+                        .setVectorDim(10);
 
         BenchmarkResult result =
                 BenchmarkUtils.runBenchmark(tEnv, "testBenchmarkName", kMeans, inputsGenerator);
 
-        BenchmarkUtils.printResult(result);
-        assertTrue(outContent.toString().contains("testBenchmarkName"));
-        assertTrue(outContent.toString().contains(result.totalTimeMs.toString()));
+        BenchmarkUtils.printResults(result);
+        assertTrue(outputStream.toString().contains("testBenchmarkName"));
+        assertTrue(outputStream.toString().contains(result.totalTimeMs.toString()));
     }
 
     @Test
@@ -96,15 +99,15 @@ public class BenchmarkTest extends AbstractTestBase {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         InputStream inputStream =
-                this.getClass().getClassLoader().getResourceAsStream("benchmark-example-conf.json");
+                this.getClass().getClassLoader().getResourceAsStream(exampleConfigFile);
         Map<String, ?> jsonMap = OBJECT_MAPPER.readValue(inputStream, Map.class);
         List<String> benchmarkNames =
                 jsonMap.keySet().stream()
-                        .filter(x -> !x.equals("version"))
+                        .filter(x -> !x.equals(Benchmark.VERSION_KEY))
                         .collect(Collectors.toList());
 
         assertEquals(1, benchmarkNames.size());
-        assertTrue(benchmarkNames.contains("KMeansModel-1"));
+        assertTrue(benchmarkNames.contains(expectedBenchmarkName));
 
         KMeansModel expectedStage = new KMeansModel();
         WithParams<?> actualStage =
@@ -134,7 +137,8 @@ public class BenchmarkTest extends AbstractTestBase {
 
         Path savePath = Paths.get(tempFolder.newFolder().getAbsolutePath(), "result.json");
 
-        BenchmarkUtils.saveResultsAsJson(savePath.toString(), results);
+        BenchmarkUtils.saveResultsAsJson(
+                savePath.toString(), results.toArray(new BenchmarkResult[0]));
         String actualContent = new String(Files.readAllBytes(savePath));
 
         for (String expectedContent : expectedContents) {
@@ -146,18 +150,36 @@ public class BenchmarkTest extends AbstractTestBase {
     public void testMain() throws Exception {
         File configFile = new File(tempFolder.newFolder().getAbsolutePath() + "/test-conf.json");
         InputStream inputStream =
-                this.getClass().getClassLoader().getResourceAsStream("benchmark-example-conf.json");
+                this.getClass().getClassLoader().getResourceAsStream(exampleConfigFile);
         FileUtils.copyInputStreamToFile(inputStream, configFile);
 
-        Path savePath = Paths.get(tempFolder.newFolder().getAbsolutePath(), "conf.json");
+        Path savePath = Paths.get(tempFolder.newFolder().getAbsolutePath(), "result.json");
 
-        Benchmark.main(new String[] {configFile.getAbsolutePath(), savePath.toString()});
+        Benchmark.main(
+                new String[] {configFile.getAbsolutePath(), "--output-file", savePath.toString()});
 
         String actualContent = new String(Files.readAllBytes(savePath));
 
-        assertTrue(outContent.toString().contains("KMeansModel-1"));
-        assertTrue(actualContent.contains("KMeansModel-1"));
+        assertTrue(outputStream.toString().contains(expectedBenchmarkName));
+        assertTrue(actualContent.contains(expectedBenchmarkName));
         // Checks saved content is valid JSON.
         OBJECT_MAPPER.readValue(actualContent, List.class);
+    }
+
+    @Test
+    public void testMainHelp() throws Exception {
+        Benchmark.main(new String[] {"--help"});
+        assertTrue(outputStream.toString().contains(Benchmark.SHELL_SCRIPT));
+        assertTrue(outputStream.toString().contains("output-file"));
+        outputStream.reset();
+        Benchmark.main(new String[] {"-h"});
+        assertTrue(outputStream.toString().contains(Benchmark.SHELL_SCRIPT));
+        assertTrue(outputStream.toString().contains("output-file"));
+    }
+
+    @Test
+    public void testMainInvalidArguments() throws Exception {
+        Benchmark.main(new String[] {"abc", "xyz"});
+        assertTrue(outputStream.toString().contains("help"));
     }
 }

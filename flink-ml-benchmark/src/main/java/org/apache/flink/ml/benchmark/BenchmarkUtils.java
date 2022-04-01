@@ -24,15 +24,17 @@ import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.api.Model;
 import org.apache.flink.ml.api.Stage;
-import org.apache.flink.ml.benchmark.generator.DataGenerator;
+import org.apache.flink.ml.benchmark.data.DataGenerator;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.util.Preconditions;
+
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -110,38 +112,38 @@ public class BenchmarkUtils {
 
         JobExecutionResult executionResult = env.execute();
 
-        BenchmarkResult result = new BenchmarkResult();
-        result.name = name;
-        result.totalTimeMs = (double) executionResult.getNetRuntime(TimeUnit.MILLISECONDS);
-        result.inputRecordNum = inputsGenerator.getNumData();
-        result.inputThroughput = result.inputRecordNum * 1000.0 / result.totalTimeMs;
-        result.outputRecordNum =
+        double totalTimeMs = (double) executionResult.getNetRuntime(TimeUnit.MILLISECONDS);
+        long inputRecordNum = inputsGenerator.getNumValues();
+        double inputThroughput = inputRecordNum * 1000.0 / totalTimeMs;
+        long outputRecordNum =
                 executionResult.getAccumulatorResult(CountingAndDiscardingSink.COUNTER_NAME);
-        result.outputThroughput = result.outputRecordNum * 1000.0 / result.totalTimeMs;
+        double outputThroughput = outputRecordNum * 1000.0 / totalTimeMs;
 
-        return result;
+        return new BenchmarkResult.Builder()
+                .setName(name)
+                .setTotalTimeMs(totalTimeMs)
+                .setInputRecordNum(inputRecordNum)
+                .setInputThroughput(inputThroughput)
+                .setOutputRecordNum(outputRecordNum)
+                .setOutputThroughput(outputThroughput)
+                .build();
     }
 
     /** Prints out the provided benchmark result. */
-    public static void printResult(BenchmarkResult result) {
-        Preconditions.checkNotNull(result.name);
-        System.out.println("Benchmark Name: " + result.name);
-        System.out.println("Total Execution Time: " + result.totalTimeMs + " ms");
-        System.out.println("Total Input Record Number: " + result.inputRecordNum);
-        System.out.println(
-                "Average Input Throughput: " + result.inputThroughput + " events per second");
-        System.out.println("Total Output Record Number: " + result.outputRecordNum);
-        System.out.println(
-                "Average Output Throughput: " + result.outputThroughput + " events per second");
-        System.out.println();
+    public static void printResults(BenchmarkResult... results) throws JsonProcessingException {
+        for (BenchmarkResult result : results) {
+            System.out.println(
+                    ReadWriteUtils.OBJECT_MAPPER
+                            .writerWithDefaultPrettyPrinter()
+                            .writeValueAsString(result.toMap()));
+        }
     }
 
     /** Saves the benchmark results to the given file in json format. */
-    public static void saveResultsAsJson(String path, List<BenchmarkResult> results)
+    public static void saveResultsAsJson(String path, BenchmarkResult... results)
             throws IOException {
-        results.forEach(x -> Preconditions.checkNotNull(x.name));
         List<Map<String, ?>> resultsMap =
-                results.stream().map(BenchmarkResult::toMap).collect(Collectors.toList());
+                Arrays.stream(results).map(BenchmarkResult::toMap).collect(Collectors.toList());
         ReadWriteUtils.saveToFile(
                 new Path(path),
                 ReadWriteUtils.OBJECT_MAPPER
