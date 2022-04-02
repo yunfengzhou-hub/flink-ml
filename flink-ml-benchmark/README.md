@@ -15,12 +15,11 @@ instruction on Flink's document website for how to achieve this.
 ### Set Up Flink Environment Variables
 
 After having installed Flink, please register `$FLINK_HOME` as an environment
-variable into your local environment. For example, suppose you have downloaded
-Flink 1.14.0 and placed Flink's binary folder under `/usr/local/`, then you need
-to run the following command:
+variable into your local environment.
 
 ```bash
-export FLINK_HOME=`/usr/local/flink-1.14.0`
+cd ${path_to_flink}
+export FLINK_HOME=`pwd`
 ```
 
 Then please run the following command. If this command returns 1.14.0 or a
@@ -31,14 +30,16 @@ successfully installed and registered in your local environment.
 $FLINK_HOME/bin/flink --version
 ```
 
-### Acquire Flink ML Binary Distribution
+[//]: # (TODO: Add instructions to download binary distribution when release is
+    available)
+### Build Flink ML library
 
 In order to use Flink ML's CLI you need to have the latest binary distribution
 of Flink ML. You can acquire the distribution by building Flink ML's source code
-locally, which means to execute the following command in Flink ML repository's
-root directory.
+locally with the following command.
 
 ```bash
+cd ${path_to_flink_ml}
 mvn clean package -DskipTests
 cd ./flink-ml-dist/target/flink-ml-*-bin/flink-ml*/
 ```
@@ -62,7 +63,7 @@ In Flink ML's binary distribution's folder, execute the following command to run
 an example benchmark.
 
 ```bash
-./bin/flink-ml-benchmark.sh ./examples/benchmark-example-conf.json --output-file ./output/results.json
+./bin/flink-ml-benchmark.sh ./examples/kmeansmodel-benchmark.json --output-file results.json
 ```
 
 You will notice that some Flink job is submitted to your Flink cluster, and the
@@ -89,7 +90,7 @@ Accumulator Results:
 }
 ```
 
-The command above would save the results into `./output/results.json` as below.
+The command above would save the results into `results.json` as below.
 
 ```json
 [ {
@@ -144,19 +145,18 @@ Combining the format requirements above, the example configuration in
       }
     },
     "modelData":  {
-      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelDataGenerator",
+      "className": "org.apache.flink.ml.benchmark.data.clustering.KMeansModelDataGenerator",
       "paramMap": {
         "seed": null,
-        "numValues": 1,
         "arraySize": 2,
         "vectorDim": 10
       }
     },
-    "inputs": {
-      "className": "org.apache.flink.ml.benchmark.data.DenseVectorGenerator",
+    "inputData": {
+      "className": "org.apache.flink.ml.benchmark.data.common.DenseVectorGenerator",
       "paramMap": {
         "seed": null,
-        "outputCols": ["features"],
+        "colNames": ["features"],
         "numValues": 10000,
         "vectorDim": 10
       }

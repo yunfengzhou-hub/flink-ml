@@ -18,15 +18,6 @@
 
 package org.apache.flink.ml.benchmark.data;
 
-import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-
-/** Interface for generating data as table arrays. */
-public interface DataGenerator<T extends DataGenerator<T>> extends HasSeed<T> {
-    /**
-     * Gets an array of Tables containing the data generated in the provided stream table
-     * environment.
-     */
-    Table[] getData(StreamTableEnvironment tEnv);
-}
+/** Interface for generating data as input table arrays. */
+public interface InputDataGenerator<T extends InputDataGenerator<T>>
+        extends DataGenerator<T>, InputDataGeneratorParams<T> {}

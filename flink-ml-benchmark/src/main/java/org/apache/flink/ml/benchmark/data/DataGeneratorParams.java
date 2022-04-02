@@ -18,23 +18,7 @@
 
 package org.apache.flink.ml.benchmark.data;
 
-import org.apache.flink.ml.common.param.HasOutputCols;
 import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.ml.param.LongParam;
-import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.param.ParamValidators;
 
-/** Interface for the common generator params. */
-public interface CommonDataGeneratorParams<T> extends HasSeed<T>, HasOutputCols<T> {
-    Param<Long> NUM_VALUES =
-            new LongParam(
-                    "numValues", "Number of data to be generated.", 10L, ParamValidators.gt(0));
-
-    default long getNumValues() {
-        return get(NUM_VALUES);
-    }
-
-    default T setNumValues(long value) {
-        return set(NUM_VALUES, value);
-    }
-}
+/** Interface for the data generator params. */
+public interface DataGeneratorParams<T> extends HasSeed<T> {}

@@ -16,26 +16,27 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark.data;
+package org.apache.flink.ml.benchmark.param;
 
 import org.apache.flink.ml.param.IntParam;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.param.ParamValidators;
+import org.apache.flink.ml.param.WithParams;
 
-/** Interface for the vector generator params. */
-public interface DenseVectorGeneratorParams<T> extends CommonDataGeneratorParams<T> {
-    Param<Integer> VECTOR_DIM =
+/** Interface for the benchmark array size param. */
+public interface HasArraySize<T> extends WithParams<T> {
+    Param<Integer> ARRAY_SIZE =
             new IntParam(
-                    "vectorDim",
-                    "Dimension of vector-typed data to be generated.",
+                    "arraySize",
+                    "Number of elements in the generated array.",
                     1,
                     ParamValidators.gt(0));
 
-    default int getVectorDim() {
-        return get(VECTOR_DIM);
+    default int getArraySize() {
+        return get(ARRAY_SIZE);
     }
 
-    default T setVectorDim(int value) {
-        return set(VECTOR_DIM, value);
+    default T setArraySize(int value) {
+        return set(ARRAY_SIZE, value);
     }
 }

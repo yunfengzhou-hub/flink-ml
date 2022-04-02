@@ -108,7 +108,7 @@ public class ReadWriteUtils {
     /** Saves a given string to the specified file. */
     public static void saveToFile(Path path, String content) throws IOException {
         // Creates parent directories if not already created.
-        FileSystem fs = mkdirs(path.getParent().toString());
+        FileSystem fs = mkdirs(path.getParent());
 
         if (fs.exists(path)) {
             throw new IOException("File " + path + " already exists.");
@@ -200,7 +200,7 @@ public class ReadWriteUtils {
     public static void savePipeline(Stage<?> pipeline, List<Stage<?>> stages, String path)
             throws IOException {
         // Creates parent directories if not already created.
-        mkdirs(path);
+        mkdirs(new Path(path));
 
         Map<String, Object> extraMetadata = new HashMap<>();
         extraMetadata.put("numStages", stages.size());
@@ -237,10 +237,9 @@ public class ReadWriteUtils {
         return stages;
     }
 
-    private static FileSystem mkdirs(String path) throws IOException {
-        Path temp = new Path(path);
-        FileSystem fs = temp.getFileSystem();
-        fs.mkdirs(temp);
+    private static FileSystem mkdirs(Path path) throws IOException {
+        FileSystem fs = path.getFileSystem();
+        fs.mkdirs(path);
         return fs;
     }
 
@@ -254,7 +253,7 @@ public class ReadWriteUtils {
     public static void saveGraph(Stage<?> graph, GraphData graphData, String path)
             throws IOException {
         // Creates parent directories if not already created.
-        mkdirs(path);
+        mkdirs(new Path(path));
 
         Map<String, Object> extraMetadata = new HashMap<>();
         extraMetadata.put("graphData", graphData.toMap());

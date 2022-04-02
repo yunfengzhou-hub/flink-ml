@@ -16,17 +16,27 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark.data;
+package org.apache.flink.ml.benchmark.param;
 
-import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.ml.param.IntParam;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.param.ParamValidators;
+import org.apache.flink.ml.param.WithParams;
 
-/** Interface for generating data as table arrays. */
-public interface DataGenerator<T extends DataGenerator<T>> extends HasSeed<T> {
-    /**
-     * Gets an array of Tables containing the data generated in the provided stream table
-     * environment.
-     */
-    Table[] getData(StreamTableEnvironment tEnv);
+/** Interface for the benchmark vector dimension param. */
+public interface HasVectorDim<T> extends WithParams<T> {
+    Param<Integer> VECTOR_DIM =
+            new IntParam(
+                    "vectorDim",
+                    "Dimension of vector-typed data to be generated.",
+                    1,
+                    ParamValidators.gt(0));
+
+    default int getVectorDim() {
+        return get(VECTOR_DIM);
+    }
+
+    default T setVectorDim(int value) {
+        return set(VECTOR_DIM, value);
+    }
 }

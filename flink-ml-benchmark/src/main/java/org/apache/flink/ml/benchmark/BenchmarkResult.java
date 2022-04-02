@@ -43,7 +43,7 @@ public class BenchmarkResult {
     /** The average output throughput in number of records per second. */
     public final Double outputThroughput;
 
-    private BenchmarkResult(
+    public BenchmarkResult(
             String name,
             Double totalTimeMs,
             Long inputRecordNum,
@@ -69,57 +69,5 @@ public class BenchmarkResult {
         map.put("outputRecordNum", outputRecordNum);
         map.put("outputThroughput", outputThroughput);
         return map;
-    }
-
-    /**
-     * A nested builder class to create {@link BenchmarkResult} instances using descriptive methods.
-     */
-    public static class Builder {
-        private String name;
-        private Double totalTimeMs;
-        private Long inputRecordNum;
-        private Double inputThroughput;
-        private Long outputRecordNum;
-        private Double outputThroughput;
-
-        public BenchmarkResult build() {
-            return new BenchmarkResult(
-                    name,
-                    totalTimeMs,
-                    inputRecordNum,
-                    inputThroughput,
-                    outputRecordNum,
-                    outputThroughput);
-        }
-
-        public Builder setName(String name) {
-            this.name = name;
-            return this;
-        }
-
-        public Builder setTotalTimeMs(Double totalTimeMs) {
-            this.totalTimeMs = totalTimeMs;
-            return this;
-        }
-
-        public Builder setInputRecordNum(Long inputRecordNum) {
-            this.inputRecordNum = inputRecordNum;
-            return this;
-        }
-
-        public Builder setInputThroughput(Double inputThroughput) {
-            this.inputThroughput = inputThroughput;
-            return this;
-        }
-
-        public Builder setOutputRecordNum(Long outputRecordNum) {
-            this.outputRecordNum = outputRecordNum;
-            return this;
-        }
-
-        public Builder setOutputThroughput(Double outputThroughput) {
-            this.outputThroughput = outputThroughput;
-            return this;
-        }
     }
 }

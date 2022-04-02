@@ -18,8 +18,8 @@
 
 package org.apache.flink.ml.benchmark;
 
-import org.apache.flink.ml.benchmark.data.DataGenerator;
-import org.apache.flink.ml.benchmark.data.DenseVectorGenerator;
+import org.apache.flink.ml.benchmark.data.InputDataGenerator;
+import org.apache.flink.ml.benchmark.data.common.DenseVectorGenerator;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.param.WithParams;
@@ -56,7 +56,7 @@ import static org.junit.Assert.assertTrue;
 public class BenchmarkTest extends AbstractTestBase {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
-    private static final String exampleConfigFile = "benchmark-example-conf.json";
+    private static final String exampleConfigFile = "kmeansmodel-benchmark.json";
     private static final String expectedBenchmarkName = "KMeansModel-1";
 
     private final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -79,9 +79,9 @@ public class BenchmarkTest extends AbstractTestBase {
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         KMeans kMeans = new KMeans().setK(5).setFeaturesCol("test_feature");
-        DataGenerator<?> inputsGenerator =
+        InputDataGenerator<?> inputsGenerator =
                 new DenseVectorGenerator()
-                        .setOutputCols("test_feature")
+                        .setColNames("test_feature")
                         .setNumValues(1000)
                         .setVectorDim(10);
 

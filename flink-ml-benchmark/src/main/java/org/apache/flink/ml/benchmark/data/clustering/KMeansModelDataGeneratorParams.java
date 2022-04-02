@@ -16,17 +16,12 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark.data;
+package org.apache.flink.ml.benchmark.data.clustering;
 
-import org.apache.flink.ml.common.param.HasSeed;
-import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.ml.benchmark.data.DataGeneratorParams;
+import org.apache.flink.ml.benchmark.param.HasArraySize;
+import org.apache.flink.ml.benchmark.param.HasVectorDim;
 
-/** Interface for generating data as table arrays. */
-public interface DataGenerator<T extends DataGenerator<T>> extends HasSeed<T> {
-    /**
-     * Gets an array of Tables containing the data generated in the provided stream table
-     * environment.
-     */
-    Table[] getData(StreamTableEnvironment tEnv);
-}
+/** Params of {@link KMeansModelDataGenerator}. */
+public interface KMeansModelDataGeneratorParams<T>
+        extends DataGeneratorParams<T>, HasVectorDim<T>, HasArraySize<T> {}

@@ -19,15 +19,19 @@
 package org.apache.flink.ml.benchmark;
 
 import org.apache.flink.api.common.JobExecutionResult;
+import org.apache.flink.api.common.accumulators.LongCounter;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.api.Model;
 import org.apache.flink.ml.api.Stage;
 import org.apache.flink.ml.benchmark.data.DataGenerator;
+import org.apache.flink.ml.benchmark.data.InputDataGenerator;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 
@@ -52,19 +56,19 @@ public class BenchmarkUtils {
     public static BenchmarkResult runBenchmark(
             StreamTableEnvironment tEnv, String name, Map<String, ?> params) throws Exception {
         Stage stage = ReadWriteUtils.instantiateWithParams((Map<String, ?>) params.get("stage"));
-        DataGenerator inputsGenerator =
-                ReadWriteUtils.instantiateWithParams((Map<String, ?>) params.get("inputs"));
+        InputDataGenerator inputDataGenerator =
+                ReadWriteUtils.instantiateWithParams((Map<String, ?>) params.get("inputData"));
         DataGenerator modelDataGenerator = null;
         if (params.containsKey("modelData")) {
             modelDataGenerator =
                     ReadWriteUtils.instantiateWithParams((Map<String, ?>) params.get("modelData"));
         }
 
-        return runBenchmark(tEnv, name, stage, inputsGenerator, modelDataGenerator);
+        return runBenchmark(tEnv, name, stage, inputDataGenerator, modelDataGenerator);
     }
 
     /**
-     * Executes a benchmark from a stage with its inputsGenerator in the provided environment.
+     * Executes a benchmark from a stage with its inputDataGenerator in the provided environment.
      *
      * @return Results of the executed benchmark.
      */
@@ -72,13 +76,13 @@ public class BenchmarkUtils {
             StreamTableEnvironment tEnv,
             String name,
             Stage<?> stage,
-            DataGenerator<?> inputsGenerator)
+            InputDataGenerator<?> inputDataGenerator)
             throws Exception {
-        return runBenchmark(tEnv, name, stage, inputsGenerator, null);
+        return runBenchmark(tEnv, name, stage, inputDataGenerator, null);
     }
 
     /**
-     * Executes a benchmark from a stage with its inputsGenerator and modelDataGenerator in the
+     * Executes a benchmark from a stage with its inputDataGenerator and modelDataGenerator in the
      * provided environment.
      *
      * @return Results of the executed benchmark.
@@ -87,12 +91,12 @@ public class BenchmarkUtils {
             StreamTableEnvironment tEnv,
             String name,
             Stage<?> stage,
-            DataGenerator<?> inputsGenerator,
+            InputDataGenerator<?> inputDataGenerator,
             DataGenerator<?> modelDataGenerator)
             throws Exception {
         StreamExecutionEnvironment env = TableUtils.getExecutionEnvironment(tEnv);
 
-        Table[] inputTables = inputsGenerator.getData(tEnv);
+        Table[] inputTables = inputDataGenerator.getData(tEnv);
         if (modelDataGenerator != null) {
             ((Model<?>) stage).setModelData(modelDataGenerator.getData(tEnv));
         }
@@ -113,20 +117,19 @@ public class BenchmarkUtils {
         JobExecutionResult executionResult = env.execute();
 
         double totalTimeMs = (double) executionResult.getNetRuntime(TimeUnit.MILLISECONDS);
-        long inputRecordNum = inputsGenerator.getNumValues();
+        long inputRecordNum = inputDataGenerator.getNumValues();
         double inputThroughput = inputRecordNum * 1000.0 / totalTimeMs;
         long outputRecordNum =
                 executionResult.getAccumulatorResult(CountingAndDiscardingSink.COUNTER_NAME);
         double outputThroughput = outputRecordNum * 1000.0 / totalTimeMs;
 
-        return new BenchmarkResult.Builder()
-                .setName(name)
-                .setTotalTimeMs(totalTimeMs)
-                .setInputRecordNum(inputRecordNum)
-                .setInputThroughput(inputThroughput)
-                .setOutputRecordNum(outputRecordNum)
-                .setOutputThroughput(outputThroughput)
-                .build();
+        return new BenchmarkResult(
+                name,
+                totalTimeMs,
+                inputRecordNum,
+                inputThroughput,
+                outputRecordNum,
+                outputThroughput);
     }
 
     /** Prints out the provided benchmark result. */
@@ -149,5 +152,32 @@ public class BenchmarkUtils {
                 ReadWriteUtils.OBJECT_MAPPER
                         .writerWithDefaultPrettyPrinter()
                         .writeValueAsString(resultsMap));
+    }
+
+    /**
+     * A stream sink that counts the number of all elements. The counting result is stored in an
+     * {@link org.apache.flink.api.common.accumulators.Accumulator} specified by {@link
+     * #COUNTER_NAME} and can be acquired by {@link
+     * org.apache.flink.api.common.JobExecutionResult#getAccumulatorResult(String)}.
+     *
+     * @param <T> The type of elements received by the sink.
+     */
+    private static class CountingAndDiscardingSink<T> extends RichSinkFunction<T> {
+        public static final String COUNTER_NAME = "numElements";
+
+        private static final long serialVersionUID = 1L;
+
+        private final LongCounter numElementsCounter = new LongCounter();
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            super.open(parameters);
+            getRuntimeContext().addAccumulator(COUNTER_NAME, numElementsCounter);
+        }
+
+        @Override
+        public void invoke(T value, Context context) {
+            numElementsCounter.add(1L);
+        }
     }
 }

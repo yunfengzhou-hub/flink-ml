@@ -16,12 +16,12 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.benchmark.clustering.kmeans;
+package org.apache.flink.ml.benchmark.data.clustering;
 
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.ml.benchmark.data.DataGenerator;
-import org.apache.flink.ml.benchmark.data.DenseVectorArrayGenerator;
-import org.apache.flink.ml.benchmark.data.DenseVectorArrayGeneratorParams;
+import org.apache.flink.ml.benchmark.data.InputDataGenerator;
+import org.apache.flink.ml.benchmark.data.common.DenseVectorArrayGenerator;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.param.Param;
@@ -35,12 +35,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Class that generates table arrays containing model data for {@link
- * org.apache.flink.ml.clustering.kmeans.KMeansModel}.
+ * A DataGenerator which creates a table containing one {@link
+ * org.apache.flink.ml.clustering.kmeans.KMeansModel} instance.
  */
 public class KMeansModelDataGenerator
         implements DataGenerator<KMeansModelDataGenerator>,
-                DenseVectorArrayGeneratorParams<KMeansModelDataGenerator> {
+                KMeansModelDataGeneratorParams<KMeansModelDataGenerator> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
 
     public KMeansModelDataGenerator() {
@@ -49,13 +49,15 @@ public class KMeansModelDataGenerator
 
     @Override
     public Table[] getData(StreamTableEnvironment tEnv) {
-        DataGenerator<?> vectorArrayGenerator = new DenseVectorArrayGenerator();
+        InputDataGenerator<?> vectorArrayGenerator = new DenseVectorArrayGenerator();
         ReadWriteUtils.updateExistingParams(vectorArrayGenerator, paramMap);
+        vectorArrayGenerator.setNumValues(1);
+
         Table vectorArrayTable = vectorArrayGenerator.getData(tEnv)[0];
-        DataStream<DenseVector[]> vectorArrayStream =
-                tEnv.toDataStream(vectorArrayTable, DenseVector[].class);
         DataStream<KMeansModelData> modelDataStream =
-                vectorArrayStream.map(new GenerateKMeansModelDataFunction());
+                tEnv.toDataStream(vectorArrayTable, DenseVector[].class)
+                        .map(new GenerateKMeansModelDataFunction());
+
         return new Table[] {tEnv.fromDataStream(modelDataStream)};
     }
 

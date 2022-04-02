@@ -11,19 +11,18 @@
       }
     },
     "modelData":  {
-      "className": "org.apache.flink.ml.benchmark.clustering.kmeans.KMeansModelDataGenerator",
+      "className": "org.apache.flink.ml.benchmark.data.clustering.KMeansModelDataGenerator",
       "paramMap": {
         "seed": null,
-        "numValues": 1,
         "arraySize": 2,
         "vectorDim": 10
       }
     },
-    "inputs": {
-      "className": "org.apache.flink.ml.benchmark.data.DenseVectorGenerator",
+    "inputData": {
+      "className": "org.apache.flink.ml.benchmark.data.common.DenseVectorGenerator",
       "paramMap": {
         "seed": null,
-        "outputCols": ["features"],
+        "colNames": ["features"],
         "numValues": 10000,
         "vectorDim": 10
       }
