@@ -56,10 +56,10 @@ under the License.
             <fileMode>0755</fileMode>
         </fileSet>
 
-        <!-- copy benchmark json configuration examples -->
+        <!-- copy benchmark json configuration -->
         <fileSet>
             <directory>../flink-ml-benchmark/src/main/resources/</directory>
-            <outputDirectory>examples/</outputDirectory>
+            <outputDirectory>conf/</outputDirectory>
             <fileMode>0644</fileMode>
             <includes>
                 <include>*.json</include>

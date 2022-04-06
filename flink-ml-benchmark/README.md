@@ -63,7 +63,7 @@ In Flink ML's binary distribution's folder, execute the following command to run
 an example benchmark.
 
 ```bash
-./bin/flink-ml-benchmark.sh ./examples/kmeansmodel-benchmark.json --output-file results.json
+./bin/flink-ml-benchmark.sh ./examples/benchmark-conf.json --output-file results.json
 ```
 
 You will notice that some Flink job is submitted to your Flink cluster, and the

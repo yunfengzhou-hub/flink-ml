@@ -23,6 +23,8 @@ import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.benchmark.data.InputDataGenerator;
+import org.apache.flink.ml.benchmark.param.HasArraySize;
+import org.apache.flink.ml.benchmark.param.HasVectorDim;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.param.Param;
@@ -43,7 +45,8 @@ import java.util.Random;
 /** A DataGenerator which creates a table of DenseVector array. */
 public class DenseVectorArrayGenerator
         implements InputDataGenerator<DenseVectorArrayGenerator>,
-                DenseVectorArrayGeneratorParams<DenseVectorArrayGenerator> {
+                HasArraySize<DenseVectorArrayGenerator>,
+                HasVectorDim<DenseVectorArrayGenerator> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
 
     public DenseVectorArrayGenerator() {

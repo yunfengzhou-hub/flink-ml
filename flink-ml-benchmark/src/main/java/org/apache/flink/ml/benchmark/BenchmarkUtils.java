@@ -21,7 +21,6 @@ package org.apache.flink.ml.benchmark;
 import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.accumulators.LongCounter;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.api.Model;
@@ -34,11 +33,15 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.util.Preconditions;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
 
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.Arrays;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -46,6 +49,20 @@ import java.util.stream.Collectors;
 
 /** Utility methods for benchmarks. */
 public class BenchmarkUtils {
+    /** Loads benchmark configuration maps from the provided json file. */
+    @SuppressWarnings("unchecked")
+    public static Map<String, ?> parseJsonFile(String path) throws IOException {
+        InputStream inputStream = new FileInputStream(path);
+        Map<String, ?> jsonMap = ReadWriteUtils.OBJECT_MAPPER.readValue(inputStream, Map.class);
+        Preconditions.checkArgument(
+                jsonMap.containsKey(Benchmark.VERSION_KEY)
+                        && jsonMap.get(Benchmark.VERSION_KEY).equals(1));
+
+        return jsonMap.entrySet().stream()
+                .filter(x -> !x.getKey().equals(Benchmark.VERSION_KEY))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
     /**
      * Instantiates a benchmark from its parameter map and executes the benchmark in the provided
      * environment.
@@ -132,27 +149,23 @@ public class BenchmarkUtils {
                 outputThroughput);
     }
 
-    /** Prints out the provided benchmark result. */
-    public static void printResults(BenchmarkResult... results) throws JsonProcessingException {
+    /** Converts the benchmark results to a json string as a map. */
+    public static String getResultsMapAsJson(BenchmarkResult... results)
+            throws JsonProcessingException {
+        List<Map<String, ?>> resultsMap = new ArrayList<>();
         for (BenchmarkResult result : results) {
-            System.out.println(
-                    ReadWriteUtils.OBJECT_MAPPER
-                            .writerWithDefaultPrettyPrinter()
-                            .writeValueAsString(result.toMap()));
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("name", result.name);
+            map.put("totalTimeMs", result.totalTimeMs);
+            map.put("inputRecordNum", result.inputRecordNum);
+            map.put("inputThroughput", result.inputThroughput);
+            map.put("outputRecordNum", result.outputRecordNum);
+            map.put("outputThroughput", result.outputThroughput);
+            resultsMap.add(map);
         }
-    }
-
-    /** Saves the benchmark results to the given file in json format. */
-    public static void saveResultsAsJson(String path, BenchmarkResult... results)
-            throws IOException {
-        List<Map<String, ?>> resultsMap =
-                Arrays.stream(results).map(BenchmarkResult::toMap).collect(Collectors.toList());
-        ReadWriteUtils.saveToFile(
-                new Path(path),
-                ReadWriteUtils.OBJECT_MAPPER
-                        .writerWithDefaultPrettyPrinter()
-                        .writeValueAsString(resultsMap),
-                true);
+        return ReadWriteUtils.OBJECT_MAPPER
+                .writerWithDefaultPrettyPrinter()
+                .writeValueAsString(resultsMap);
     }
 
     /**

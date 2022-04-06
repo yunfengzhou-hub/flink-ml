@@ -21,7 +21,6 @@ package org.apache.flink.ml.benchmark;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -32,21 +31,16 @@ import org.apache.commons.cli.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.FileInputStream;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /** Entry class for benchmark execution. */
 public class Benchmark {
     private static final Logger LOG = LoggerFactory.getLogger(Benchmark.class);
 
     static final String VERSION_KEY = "version";
-
-    static final String SHELL_SCRIPT = "flink-ml-benchmark.sh";
 
     static final Option HELP_OPTION =
             Option.builder("h")
@@ -69,7 +63,7 @@ public class Benchmark {
         formatter.setLeftPadding(5);
         formatter.setWidth(80);
 
-        System.out.println("./" + SHELL_SCRIPT + " <config-file-path> [OPTIONS]");
+        System.out.println("./flink-ml-benchmark.sh <config-file-path> [OPTIONS]");
         System.out.println();
         formatter.setSyntaxPrefix("The following options are available:");
         formatter.printHelp(" ", OPTIONS);
@@ -80,37 +74,33 @@ public class Benchmark {
     @SuppressWarnings("unchecked")
     public static void executeBenchmarks(CommandLine commandLine) throws Exception {
         String configFile = commandLine.getArgs()[0];
+        Map<String, ?> benchmarks = BenchmarkUtils.parseJsonFile(configFile);
+        LOG.info("Found benchmarks " + benchmarks.entrySet());
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
-        InputStream inputStream = new FileInputStream(configFile);
-        Map<String, ?> jsonMap = ReadWriteUtils.OBJECT_MAPPER.readValue(inputStream, Map.class);
-        Preconditions.checkArgument(
-                jsonMap.containsKey(VERSION_KEY) && jsonMap.get(VERSION_KEY).equals(1));
-
-        List<String> benchmarkNames =
-                jsonMap.keySet().stream()
-                        .filter(x -> !x.equals(VERSION_KEY))
-                        .collect(Collectors.toList());
-        LOG.info("Found benchmarks " + benchmarkNames);
-
         List<BenchmarkResult> results = new ArrayList<>();
-
-        for (String benchmarkName : benchmarkNames) {
-            LOG.info("Running benchmark " + benchmarkName + ".");
+        for (Map.Entry<String, ?> benchmark : benchmarks.entrySet()) {
+            LOG.info("Running benchmark " + benchmark.getKey() + ".");
 
             BenchmarkResult result =
                     BenchmarkUtils.runBenchmark(
-                            tEnv, benchmarkName, (Map<String, ?>) jsonMap.get(benchmarkName));
+                            tEnv, benchmark.getKey(), (Map<String, ?>) benchmark.getValue());
 
             results.add(result);
-            BenchmarkUtils.printResults(result);
+            LOG.info(BenchmarkUtils.getResultsMapAsJson(result));
         }
+
+        String benchmarkResultsJson =
+                BenchmarkUtils.getResultsMapAsJson(results.toArray(new BenchmarkResult[0]));
+        LOG.info("Benchmarks execution completed.");
+        LOG.info("Benchmark results summary:");
+        LOG.info(benchmarkResultsJson);
 
         if (commandLine.hasOption(OUTPUT_FILE_OPTION.getLongOpt())) {
             String saveFile = commandLine.getOptionValue(OUTPUT_FILE_OPTION.getLongOpt());
-            BenchmarkUtils.saveResultsAsJson(saveFile, results.toArray(new BenchmarkResult[0]));
+            ReadWriteUtils.saveToFile(saveFile, benchmarkResultsJson, true);
             LOG.info("Benchmark results saved as json in " + saveFile + ".");
         }
     }

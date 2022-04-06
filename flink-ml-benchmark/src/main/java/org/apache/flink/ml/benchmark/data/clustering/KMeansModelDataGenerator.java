@@ -22,6 +22,8 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.ml.benchmark.data.DataGenerator;
 import org.apache.flink.ml.benchmark.data.InputDataGenerator;
 import org.apache.flink.ml.benchmark.data.common.DenseVectorArrayGenerator;
+import org.apache.flink.ml.benchmark.param.HasArraySize;
+import org.apache.flink.ml.benchmark.param.HasVectorDim;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.param.Param;
@@ -40,7 +42,8 @@ import java.util.Map;
  */
 public class KMeansModelDataGenerator
         implements DataGenerator<KMeansModelDataGenerator>,
-                KMeansModelDataGeneratorParams<KMeansModelDataGenerator> {
+                HasVectorDim<KMeansModelDataGenerator>,
+                HasArraySize<KMeansModelDataGenerator> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
 
     public KMeansModelDataGenerator() {

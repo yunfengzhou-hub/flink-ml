@@ -19,35 +19,26 @@
 package org.apache.flink.ml.benchmark;
 
 import org.apache.flink.ml.benchmark.data.InputDataGenerator;
+import org.apache.flink.ml.benchmark.data.clustering.KMeansModelDataGenerator;
 import org.apache.flink.ml.benchmark.data.common.DenseVectorGenerator;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
-import org.apache.flink.ml.param.WithParams;
+import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.test.util.AbstractTestBase;
 
 import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
-import java.io.PrintStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
-import static org.apache.flink.ml.util.ReadWriteUtils.OBJECT_MAPPER;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -56,25 +47,43 @@ import static org.junit.Assert.assertTrue;
 public class BenchmarkTest extends AbstractTestBase {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
-    private static final String exampleConfigFile = "kmeansmodel-benchmark.json";
-    private static final String expectedBenchmarkName = "KMeansModel-1";
+    @Test
+    @SuppressWarnings({"unchecked"})
+    public void testParseJsonFile() throws Exception {
+        File configFile = new File(tempFolder.newFolder().getAbsolutePath() + "/test-conf.json");
+        InputStream inputStream =
+                this.getClass().getClassLoader().getResourceAsStream("benchmark-conf.json");
+        FileUtils.copyInputStreamToFile(inputStream, configFile);
 
-    private final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    private final PrintStream originalOut = System.out;
+        Map<String, ?> benchmarks = BenchmarkUtils.parseJsonFile(configFile.getAbsolutePath());
+        assertEquals(benchmarks.size(), 1);
+        assertTrue(benchmarks.containsKey("KMeansModel-1"));
 
-    @Before
-    public void before() {
-        System.setOut(new PrintStream(outputStream));
-    }
+        Map<String, ?> benchmark = (Map<String, ?>) benchmarks.get("KMeansModel-1");
 
-    @After
-    public void after() {
-        System.setOut(originalOut);
-        outputStream.reset();
+        KMeansModel stage =
+                ReadWriteUtils.instantiateWithParams((Map<String, ?>) benchmark.get("stage"));
+        assertEquals("prediction", stage.getPredictionCol());
+        assertEquals("features", stage.getFeaturesCol());
+        assertEquals(2, stage.getK());
+        assertEquals(EuclideanDistanceMeasure.NAME, stage.getDistanceMeasure());
+
+        DenseVectorGenerator inputDataGenerator =
+                ReadWriteUtils.instantiateWithParams((Map<String, ?>) benchmark.get("inputData"));
+        assertArrayEquals(new String[] {"features"}, inputDataGenerator.getColNames());
+        assertEquals(2, inputDataGenerator.getSeed());
+        assertEquals(10000, inputDataGenerator.getNumValues());
+        assertEquals(10, inputDataGenerator.getVectorDim());
+
+        KMeansModelDataGenerator modelDataGenerator =
+                ReadWriteUtils.instantiateWithParams((Map<String, ?>) benchmark.get("modelData"));
+        assertEquals(1, modelDataGenerator.getSeed());
+        assertEquals(2, modelDataGenerator.getArraySize());
+        assertEquals(10, modelDataGenerator.getVectorDim());
     }
 
     @Test
-    public void testCreateAndExecute() throws Exception {
+    public void testRunBenchmark() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
@@ -82,104 +91,24 @@ public class BenchmarkTest extends AbstractTestBase {
         InputDataGenerator<?> inputsGenerator =
                 new DenseVectorGenerator()
                         .setColNames("test_feature")
-                        .setNumValues(1000)
+                        .setNumValues(1000L)
                         .setVectorDim(10);
 
+        long estimatedTime = System.currentTimeMillis();
         BenchmarkResult result =
                 BenchmarkUtils.runBenchmark(tEnv, "testBenchmarkName", kMeans, inputsGenerator);
+        estimatedTime = System.currentTimeMillis() - estimatedTime;
 
-        BenchmarkUtils.printResults(result);
-        assertTrue(outputStream.toString().contains("testBenchmarkName"));
-        assertTrue(outputStream.toString().contains(result.totalTimeMs.toString()));
-    }
-
-    @Test
-    public void testLoadAndSave() throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
-
-        InputStream inputStream =
-                this.getClass().getClassLoader().getResourceAsStream(exampleConfigFile);
-        Map<String, ?> jsonMap = OBJECT_MAPPER.readValue(inputStream, Map.class);
-        List<String> benchmarkNames =
-                jsonMap.keySet().stream()
-                        .filter(x -> !x.equals(Benchmark.VERSION_KEY))
-                        .collect(Collectors.toList());
-
-        assertEquals(1, benchmarkNames.size());
-        assertTrue(benchmarkNames.contains(expectedBenchmarkName));
-
-        KMeansModel expectedStage = new KMeansModel();
-        WithParams<?> actualStage =
-                ReadWriteUtils.instantiateWithParams(
-                        (Map<String, ?>)
-                                ((Map<String, ?>) jsonMap.get(benchmarkNames.get(0))).get("stage"));
-        assertEquals(expectedStage.getClass(), actualStage.getClass());
-        assertEquals(expectedStage.getParamMap(), actualStage.getParamMap());
-
-        List<String> expectedContents = new ArrayList<>();
-        List<BenchmarkResult> results = new ArrayList<>();
-
-        for (String benchmarkName : benchmarkNames) {
-            long estimatedTime = System.currentTimeMillis();
-            BenchmarkResult result =
-                    BenchmarkUtils.runBenchmark(
-                            tEnv, benchmarkName, (Map<String, ?>) jsonMap.get(benchmarkName));
-            estimatedTime = System.currentTimeMillis() - estimatedTime;
-
-            assertTrue(result.totalTimeMs > 0);
-            assertTrue(result.totalTimeMs <= estimatedTime);
-
-            results.add(result);
-            expectedContents.add(benchmarkName);
-            expectedContents.add(result.totalTimeMs.toString());
-        }
-
-        Path savePath = Paths.get(tempFolder.newFolder().getAbsolutePath(), "result.json");
-
-        BenchmarkUtils.saveResultsAsJson(
-                savePath.toString(), results.toArray(new BenchmarkResult[0]));
-        String actualContent = new String(Files.readAllBytes(savePath));
-
-        for (String expectedContent : expectedContents) {
-            assertTrue(actualContent.contains(expectedContent));
-        }
-    }
-
-    @Test
-    public void testMain() throws Exception {
-        File configFile = new File(tempFolder.newFolder().getAbsolutePath() + "/test-conf.json");
-        InputStream inputStream =
-                this.getClass().getClassLoader().getResourceAsStream(exampleConfigFile);
-        FileUtils.copyInputStreamToFile(inputStream, configFile);
-
-        Path savePath = Paths.get(tempFolder.newFolder().getAbsolutePath(), "result.json");
-
-        Benchmark.main(
-                new String[] {configFile.getAbsolutePath(), "--output-file", savePath.toString()});
-
-        String actualContent = new String(Files.readAllBytes(savePath));
-
-        assertTrue(outputStream.toString().contains(expectedBenchmarkName));
-        assertTrue(actualContent.contains(expectedBenchmarkName));
-        // Checks saved content is valid JSON.
-        OBJECT_MAPPER.readValue(actualContent, List.class);
-    }
-
-    @Test
-    public void testMainHelp() throws Exception {
-        Benchmark.main(new String[] {"--help"});
-        assertTrue(outputStream.toString().contains(Benchmark.SHELL_SCRIPT));
-        assertTrue(outputStream.toString().contains("output-file"));
-        outputStream.reset();
-        Benchmark.main(new String[] {"-h"});
-        assertTrue(outputStream.toString().contains(Benchmark.SHELL_SCRIPT));
-        assertTrue(outputStream.toString().contains("output-file"));
-    }
-
-    @Test
-    public void testMainInvalidArguments() throws Exception {
-        Benchmark.main(new String[] {"abc", "xyz"});
-        assertTrue(outputStream.toString().contains("help"));
+        assertEquals("testBenchmarkName", result.name);
+        assertTrue(result.totalTimeMs > 0);
+        assertTrue(result.totalTimeMs <= estimatedTime);
+        assertEquals(1000L, (long) result.inputRecordNum);
+        assertEquals(1L, (long) result.outputRecordNum);
+        assertEquals(
+                result.inputRecordNum * 1000.0 / result.totalTimeMs, result.inputThroughput, 1e-5);
+        assertEquals(
+                result.outputRecordNum * 1000.0 / result.totalTimeMs,
+                result.outputThroughput,
+                1e-5);
     }
 }

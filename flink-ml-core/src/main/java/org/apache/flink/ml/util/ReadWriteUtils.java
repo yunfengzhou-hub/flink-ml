@@ -102,12 +102,14 @@ public class ReadWriteUtils {
         // TODO: add version in the metadata.
         String metadataStr = OBJECT_MAPPER.writeValueAsString(metadata);
 
-        saveToFile(new Path(path, "metadata"), metadataStr, false);
+        saveToFile(new Path(path, "metadata").toUri().toString(), metadataStr, false);
     }
 
     /** Saves a given string to the specified file. */
-    public static void saveToFile(Path path, String content, boolean isOverwrite)
+    public static void saveToFile(String pathStr, String content, boolean isOverwrite)
             throws IOException {
+        Path path = new Path(pathStr);
+
         // Creates parent directories if not already created.
         FileSystem fs = mkdirs(path.getParent());
 

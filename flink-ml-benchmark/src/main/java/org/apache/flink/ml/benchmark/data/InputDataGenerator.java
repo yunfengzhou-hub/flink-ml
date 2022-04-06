@@ -18,6 +18,36 @@
 
 package org.apache.flink.ml.benchmark.data;
 
+import org.apache.flink.ml.param.LongParam;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.param.ParamValidators;
+import org.apache.flink.ml.param.StringArrayParam;
+
 /** Interface for generating data as input table arrays. */
-public interface InputDataGenerator<T extends InputDataGenerator<T>>
-        extends DataGenerator<T>, InputDataGeneratorParams<T> {}
+public interface InputDataGenerator<T extends InputDataGenerator<T>> extends DataGenerator<T> {
+    Param<Long> NUM_VALUES =
+            new LongParam(
+                    "numValues", "Number of data to be generated.", 10L, ParamValidators.gt(0));
+
+    Param<String[]> COL_NAMES =
+            new StringArrayParam(
+                    "colNames",
+                    "An array of common-separated strings representing field names of data tables.",
+                    null);
+
+    default long getNumValues() {
+        return get(NUM_VALUES);
+    }
+
+    default T setNumValues(long value) {
+        return set(NUM_VALUES, value);
+    }
+
+    default String[] getColNames() {
+        return get(COL_NAMES);
+    }
+
+    default T setColNames(String... value) {
+        return set(COL_NAMES, value);
+    }
+}
