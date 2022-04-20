@@ -75,32 +75,44 @@ public class Benchmark {
     public static void executeBenchmarks(CommandLine commandLine) throws Exception {
         String configFile = commandLine.getArgs()[0];
         Map<String, ?> benchmarks = BenchmarkUtils.parseJsonFile(configFile);
-        System.out.println("Found benchmarks " + benchmarks.keySet());
+        System.out.println("Found " + benchmarks.keySet().size() + " benchmarks.");
+        String saveFile = commandLine.getOptionValue(OUTPUT_FILE_OPTION.getLongOpt());
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         List<BenchmarkResult> results = new ArrayList<>();
+        String benchmarkResultsJson = "{}";
+        int index = 0;
         for (Map.Entry<String, ?> benchmark : benchmarks.entrySet()) {
-            LOG.info("Running benchmark " + benchmark.getKey() + ".");
+            LOG.info(
+                    "Running benchmark "
+                            + index
+                            + "/"
+                            + benchmarks.keySet().size()
+                            + ": "
+                            + benchmark.getKey());
 
             BenchmarkResult result =
                     BenchmarkUtils.runBenchmark(
                             tEnv, benchmark.getKey(), (Map<String, ?>) benchmark.getValue());
 
             results.add(result);
-            LOG.info(BenchmarkUtils.getResultsMapAsJson(result));
-        }
+            LOG.info("\n" + BenchmarkUtils.getResultsMapAsJson(result));
 
-        String benchmarkResultsJson =
-                BenchmarkUtils.getResultsMapAsJson(results.toArray(new BenchmarkResult[0]));
+            benchmarkResultsJson =
+                    BenchmarkUtils.getResultsMapAsJson(results.toArray(new BenchmarkResult[0]));
+
+            if (commandLine.hasOption(OUTPUT_FILE_OPTION.getLongOpt())) {
+                ReadWriteUtils.saveToFile(saveFile, benchmarkResultsJson, true);
+                LOG.info("Benchmark results saved as json in " + saveFile + ".");
+            }
+        }
         System.out.println("Benchmarks execution completed.");
         System.out.println("Benchmark results summary:");
         System.out.println(benchmarkResultsJson);
 
         if (commandLine.hasOption(OUTPUT_FILE_OPTION.getLongOpt())) {
-            String saveFile = commandLine.getOptionValue(OUTPUT_FILE_OPTION.getLongOpt());
-            ReadWriteUtils.saveToFile(saveFile, benchmarkResultsJson, true);
             System.out.println("Benchmark results saved as json in " + saveFile + ".");
         }
     }

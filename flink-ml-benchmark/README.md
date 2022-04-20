@@ -48,7 +48,7 @@ cp ./lib/*.jar $FLINK_HOME/lib/
 
 ## Run Benchmark Example
 
-Please start a Flink standalone session in your local environment with the
+Please start a Flink standalone cluster in your local environment with the
 following command.
 
 ```bash
@@ -63,7 +63,7 @@ Then in Flink ML's binary distribution's folder, execute the following command
 to run the default benchmarks.
 
 ```bash
-./bin/flink-ml-benchmark.sh ./conf/benchmark-conf.json --output-file results.json
+./bin/benchmark-run.sh ./conf/benchmark-conf.json --output-file results.json
 ```
 
 You will notice that some Flink jobs are submitted to your Flink cluster, and
@@ -71,51 +71,67 @@ the following information is printed out in your terminal. This means that you
 have successfully executed the default benchmarks.
 
 ```
-Found benchmarks [KMeansModel-1, KMeans-1]
+Found 2 benchmarks.
 ...
 Benchmarks execution completed.
 Benchmark results summary:
-[ {
-  "name" : "KMeansModel-1",
-  "totalTimeMs" : 782.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 12787.723785166241,
-  "outputRecordNum" : 10000,
-  "outputThroughput" : 12787.723785166241
-}, {
-  "name" : "KMeans-1",
-  "totalTimeMs" : 7022.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 1424.0956992309884,
-  "outputRecordNum" : 1,
-  "outputThroughput" : 0.14240956992309883
-} ]
+{
+  "KMeansModel-1" : {
+    "stage" : {
+      "className" : "org.apache.flink.ml.clustering.kmeans.KMeansModel",
+      "paramMap" : {
+        "k" : 2,
+        "distanceMeasure" : "euclidean",
+        "featuresCol" : "features",
+        "predictionCol" : "prediction"
+      }
+    },
+    ...
+    "modelData" : null,
+    "results" : {
+      "totalTimeMs" : 6596.0,
+      "inputRecordNum" : 10000,
+      "inputThroughput" : 1516.0703456640388,
+      "outputRecordNum" : 1,
+      "outputThroughput" : 0.15160703456640387
+    }
+  }
+}
 Benchmark results saved as json in results.json.
 ```
 
 The command above would save the results into `results.json` as below.
 
 ```json
-[ {
-  "name" : "KMeansModel-1",
-  "totalTimeMs" : 782.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 12787.723785166241,
-  "outputRecordNum" : 10000,
-  "outputThroughput" : 12787.723785166241
-}, {
-  "name" : "KMeans-1",
-  "totalTimeMs" : 7022.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 1424.0956992309884,
-  "outputRecordNum" : 1,
-  "outputThroughput" : 0.14240956992309883
-} ]
+{
+  "KMeansModel-1" : {
+    "stage" : {
+      "className" : "org.apache.flink.ml.clustering.kmeans.KMeansModel",
+      "paramMap" : {
+        "k" : 2,
+        "distanceMeasure" : "euclidean",
+        "featuresCol" : "features",
+        "predictionCol" : "prediction"
+      }
+    },
+    ...
+    "modelData" : null,
+    "results" : {
+      "totalTimeMs" : 6596.0,
+      "inputRecordNum" : 10000,
+      "inputThroughput" : 1516.0703456640388,
+      "outputRecordNum" : 1,
+      "outputThroughput" : 0.15160703456640387
+    }
+  }
+}
 ```
 
-## Customize Benchmark Configuration
+## Advanced Topics
 
-`flink-ml-benchmark.sh` parses benchmarks to be executed according to the input
+### Customize Benchmark Configuration
+
+`benchmark-run.sh` parses benchmarks to be executed according to the input
 configuration file, like `./conf/benchmark-conf.json`. It can also parse your
 custom configuration file so long as it contains a JSON object in the following
 format.
@@ -194,3 +210,37 @@ stage. The stage is benchmarked against 10000 randomly generated vectors.
   }
 }
 ```
+
+### Benchmark Linear Analysis
+
+`benchmark-results-linear-analysis.py` is provided as a helper script for linear
+analysis of benchmark results. You can get the help information of this tool
+with `-h` or `--help` option. For example,
+
+```shell
+python3 ./bin/benchmark-results-linear-analysis.py --help
+```
+
+With the help of this tool, the process to conduct linear analysis would be as
+follows.
+
+```shell
+$ ./bin/benchmark-run.sh batch-benchmark-conf.json --output-file results.json
+...
+
+$ python3 ./bin/benchmark-results-linear-analysis.py results.json inputData.paramMap.numValues results.totalTimeMs --pattern "^KMeans-1-.*$"
+y = 0.013692499999999996 x + 5438.583333333335
+R^2 = 0.8690143684628555
+```
+
+After executing `./bin/benchmark-run.sh`, the process above then conducts linear
+analysis with the following steps:
+- selects benchmark results whose name matches `"^KMeans-1-.*$"` from all
+  results recorded in `results.json`.
+- extracts two fields, `inputData.paramMap.numValues` and `results.totalTimeMs`,
+  from the selected benchmark results.
+- conducts a linear fit onto `inputData.paramMap.numValues` and
+  `results.totalTimeMs`, and prints out the linear-fit equation.
+- creates a scatter plot of `inputData.paramMap.numValues` and
+  `results.totalTimeMs`, as well as adding the fit line onto the plot.
+

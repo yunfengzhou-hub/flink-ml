@@ -18,6 +18,8 @@
 
 package org.apache.flink.ml.param;
 
+import java.io.IOException;
+
 /** Class for the double parameter. */
 public class DoubleParam extends Param<Double> {
 
@@ -31,5 +33,16 @@ public class DoubleParam extends Param<Double> {
 
     public DoubleParam(String name, String description, Double defaultValue) {
         this(name, description, defaultValue, ParamValidators.alwaysTrue());
+    }
+
+    @Override
+    public Double jsonDecode(Object json) throws IOException {
+        if (json == null) {
+            return null;
+        } else if (json instanceof Number) {
+            return ((Number) json).doubleValue();
+        } else {
+            throw new IOException("Cannot convert json " + json + " to Double.");
+        }
     }
 }

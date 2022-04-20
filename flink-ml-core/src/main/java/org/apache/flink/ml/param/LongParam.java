@@ -34,9 +34,12 @@ public class LongParam extends Param<Long> {
 
     @Override
     public Long jsonDecode(Object json) throws IOException {
-        if (json instanceof Integer) {
-            return ((Integer) json).longValue();
+        if (json == null) {
+            return null;
+        } else if (json instanceof Number) {
+            return ((Number) json).longValue();
+        } else {
+            throw new IOException("Cannot convert json " + json + " to Long.");
         }
-        return (Long) json;
     }
 }
