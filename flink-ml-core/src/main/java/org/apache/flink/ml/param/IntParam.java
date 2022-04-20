@@ -18,6 +18,8 @@
 
 package org.apache.flink.ml.param;
 
+import java.io.IOException;
+
 /** Class for the integer parameter. */
 public class IntParam extends Param<Integer> {
 
@@ -31,5 +33,16 @@ public class IntParam extends Param<Integer> {
 
     public IntParam(String name, String description, Integer defaultValue) {
         this(name, description, defaultValue, ParamValidators.alwaysTrue());
+    }
+
+    @Override
+    public Integer jsonDecode(Object json) throws IOException {
+        if (json == null) {
+            return null;
+        } else if (json instanceof Number) {
+            return ((Number) json).intValue();
+        } else {
+            throw new IOException("Cannot convert json " + json + " to Integer.");
+        }
     }
 }

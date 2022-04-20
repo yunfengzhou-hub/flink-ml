@@ -18,12 +18,24 @@
 
 package org.apache.flink.ml.benchmark;
 
+import org.apache.flink.ml.api.Stage;
+import org.apache.flink.ml.benchmark.datagenerator.DataGenerator;
+import org.apache.flink.ml.benchmark.datagenerator.InputDataGenerator;
 import org.apache.flink.util.Preconditions;
 
 /** The result of executing a benchmark. */
 public class BenchmarkResult {
     /** The benchmark name. */
     public final String name;
+
+    /** The stage to execute benchmark on. */
+    public final Stage<?> stage;
+
+    /** The DataGenerator to generate benchmark's input data. */
+    public final InputDataGenerator<?> inputDataGenerator;
+
+    /** The DataGenerator to generate benchmark's model data. */
+    public final DataGenerator<?> modelDataGenerator;
 
     /** The total execution time of the benchmark in milliseconds. */
     public final Double totalTimeMs;
@@ -42,6 +54,9 @@ public class BenchmarkResult {
 
     public BenchmarkResult(
             String name,
+            Stage<?> stage,
+            InputDataGenerator<?> inputDataGenerator,
+            DataGenerator<?> modelDataGenerator,
             Double totalTimeMs,
             Long inputRecordNum,
             Double inputThroughput,
@@ -49,6 +64,9 @@ public class BenchmarkResult {
             Double outputThroughput) {
         Preconditions.checkNotNull(name);
         this.name = name;
+        this.stage = stage;
+        this.inputDataGenerator = inputDataGenerator;
+        this.modelDataGenerator = modelDataGenerator;
         this.totalTimeMs = totalTimeMs;
         this.inputRecordNum = inputRecordNum;
         this.inputThroughput = inputThroughput;

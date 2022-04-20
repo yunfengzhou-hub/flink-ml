@@ -28,6 +28,7 @@ import org.apache.flink.ml.api.Stage;
 import org.apache.flink.ml.benchmark.datagenerator.DataGenerator;
 import org.apache.flink.ml.benchmark.datagenerator.InputDataGenerator;
 import org.apache.flink.ml.common.datastream.TableUtils;
+import org.apache.flink.ml.param.WithParams;
 import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
@@ -35,14 +36,11 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
-
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -128,6 +126,9 @@ public class BenchmarkUtils {
 
         return new BenchmarkResult(
                 name,
+                stage,
+                inputDataGenerator,
+                modelDataGenerator,
                 totalTimeMs,
                 inputRecordNum,
                 inputThroughput,
@@ -136,22 +137,42 @@ public class BenchmarkUtils {
     }
 
     /** Converts the benchmark results to a json string as a map. */
-    public static String getResultsMapAsJson(BenchmarkResult... results)
-            throws JsonProcessingException {
-        List<Map<String, ?>> resultsMap = new ArrayList<>();
+    public static String getResultsMapAsJson(BenchmarkResult... results) throws IOException {
+        Map<String, Map<String, Map<String, ?>>> resultsMap = new HashMap<>();
         for (BenchmarkResult result : results) {
             Map<String, Object> map = new LinkedHashMap<>();
-            map.put("name", result.name);
             map.put("totalTimeMs", result.totalTimeMs);
             map.put("inputRecordNum", result.inputRecordNum);
             map.put("inputThroughput", result.inputThroughput);
             map.put("outputRecordNum", result.outputRecordNum);
             map.put("outputThroughput", result.outputThroughput);
-            resultsMap.add(map);
+
+            resultsMap.put(
+                    result.name,
+                    new LinkedHashMap<String, Map<String, ?>>() {
+                        {
+                            put("stage", jsonEncodeNullableParams(result.stage));
+                            put("inputData", jsonEncodeNullableParams(result.inputDataGenerator));
+                            put("modelData", jsonEncodeNullableParams(result.modelDataGenerator));
+                            put("results", map);
+                        }
+                    });
         }
+        Preconditions.checkState(results.length == resultsMap.size());
         return ReadWriteUtils.OBJECT_MAPPER
                 .writerWithDefaultPrettyPrinter()
                 .writeValueAsString(resultsMap);
+    }
+
+    private static Map<String, Object> jsonEncodeNullableParams(WithParams<?> instance)
+            throws IOException {
+        if (instance == null) {
+            return null;
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("className", instance.getClass().getCanonicalName());
+        map.put("paramMap", ReadWriteUtils.jsonEncode(instance.getParamMap()));
+        return map;
     }
 
     /**

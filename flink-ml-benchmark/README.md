@@ -48,7 +48,7 @@ cp ./lib/*.jar $FLINK_HOME/lib/
 
 ## Run Benchmark Example
 
-Please start a Flink standalone session in your local environment with the
+Please start a Flink standalone cluster in your local environment with the
 following command.
 
 ```bash
@@ -63,7 +63,7 @@ Then in Flink ML's binary distribution's folder, execute the following command
 to run the default benchmarks.
 
 ```bash
-./bin/flink-ml-benchmark.sh ./conf/benchmark-conf.json --output-file results.json
+./bin/benchmark-run.sh ./conf/benchmark-conf.json --output-file results.json
 ```
 
 You will notice that some Flink jobs are submitted to your Flink cluster, and
@@ -71,51 +71,67 @@ the following information is printed out in your terminal. This means that you
 have successfully executed the default benchmarks.
 
 ```
-Found benchmarks [KMeansModel-1, KMeans-1]
+Found 2 benchmarks.
 ...
 Benchmarks execution completed.
 Benchmark results summary:
-[ {
-  "name" : "KMeansModel-1",
-  "totalTimeMs" : 782.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 12787.723785166241,
-  "outputRecordNum" : 10000,
-  "outputThroughput" : 12787.723785166241
-}, {
-  "name" : "KMeans-1",
-  "totalTimeMs" : 7022.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 1424.0956992309884,
-  "outputRecordNum" : 1,
-  "outputThroughput" : 0.14240956992309883
-} ]
+{
+  "KMeansModel-1" : {
+    "stage" : {
+      "className" : "org.apache.flink.ml.clustering.kmeans.KMeansModel",
+      "paramMap" : {
+        "k" : 2,
+        "distanceMeasure" : "euclidean",
+        "featuresCol" : "features",
+        "predictionCol" : "prediction"
+      }
+    },
+    ...
+    "modelData" : null,
+    "results" : {
+      "totalTimeMs" : 6596.0,
+      "inputRecordNum" : 10000,
+      "inputThroughput" : 1516.0703456640388,
+      "outputRecordNum" : 1,
+      "outputThroughput" : 0.15160703456640387
+    }
+  }
+}
 Benchmark results saved as json in results.json.
 ```
 
 The command above would save the results into `results.json` as below.
 
 ```json
-[ {
-  "name" : "KMeansModel-1",
-  "totalTimeMs" : 782.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 12787.723785166241,
-  "outputRecordNum" : 10000,
-  "outputThroughput" : 12787.723785166241
-}, {
-  "name" : "KMeans-1",
-  "totalTimeMs" : 7022.0,
-  "inputRecordNum" : 10000,
-  "inputThroughput" : 1424.0956992309884,
-  "outputRecordNum" : 1,
-  "outputThroughput" : 0.14240956992309883
-} ]
+{
+  "KMeansModel-1" : {
+    "stage" : {
+      "className" : "org.apache.flink.ml.clustering.kmeans.KMeansModel",
+      "paramMap" : {
+        "k" : 2,
+        "distanceMeasure" : "euclidean",
+        "featuresCol" : "features",
+        "predictionCol" : "prediction"
+      }
+    },
+    ...
+    "modelData" : null,
+    "results" : {
+      "totalTimeMs" : 6596.0,
+      "inputRecordNum" : 10000,
+      "inputThroughput" : 1516.0703456640388,
+      "outputRecordNum" : 1,
+      "outputThroughput" : 0.15160703456640387
+    }
+  }
+}
 ```
 
-## Customize Benchmark Configuration
+## Advanced Topics
 
-`flink-ml-benchmark.sh` parses benchmarks to be executed according to the input
+### Customize Benchmark Configuration
+
+`benchmark-run.sh` parses benchmarks to be executed according to the input
 configuration file, like `./conf/benchmark-conf.json`. It can also parse your
 custom configuration file so long as it contains a JSON object in the following
 format.
@@ -194,3 +210,53 @@ stage. The stage is benchmarked against 10000 randomly generated vectors.
   }
 }
 ```
+
+### Benchmark Batch Generation & Analysis
+
+Some helper scripts have been provided as python scripts to assist the batch
+benchmark execution process. They are located in `./bin/` folder and the
+provided functions are as follows.
+
+- `benchmark-batch-generation.py`: generates a bunch of benchmark configurations
+  by changing an independent parameter variable.
+- `benchmark-results-linear-regression.py`: conducts linear regression analysis
+  on a list of benchmark results.
+- `benchmark-results-to-csv.py`: converts the benchmark results json file to csv
+  file.
+
+The helper information of these scripts provides detailed description and usage
+instruction. You can get the helper information with `-h` or `--help` option.
+For example,
+
+```shell
+python3 ./bin/benchmark-batch-generation.py --help
+```
+
+With the helper scripts above, the process to execute and analyze a batch of
+benchmarks could be as follows.
+
+```shell
+$ python3 ./bin/benchmark-batch-generation.py ./conf/benchmark-conf.json KMeans-1 inputData.paramMap.numValues `seq 100000 100000 500000` --output-file batch-benchmark-conf.json
+Batch benchmark configuration generated and saved in batch-benchmark-conf.json.
+
+$ ./bin/benchmark-run.sh batch-benchmark-conf.json --output-file results.json
+...
+
+$ python3 ./bin/benchmark-results-linear-regression.py results.json inputData.paramMap.numValues results.totalTimeMs
+ 
+0.01273 x + 6060
+R^2 = 0.9217937531423335
+
+$ python3 ./bin/benchmark-results-to-csv.py results.json --output-file results.csv
+Converted benchmark results saved in results.csv.
+```
+
+The process above generated and executed 6 benchmarks. Most configurations of
+the benchmarks are the same as that of the `KMeans-1` benchmark configuration in
+`./conf/benchmark-conf.json`, and the changing variable is the number of values
+generated by inputDataGenerator, ranging from 100K to 500K. After executing the
+benchmarks, a linear regression analysis is conducted on the benchmark results,
+between total time and the number of values. The slope and interception of the
+linear-fit curve could reflect the average throughput and overhead of this Flink
+ML algorithm. Finally, the results are converted into .csv file for further
+potential analysis operations.

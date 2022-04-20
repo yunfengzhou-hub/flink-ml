@@ -71,9 +71,9 @@ public class ReadWriteUtils {
         return param.jsonEncode((T) value);
     }
 
-    // Converts Map<Param<?>, Object> to Map<String, String> which maps the parameter name to the
-    // string-encoded parameter value.
-    private static Map<String, Object> jsonEncode(Map<Param<?>, Object> paramMap)
+    // Converts Map<Param<?>, Object> to Map<String, Object> which maps the parameter name to the
+    // json-supported parameter value.
+    public static Map<String, Object> jsonEncode(Map<Param<?>, Object> paramMap)
             throws IOException {
         Map<String, Object> result = new HashMap<>(paramMap.size());
         for (Map.Entry<Param<?>, Object> entry : paramMap.entrySet()) {

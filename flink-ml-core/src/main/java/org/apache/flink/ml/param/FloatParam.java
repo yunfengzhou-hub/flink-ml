@@ -34,9 +34,12 @@ public class FloatParam extends Param<Float> {
 
     @Override
     public Float jsonDecode(Object json) throws IOException {
-        if (json instanceof Double) {
-            return ((Double) json).floatValue();
+        if (json == null) {
+            return null;
+        } else if (json instanceof Number) {
+            return ((Number) json).floatValue();
+        } else {
+            throw new IOException("Cannot convert json " + json + " to Float.");
         }
-        return (Float) json;
     }
 }
