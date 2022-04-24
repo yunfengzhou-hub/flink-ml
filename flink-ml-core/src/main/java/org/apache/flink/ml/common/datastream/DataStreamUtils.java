@@ -22,14 +22,30 @@ import org.apache.flink.api.common.functions.MapPartitionFunction;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheReader;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheWriter;
+import org.apache.flink.iteration.datacache.nonkeyed.Segment;
+import org.apache.flink.iteration.operator.OperatorUtils;
+import org.apache.flink.ml.common.broadcast.typeinfo.CacheElement;
+import org.apache.flink.ml.common.broadcast.typeinfo.CacheElementTypeInfo;
+import org.apache.flink.ml.linalg.DenseVector;
+import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.tasks.StreamTask;
+
+import java.util.Iterator;
+import java.util.List;
 
 /** Provides utility functions for {@link DataStream}. */
 public class DataStreamUtils {
@@ -63,7 +79,7 @@ public class DataStreamUtils {
             DataStream<IN> input, MapPartitionFunction<IN, OUT> func) {
         TypeInformation<OUT> resultType =
                 TypeExtractor.getMapPartitionReturnTypes(func, input.getType(), null, true);
-        return input.transform("mapPartition", resultType, new MapPartitionOperator<>(func))
+        return input.transform("mapPartition", resultType, new MapPartitionOperator<>(func, input.getType()))
                 .setParallelism(input.getParallelism());
     }
 
@@ -77,8 +93,34 @@ public class DataStreamUtils {
 
         private ListState<IN> valuesState;
 
-        public MapPartitionOperator(MapPartitionFunction<IN, OUT> mapPartitionFunc) {
+        private Path basePath;
+        private StreamConfig config;
+        private StreamTask<?, ?> containingTask;
+        private DataCacheWriter<IN> dataCacheWriter;
+        private TypeInformation<IN> inputType;
+
+        public MapPartitionOperator(MapPartitionFunction<IN, OUT> mapPartitionFunc, TypeInformation<IN> inputType) {
             super(mapPartitionFunc);
+            this.inputType = inputType;
+        }
+
+        @Override
+        public void setup(
+                StreamTask<?, ?> containingTask,
+                StreamConfig config,
+                Output<StreamRecord<OUT>> output) {
+            super.setup(containingTask, config, output);
+
+            basePath =
+                    OperatorUtils.getDataCachePath(
+                            containingTask.getEnvironment().getTaskManagerInfo().getConfiguration(),
+                            containingTask
+                                    .getEnvironment()
+                                    .getIOManager()
+                                    .getSpillingDirectoriesPaths());
+
+            this.config = config;
+            this.containingTask = containingTask;
         }
 
         @Override
@@ -90,17 +132,39 @@ public class DataStreamUtils {
                             getOperatorConfig()
                                     .getTypeSerializerIn(0, getClass().getClassLoader()));
             valuesState = context.getOperatorStateStore().getListState(descriptor);
+            dataCacheWriter =
+                    new DataCacheWriter<>(inputType.createSerializer(containingTask.getExecutionConfig()),
+                            basePath.getFileSystem(),
+                            OperatorUtils.createDataCacheFileGenerator(
+                                    basePath, "cache", config.getOperatorID()));
         }
 
         @Override
         public void endInput() throws Exception {
-            userFunction.mapPartition(valuesState.get(), new TimestampedCollector<>(output));
-            valuesState.clear();
+            dataCacheWriter.finishCurrentSegment();
+            List<Segment> pendingSegments = dataCacheWriter.getFinishSegments();
+            DataCacheReader<IN> dataCacheReader =
+                    new DataCacheReader<>(inputType.createSerializer(containingTask.getExecutionConfig()),
+                            basePath.getFileSystem(),
+                            pendingSegments);
+            userFunction.mapPartition(iteratorToIterable(dataCacheReader), new TimestampedCollector<>(output));
+//            userFunction.mapPartition(valuesState.get(), new TimestampedCollector<>(output));
+//            valuesState.clear();
+        }
+
+        public static<T> Iterable<T> iteratorToIterable(Iterator<T> iterator) {
+            return new Iterable<T>() {
+                @Override
+                public Iterator<T> iterator() {
+                    return iterator;
+                }
+            };
         }
 
         @Override
         public void processElement(StreamRecord<IN> input) throws Exception {
-            valuesState.add(input.getValue());
+//            valuesState.add(input.getValue());
+            dataCacheWriter.addRecord(input.getValue());
         }
     }
 }
