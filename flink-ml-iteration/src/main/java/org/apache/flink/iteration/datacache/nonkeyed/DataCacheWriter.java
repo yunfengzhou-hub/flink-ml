@@ -141,5 +141,6 @@ public class DataCacheWriter<T> {
         for (Segment segment : finishSegments) {
             fileSystem.delete(segment.getPath(), false);
         }
+        finishSegments.clear();
     }
 }

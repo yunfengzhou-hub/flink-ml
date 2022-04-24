@@ -32,8 +32,7 @@ import java.util.List;
  * @param <T> The class type of the input element.
  */
 public class ForwardInputsOfLastRound<T> implements FlatMapFunction<T, T>, IterationListener<T> {
-    private List<T> valuesInLastEpoch = new ArrayList<>();
-    private List<T> valuesInCurrentEpoch = new ArrayList<>();
+    private final List<T> valuesInCurrentEpoch = new ArrayList<>();
 
     @Override
     public void flatMap(T value, Collector<T> out) {
@@ -42,19 +41,13 @@ public class ForwardInputsOfLastRound<T> implements FlatMapFunction<T, T>, Itera
 
     @Override
     public void onEpochWatermarkIncremented(int epochWatermark, Context context, Collector<T> out) {
-        valuesInLastEpoch = valuesInCurrentEpoch;
-        valuesInCurrentEpoch = new ArrayList<>();
+        valuesInCurrentEpoch.clear();
     }
 
     @Override
     public void onIterationTerminated(Context context, Collector<T> out) {
-        for (T value : valuesInLastEpoch) {
+        for (T value : valuesInCurrentEpoch) {
             out.collect(value);
         }
-        if (!valuesInCurrentEpoch.isEmpty()) {
-            throw new IllegalStateException(
-                    "flatMap() is invoked since the last onEpochWatermarkIncremented callback");
-        }
-        valuesInLastEpoch.clear();
     }
 }
