@@ -78,6 +78,7 @@ public class Benchmark {
         System.out.println("Found benchmarks " + benchmarks.keySet());
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        //        env.getConfig().enableObjectReuse();
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         List<BenchmarkResult> results = new ArrayList<>();

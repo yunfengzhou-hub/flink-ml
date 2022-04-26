@@ -94,6 +94,7 @@ public class KMeansTest extends AbstractTestBase {
         env = StreamExecutionEnvironment.getExecutionEnvironment(config);
         env.setParallelism(4);
         env.enableCheckpointing(100);
+        env.getConfig().enableObjectReuse();
         env.setRestartStrategy(RestartStrategies.noRestart());
         tEnv = StreamTableEnvironment.create(env);
 

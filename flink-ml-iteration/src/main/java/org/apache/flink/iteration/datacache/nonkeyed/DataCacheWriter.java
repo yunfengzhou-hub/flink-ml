@@ -26,7 +26,9 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.util.function.SupplierWithException;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -106,6 +108,10 @@ public class DataCacheWriter<T> {
 
         private final FSDataOutputStream outputStream;
 
+        private final ObjectOutputStream objectOutputStream;
+
+        private final ByteArrayOutputStream byteArrayOutputStream;
+
         private final DataOutputView outputView;
 
         private int currentSegmentCount;
@@ -113,15 +119,21 @@ public class DataCacheWriter<T> {
         public SegmentWriter(Path path) throws IOException {
             this.path = path;
             this.outputStream = fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE);
-            this.outputView = new DataOutputViewStreamWrapper(outputStream);
+            this.objectOutputStream = new ObjectOutputStream(outputStream);
+
+            this.byteArrayOutputStream = new ByteArrayOutputStream();
+            this.outputView = new DataOutputViewStreamWrapper(byteArrayOutputStream);
         }
 
         public void addRecord(T record) throws IOException {
             serializer.serialize(record, outputView);
+            objectOutputStream.writeObject(byteArrayOutputStream.toByteArray());
+            byteArrayOutputStream.reset();
             currentSegmentCount += 1;
         }
 
         public Optional<Segment> finish() throws IOException {
+            this.objectOutputStream.flush();
             this.outputStream.flush();
             long size = outputStream.getPos();
             this.outputStream.close();

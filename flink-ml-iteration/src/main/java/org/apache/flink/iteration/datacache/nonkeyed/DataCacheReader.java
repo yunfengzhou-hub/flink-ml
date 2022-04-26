@@ -20,14 +20,16 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 
 import javax.annotation.Nullable;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.util.Iterator;
 import java.util.List;
 
@@ -101,16 +103,20 @@ public class DataCacheReader<T> implements Iterator<T> {
 
         private final int index;
 
-        private final FSDataInputStream inputStream;
+        private final InputStream inputStream;
 
-        private final DataInputView inputView;
+        private final ObjectInputStream objectInputStream;
+
+        //        private final ByteArrayInputStream byteArrayInputStream;
+        //
+        //        private final DataInputView inputView;
 
         private int offset;
 
         public SegmentReader(int index, int startOffset) throws IOException {
             this.index = index;
             this.inputStream = fileSystem.open(segments.get(index).getPath());
-            this.inputView = new DataInputViewStreamWrapper(inputStream);
+            this.objectInputStream = new ObjectInputStream(inputStream);
             this.offset = startOffset;
         }
 
@@ -119,7 +125,15 @@ public class DataCacheReader<T> implements Iterator<T> {
         }
 
         public T next() throws IOException {
-            T next = serializer.deserialize(inputView);
+            T next;
+            try {
+                byte[] bytes = (byte[]) objectInputStream.readObject();
+                ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(bytes);
+                DataInputView inputView = new DataInputViewStreamWrapper(byteArrayInputStream);
+                next = serializer.deserialize(inputView);
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
             offset++;
             return next;
         }

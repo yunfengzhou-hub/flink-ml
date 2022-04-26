@@ -90,6 +90,7 @@ public class DataStreamUtils {
         private StreamConfig config;
         private StreamTask<?, ?> containingTask;
         private DataCacheWriter<IN> dataCacheWriter;
+        //        private final List<IN> buffer = new ArrayList<>();
         private final TypeInformation<IN> inputType;
 
         public MapPartitionOperator(
@@ -138,11 +139,16 @@ public class DataStreamUtils {
                             basePath.getFileSystem(),
                             pendingSegments);
             userFunction.mapPartition(() -> dataCacheReader, new TimestampedCollector<>(output));
+            dataCacheWriter.cleanup();
+
+            //            userFunction.mapPartition(buffer::listIterator, new
+            // TimestampedCollector<>(output));
         }
 
         @Override
         public void processElement(StreamRecord<IN> input) throws Exception {
             dataCacheWriter.addRecord(input.getValue());
+            //            buffer.add(input.getValue());
         }
     }
 }
