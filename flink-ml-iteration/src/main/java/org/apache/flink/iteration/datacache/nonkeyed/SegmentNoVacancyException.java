@@ -20,35 +20,27 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 
-/** A segment contains the information about a cache unit. */
+import java.io.IOException;
+
+/**
+ * An exception to be thrown when a segment does not have enough space to accept the next record.
+ */
 @Internal
-class Segment {
+class SegmentNoVacancyException extends IOException {
 
-    private FileSegment fileSegment;
-
-    private MemorySegment memorySegment;
-
-    Segment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
+    public SegmentNoVacancyException() {
+        super();
     }
 
-    Segment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
+    public SegmentNoVacancyException(String message, Throwable cause) {
+        super(message, cause);
     }
 
-    void setFileSegment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
+    public SegmentNoVacancyException(String message) {
+        super(message);
     }
 
-    FileSegment getFileSegment() {
-        return fileSegment;
-    }
-
-    void setMemorySegment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
-    }
-
-    MemorySegment getMemorySegment() {
-        return memorySegment;
+    public SegmentNoVacancyException(Throwable cause) {
+        super(cause);
     }
 }

@@ -18,37 +18,25 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
-import org.apache.flink.annotation.Internal;
+import java.util.List;
 
-/** A segment contains the information about a cache unit. */
-@Internal
-class Segment {
+/** A segment with information about memory segments containing the cached records. */
+class MemorySegment {
 
-    private FileSegment fileSegment;
+    private final List<org.apache.flink.core.memory.MemorySegment> cache;
 
-    private MemorySegment memorySegment;
+    private final int count;
 
-    Segment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
+    MemorySegment(List<org.apache.flink.core.memory.MemorySegment> cache, int count) {
+        this.cache = cache;
+        this.count = count;
     }
 
-    Segment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
+    List<org.apache.flink.core.memory.MemorySegment> getCache() {
+        return cache;
     }
 
-    void setFileSegment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
-    }
-
-    FileSegment getFileSegment() {
-        return fileSegment;
-    }
-
-    void setMemorySegment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
-    }
-
-    MemorySegment getMemorySegment() {
-        return memorySegment;
+    int getCount() {
+        return count;
     }
 }
