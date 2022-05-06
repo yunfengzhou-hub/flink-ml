@@ -137,7 +137,7 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
      * path of the file used to stored the cached records. It could be local file system or remote
      * file system.
      */
-    private Path basePath;
+    private final Path basePath;
 
     /** DataCacheWriter for each input. */
     @SuppressWarnings("rawtypes")
@@ -396,7 +396,7 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
                     new DataCacheReader<>(
                             new CacheElementTypeInfo<>(inTypes[inputIndex])
                                     .createSerializer(containingTask.getExecutionConfig()),
-                            basePath.getFileSystem(),
+                            null,
                             pendingSegments);
             while (dataCacheReader.hasNext()) {
                 CacheElement cacheElement = (CacheElement) dataCacheReader.next();
@@ -524,7 +524,8 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
                                         .createSerializer(containingTask.getExecutionConfig()),
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
-                                        basePath, "cache", streamConfig.getOperatorID()));
+                                        basePath, "cache", streamConfig.getOperatorID()),
+                                null);
             }
         } else {
             InputStream inputStream = inputs.get(0).getStream();
@@ -545,6 +546,7 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
                                         basePath, "cache", streamConfig.getOperatorID()),
+                                null,
                                 dataCacheSnapshot.getSegments());
             }
         }

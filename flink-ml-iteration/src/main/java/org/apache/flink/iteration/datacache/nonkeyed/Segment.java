@@ -18,38 +18,49 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.Path;
 
+import java.io.IOException;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Objects;
 
-/** A segment represents a single file for the cache. */
+/** A segment contains the information about a cache unit. */
 public class Segment implements Serializable {
 
-    private final Path path;
+    /** The pre-allocated path on disk to persist the records. */
+    Path path;
 
-    /** The count of the records in the file. */
-    private final int count;
+    /** The number of records in the file. */
+    int count;
 
-    /** The total length of file. */
-    private final long size;
+    /** The size of the records in file. */
+    long fsSize;
 
-    public Segment(Path path, int count, long size) {
+    /** The size of the records in memory. */
+    transient long inMemorySize;
+
+    /** The cached records in memory. */
+    transient List<Object> cache;
+
+    /** The serializer for the records. */
+    transient TypeSerializer<Object> serializer;
+
+    Segment() {}
+
+    Segment(Path path, int count, long fsSize) {
         this.path = path;
         this.count = count;
-        this.size = size;
+        this.fsSize = fsSize;
     }
 
-    public Path getPath() {
-        return path;
+    boolean isOnDisk() throws IOException {
+        return path.getFileSystem().exists(path);
     }
 
-    public int getCount() {
-        return count;
-    }
-
-    public long getSize() {
-        return size;
+    boolean isInMemory() {
+        return cache != null;
     }
 
     @Override
@@ -63,16 +74,21 @@ public class Segment implements Serializable {
         }
 
         Segment segment = (Segment) o;
-        return count == segment.count && size == segment.size && Objects.equals(path, segment.path);
+        return count == segment.count
+                && Objects.equals(path, segment.path)
+                && Objects.equals(fsSize, segment.fsSize)
+                && Objects.equals(inMemorySize, segment.inMemorySize)
+                && Objects.equals(cache, segment.cache);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(path, count, size);
+        return Objects.hash(path, count, fsSize, inMemorySize, cache);
     }
 
     @Override
     public String toString() {
-        return "Segment{" + "path=" + path + ", count=" + count + ", size=" + size + '}';
+        return String.format(
+                "Segment{path=%s, count=%d, isInMemory=%b}", path, count, isInMemory());
     }
 }

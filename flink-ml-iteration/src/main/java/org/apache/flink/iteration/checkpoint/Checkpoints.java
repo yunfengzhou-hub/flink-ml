@@ -102,7 +102,7 @@ public class Checkpoints<T> implements AutoCloseable {
                             try {
                                 DataCacheWriter<T> dataCacheWriter =
                                         new DataCacheWriter<>(
-                                                typeSerializer, fileSystem, pathSupplier);
+                                                typeSerializer, fileSystem, pathSupplier, null);
                                 ResourceGuard.Lease snapshotLease = outputStream.acquireLease();
                                 return new Tuple2<>(
                                         new PendingCheckpoint(
