@@ -29,6 +29,8 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.ObjectArrayTypeInfo;
 import org.apache.flink.api.java.typeutils.TupleTypeInfo;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
@@ -36,7 +38,9 @@ import org.apache.flink.iteration.IterationConfig;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.Iterations;
 import org.apache.flink.iteration.ReplayableDataStreamList;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
+import org.apache.flink.iteration.operator.OperatorUtils;
 import org.apache.flink.ml.api.Estimator;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.EndOfStreamWindows;
@@ -45,33 +49,39 @@ import org.apache.flink.ml.common.iteration.ForwardInputsOfLastRound;
 import org.apache.flink.ml.common.iteration.TerminateOnMaxIter;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vector;
+import org.apache.flink.ml.linalg.typeinfo.DenseVectorSerializer;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.state.StateInitializationContext;
+import org.apache.flink.runtime.state.StatePartitionStreamProvider;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.functions.windowing.AllWindowFunction;
+import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
+import org.apache.flink.table.runtime.util.LazyMemorySegmentPool;
+import org.apache.flink.table.runtime.util.MemorySegmentPool;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.collections.IteratorUtils;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Random;
 
 /**
  * An Estimator which implements the k-means clustering algorithm.
@@ -160,6 +170,9 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                             BasicTypeInfo.INT_TYPE_INFO,
                                             DenseVectorTypeInfo.INSTANCE),
                                     new SelectNearestCentroidOperator(distanceMeasure));
+            centroidIdAndPoints
+                    .getTransformation()
+                    .declareManagedMemoryUseCaseAtOperatorScope(ManagedMemoryUseCase.OPERATOR, 64);
 
             PerRoundSubBody perRoundSubBody =
                     new PerRoundSubBody() {
@@ -254,58 +267,125 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                             DenseVector, DenseVector[], Tuple2<Integer, DenseVector>>,
                     IterationListener<Tuple2<Integer, DenseVector>> {
         private final DistanceMeasure distanceMeasure;
-        private ListState<DenseVector> points;
-        private ListState<DenseVector[]> centroids;
+        private final DenseVectorSerializer serializer = new DenseVectorSerializer();
+        private ListState<DenseVector[]> centroidsState;
+        private DenseVector[] centroids;
+
+        private Path basePath;
+        private StreamConfig config;
+        private MemorySegmentPool segmentPool;
+        private DataCache<DenseVector> dataCache;
 
         public SelectNearestCentroidOperator(DistanceMeasure distanceMeasure) {
+            super();
             this.distanceMeasure = distanceMeasure;
+        }
+
+        @Override
+        public void setup(
+                StreamTask<?, ?> containingTask,
+                StreamConfig config,
+                Output<StreamRecord<Tuple2<Integer, DenseVector>>> output) {
+            super.setup(containingTask, config, output);
+
+            double fraction =
+                    getContainingTask()
+                            .getConfiguration()
+                            .getManagedMemoryFractionOperatorUseCaseOfSlot(
+                                    ManagedMemoryUseCase.OPERATOR,
+                                    getRuntimeContext()
+                                            .getTaskManagerRuntimeInfo()
+                                            .getConfiguration(),
+                                    getRuntimeContext().getUserCodeClassLoader());
+
+            MemoryManager memoryManager = getContainingTask().getEnvironment().getMemoryManager();
+
+            segmentPool =
+                    new LazyMemorySegmentPool(
+                            getContainingTask(),
+                            memoryManager,
+                            memoryManager.computeNumberOfPages(fraction));
+
+            basePath =
+                    OperatorUtils.getDataCachePath(
+                            containingTask.getEnvironment().getTaskManagerInfo().getConfiguration(),
+                            containingTask
+                                    .getEnvironment()
+                                    .getIOManager()
+                                    .getSpillingDirectoriesPaths());
+
+            this.config = config;
         }
 
         @Override
         public void initializeState(StateInitializationContext context) throws Exception {
             super.initializeState(context);
-            points =
-                    context.getOperatorStateStore()
-                            .getListState(new ListStateDescriptor<>("points", DenseVector.class));
 
             TypeInformation<DenseVector[]> type =
                     ObjectArrayTypeInfo.getInfoFor(DenseVectorTypeInfo.INSTANCE);
-            centroids =
+            centroidsState =
                     context.getOperatorStateStore()
                             .getListState(new ListStateDescriptor<>("centroids", type));
+            centroids =
+                    OperatorStateUtils.getUniqueElement(centroidsState, "centroids").orElse(null);
+
+            List<StatePartitionStreamProvider> inputs =
+                    IteratorUtils.toList(context.getRawOperatorStateInputs().iterator());
+            Preconditions.checkState(
+                    inputs.size() < 2, "The input from raw operator state should be one or zero.");
+
+            if (inputs.size() > 0) {
+                InputStream inputStream = inputs.get(0).getStream();
+                dataCache =
+                        DataCache.recover(
+                                inputStream,
+                                serializer,
+                                basePath.getFileSystem(),
+                                OperatorUtils.createDataCacheFileGenerator(
+                                        basePath, "cache", config.getOperatorID()),
+                                segmentPool);
+            } else {
+                dataCache =
+                        new DataCache<>(
+                                serializer,
+                                basePath.getFileSystem(),
+                                OperatorUtils.createDataCacheFileGenerator(
+                                        basePath, "cache", config.getOperatorID()),
+                                segmentPool);
+            }
         }
 
         @Override
         public void processElement1(StreamRecord<DenseVector> streamRecord) throws Exception {
-            points.add(streamRecord.getValue());
+            dataCache.addRecord(streamRecord.getValue());
         }
 
         @Override
         public void processElement2(StreamRecord<DenseVector[]> streamRecord) throws Exception {
-            centroids.add(streamRecord.getValue());
+            Preconditions.checkState(centroids == null);
+            centroidsState.add(streamRecord.getValue());
+            centroids = streamRecord.getValue();
         }
 
         @Override
         public void onEpochWatermarkIncremented(
-                int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out)
-                throws Exception {
-            DenseVector[] centroidValues =
-                    Objects.requireNonNull(
-                            OperatorStateUtils.getUniqueElement(centroids, "centroids")
-                                    .orElse(null));
-
-            for (DenseVector point : points.get()) {
-                int closestCentroidId =
-                        findClosestCentroidId(centroidValues, point, distanceMeasure);
+                int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out) {
+            for (DenseVector point : dataCache) {
+                int closestCentroidId = findClosestCentroidId(centroids, point, distanceMeasure);
                 output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId, point)));
             }
-            centroids.clear();
+
+            centroids = null;
+            centroidsState.clear();
         }
 
         @Override
         public void onIterationTerminated(
-                Context context, Collector<Tuple2<Integer, DenseVector>> collector) {
-            points.clear();
+                Context context, Collector<Tuple2<Integer, DenseVector>> collector)
+                throws IOException {
+            dataCache.cleanup();
+            centroids = null;
+            centroidsState.clear();
         }
     }
 
@@ -328,17 +408,15 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             DataStream<DenseVector> data, int k, long seed) {
         DataStream<DenseVector[]> resultStream =
                 DataStreamUtils.mapPartition(
-                        data,
+                        DataStreamUtils.sample(data, k, seed),
                         new MapPartitionFunction<DenseVector, DenseVector[]>() {
                             @Override
                             public void mapPartition(
-                                    Iterable<DenseVector> iterable, Collector<DenseVector[]> out) {
-                                List<DenseVector> vectors = new ArrayList<>();
-                                for (DenseVector vector : iterable) {
-                                    vectors.add(vector);
-                                }
-                                Collections.shuffle(vectors, new Random(seed));
-                                out.collect(vectors.subList(0, k).toArray(new DenseVector[0]));
+                                    Iterable<DenseVector> iterable,
+                                    Collector<DenseVector[]> collector) {
+                                List<DenseVector> list = new ArrayList<>();
+                                iterable.iterator().forEachRemaining(list::add);
+                                collector.collect(list.toArray(new DenseVector[0]));
                             }
                         });
         resultStream.getTransformation().setParallelism(1);

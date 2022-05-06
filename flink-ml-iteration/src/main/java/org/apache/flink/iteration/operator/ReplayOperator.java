@@ -26,9 +26,8 @@ import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.iteration.IterationRecord;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheReader;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheSnapshot;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheWriter;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheIterator;
 import org.apache.flink.iteration.progresstrack.OperatorEpochWatermarkTracker;
 import org.apache.flink.iteration.progresstrack.OperatorEpochWatermarkTrackerFactory;
 import org.apache.flink.iteration.progresstrack.OperatorEpochWatermarkTrackerListener;
@@ -36,6 +35,8 @@ import org.apache.flink.iteration.typeinfo.IterationRecordSerializer;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StatePartitionStreamProvider;
 import org.apache.flink.runtime.state.StateSnapshotContext;
+import org.apache.flink.runtime.util.NonClosingInputStreamDecorator;
+import org.apache.flink.runtime.util.NonClosingOutputStreamDecorator;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedMultiInput;
@@ -52,6 +53,8 @@ import org.apache.commons.collections.IteratorUtils;
 
 import javax.annotation.Nullable;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
@@ -75,9 +78,9 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
 
     private MailboxExecutor mailboxExecutor;
 
-    private DataCacheWriter<T> dataCacheWriter;
+    private DataCache<T> dataCache;
 
-    @Nullable private DataCacheReader<T> currentDataCacheReader;
+    @Nullable private DataCacheIterator<T> currentDataCacheIterator;
 
     private int currentEpoch;
 
@@ -154,7 +157,6 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
                     OperatorUtils.createDataCacheFileGenerator(
                             basePath, "replay", config.getOperatorID());
 
-            DataCacheSnapshot dataCacheSnapshot = null;
             List<StatePartitionStreamProvider> rawStateInputs =
                     IteratorUtils.toList(context.getRawOperatorStateInputs().iterator());
             if (rawStateInputs.size() > 0) {
@@ -162,27 +164,25 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
                         rawStateInputs.size() == 1,
                         "Currently the replay operator does not support rescaling");
 
-                dataCacheSnapshot =
-                        DataCacheSnapshot.recover(
-                                rawStateInputs.get(0).getStream(), fileSystem, pathGenerator);
-            }
-
-            dataCacheWriter =
-                    new DataCacheWriter<>(
-                            typeSerializer,
-                            fileSystem,
-                            pathGenerator,
-                            dataCacheSnapshot == null
-                                    ? Collections.emptyList()
-                                    : dataCacheSnapshot.getSegments());
-
-            if (dataCacheSnapshot != null && dataCacheSnapshot.getReaderPosition() != null) {
-                currentDataCacheReader =
-                        new DataCacheReader<>(
+                dataCache =
+                        DataCache.recover(
+                                rawStateInputs.get(0).getStream(),
                                 typeSerializer,
                                 fileSystem,
-                                dataCacheSnapshot.getSegments(),
-                                dataCacheSnapshot.getReaderPosition());
+                                pathGenerator);
+            } else {
+                dataCache = new DataCache<>(typeSerializer, fileSystem, pathGenerator);
+            }
+
+            try (DataInputStream dis =
+                    new DataInputStream(
+                            new NonClosingInputStreamDecorator(
+                                    rawStateInputs.get(0).getStream()))) {
+                boolean hasReader = dis.readBoolean();
+                if (hasReader) {
+                    currentDataCacheIterator = dataCache.iterator();
+                    currentDataCacheIterator.setPos(dis.readInt());
+                }
             }
 
         } catch (Exception e) {
@@ -203,23 +203,23 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
 
         currentEpochState.update(Collections.singletonList(currentEpoch));
 
-        dataCacheWriter.finishCurrentSegment();
-        DataCacheSnapshot dataCacheSnapshot =
-                new DataCacheSnapshot(
-                        fileSystem,
-                        currentDataCacheReader == null
-                                ? null
-                                : currentDataCacheReader.getPosition(),
-                        dataCacheWriter.getFinishSegments());
         context.getRawOperatorStateOutput().startNewPartition();
-        dataCacheSnapshot.writeTo(context.getRawOperatorStateOutput());
+        dataCache.writeTo(context.getRawOperatorStateOutput());
+        try (DataOutputStream dos =
+                new DataOutputStream(
+                        new NonClosingOutputStreamDecorator(context.getRawOperatorStateOutput()))) {
+            dos.writeBoolean(currentDataCacheIterator != null);
+            if (currentDataCacheIterator != null) {
+                dos.writeInt(currentDataCacheIterator.getPos());
+            }
+        }
     }
 
     @Override
     public void processElement1(StreamRecord<IterationRecord<T>> element) throws Exception {
         switch (element.getValue().getType()) {
             case RECORD:
-                dataCacheWriter.addRecord(element.getValue().getValue());
+                dataCache.addRecord(element.getValue().getValue());
                 output.collect(element);
                 break;
             case EPOCH_WATERMARK:
@@ -252,9 +252,9 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
         // null.
         // 2. If in the last checkpoint the epoch 0 is finished and currentDataCacheReader is not
         // null, then after failover we need to emit all the following records.
-        if (i == 1 && currentDataCacheReader != null) {
+        if (i == 1 && currentDataCacheIterator != null) {
             // We have to finish emit the following records.
-            replayRecords(currentDataCacheReader, currentEpoch);
+            replayRecords(currentDataCacheIterator, currentEpoch);
         }
     }
 
@@ -262,7 +262,9 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
     public void onEpochWatermarkIncrement(int epochWatermark) throws IOException {
         if (epochWatermark == 0) {
             // No need to replay for the round 0, it is output directly.
-            dataCacheWriter.finish();
+            // TODO: free cached records when they will no longer be replayed, and enable caching
+            // data in memory.
+            dataCache.finish();
             emitEpochWatermark(epochWatermark);
             return;
         } else if (epochWatermark == Integer.MAX_VALUE) {
@@ -271,30 +273,28 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
         }
 
         // At this point, there would be no more inputs before we finish replaying all the data.
-        // Thus it is safe we implement ourself mailbox loop.
-        checkState(currentDataCacheReader == null, "Concurrent replay is not supported");
+        // Thus it is safe for us to implement our own mailbox loop.
+        checkState(currentDataCacheIterator == null, "Concurrent replay is not supported");
         currentEpoch = epochWatermark;
-        currentDataCacheReader =
-                new DataCacheReader<>(
-                        typeSerializer, fileSystem, dataCacheWriter.getFinishSegments());
-        replayRecords(currentDataCacheReader, epochWatermark);
+        currentDataCacheIterator = dataCache.iterator();
+        replayRecords(currentDataCacheIterator, epochWatermark);
     }
 
-    private void replayRecords(DataCacheReader<T> dataCacheReader, int epoch) {
+    private void replayRecords(DataCacheIterator<T> dataCacheIterator, int epoch) {
         StreamRecord<IterationRecord<T>> reusable =
                 new StreamRecord<>(IterationRecord.newRecord(null, epoch));
-        while (dataCacheReader.hasNext()) {
+        while (dataCacheIterator.hasNext()) {
             // we first process the pending mail
             while (mailboxExecutor.tryYield()) {
                 // Do nothing.
             }
 
-            T next = dataCacheReader.next();
+            T next = dataCacheIterator.next();
             reusable.getValue().setValue(next);
             output.collect(reusable);
         }
 
-        currentDataCacheReader = null;
+        currentDataCacheIterator = null;
 
         emitEpochWatermark(epoch);
     }

@@ -33,7 +33,7 @@ import org.apache.flink.iteration.broadcast.BroadcastOutput;
 import org.apache.flink.iteration.broadcast.BroadcastOutputFactory;
 import org.apache.flink.iteration.checkpoint.Checkpoints;
 import org.apache.flink.iteration.checkpoint.CheckpointsBroker;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheSnapshot;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
 import org.apache.flink.iteration.operator.event.CoordinatorCheckpointEvent;
 import org.apache.flink.iteration.operator.event.GloballyAlignedEvent;
 import org.apache.flink.iteration.operator.event.SubtaskAlignedEvent;
@@ -253,10 +253,9 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
 
         try {
             for (StatePartitionStreamProvider rawStateInput : context.getRawOperatorStateInputs()) {
-                DataCacheSnapshot.replay(
+                DataCache.replay(
                         rawStateInput.getStream(),
                         checkpoints.getTypeSerializer(),
-                        checkpoints.getFileSystem(),
                         (record) ->
                                 recordProcessor.processFeedbackElement(new StreamRecord<>(record)));
             }

@@ -20,35 +20,17 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 
-/** A segment contains the information about a cache unit. */
+import java.io.IOException;
+
+/** Reader for the cached data in a segment. */
 @Internal
-class Segment {
+interface SegmentReader<T> {
+    /** Checks whether the reader has next record. */
+    boolean hasNext();
 
-    private FileSegment fileSegment;
+    /** Gets the next record from the reader. */
+    T next() throws IOException;
 
-    private MemorySegment memorySegment;
-
-    Segment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
-    }
-
-    Segment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
-    }
-
-    void setFileSegment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
-    }
-
-    FileSegment getFileSegment() {
-        return fileSegment;
-    }
-
-    void setMemorySegment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
-    }
-
-    MemorySegment getMemorySegment() {
-        return memorySegment;
-    }
+    /** Closes resources used by the reader. */
+    void close() throws IOException;
 }

@@ -68,11 +68,12 @@ public class LogisticRegressionModelData {
 
     /** Data encoder for {@link LogisticRegressionModel}. */
     public static class ModelDataEncoder implements Encoder<LogisticRegressionModelData> {
+        private final DenseVectorSerializer serializer = new DenseVectorSerializer();
 
         @Override
         public void encode(LogisticRegressionModelData modelData, OutputStream outputStream)
                 throws IOException {
-            DenseVectorSerializer.INSTANCE.serialize(
+            serializer.serialize(
                     modelData.coefficient, new DataOutputViewStreamWrapper(outputStream));
         }
     }
@@ -84,13 +85,13 @@ public class LogisticRegressionModelData {
         public Reader<LogisticRegressionModelData> createReader(
                 Configuration configuration, FSDataInputStream inputStream) {
             return new Reader<LogisticRegressionModelData>() {
+                private final DenseVectorSerializer serializer = new DenseVectorSerializer();
 
                 @Override
                 public LogisticRegressionModelData read() throws IOException {
                     try {
                         DenseVector coefficient =
-                                DenseVectorSerializer.INSTANCE.deserialize(
-                                        new DataInputViewStreamWrapper(inputStream));
+                                serializer.deserialize(new DataInputViewStreamWrapper(inputStream));
                         return new LogisticRegressionModelData(coefficient);
                     } catch (EOFException e) {
                         return null;

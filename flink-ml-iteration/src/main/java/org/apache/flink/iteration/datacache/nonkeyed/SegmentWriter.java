@@ -20,35 +20,21 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 
-/** A segment contains the information about a cache unit. */
+import java.io.IOException;
+import java.util.Optional;
+
+/** Writer for the data to be cached to a segment. */
 @Internal
-class Segment {
+interface SegmentWriter<T> {
+    /** Adds a record to the writer. */
+    void addRecord(T record) throws IOException;
 
-    private FileSegment fileSegment;
+    /** Gets the number of records added so far. */
+    int getCount();
 
-    private MemorySegment memorySegment;
-
-    Segment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
-    }
-
-    Segment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
-    }
-
-    void setFileSegment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
-    }
-
-    FileSegment getFileSegment() {
-        return fileSegment;
-    }
-
-    void setMemorySegment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
-    }
-
-    MemorySegment getMemorySegment() {
-        return memorySegment;
-    }
+    /**
+     * Finishes the writer and returns a segment if any record has ever been added through {@link
+     * #addRecord(Object)}.
+     */
+    Optional<Segment> finish() throws IOException;
 }
