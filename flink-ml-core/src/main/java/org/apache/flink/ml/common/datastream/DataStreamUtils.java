@@ -19,17 +19,12 @@
 package org.apache.flink.ml.common.datastream;
 
 import org.apache.flink.api.common.functions.MapPartitionFunction;
-import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
-import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.operators.AbstractUdfStreamOperator;
-import org.apache.flink.streaming.api.operators.BoundedOneInput;
-import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
-import org.apache.flink.streaming.api.operators.TimestampedCollector;
-import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+
+import java.util.List;
 
 /** Provides utility functions for {@link DataStream}. */
 public class DataStreamUtils {
@@ -63,44 +58,30 @@ public class DataStreamUtils {
             DataStream<IN> input, MapPartitionFunction<IN, OUT> func) {
         TypeInformation<OUT> resultType =
                 TypeExtractor.getMapPartitionReturnTypes(func, input.getType(), null, true);
-        return input.transform("mapPartition", resultType, new MapPartitionOperator<>(func))
+        return input.transform(
+                        "mapPartition",
+                        resultType,
+                        new MapPartitionOperator<>(func, input.getType()))
                 .setParallelism(input.getParallelism());
     }
 
     /**
-     * A stream operator to apply {@link MapPartitionFunction} on each partition of the input
-     * bounded data stream.
+     * Takes a randomly sampled subset of elements in a bounded data stream.
+     *
+     * <p>If the number of elements in the stream is smaller than expected number of samples, all
+     * elements will be included in the sample.
+     *
+     * @param input The input data stream.
+     * @param numSamples The number of elements to be sampled.
+     * @param randomSeed The seed to randomly pick elements as sample.
+     * @return A data stream containing a list of the sampled elements.
      */
-    private static class MapPartitionOperator<IN, OUT>
-            extends AbstractUdfStreamOperator<OUT, MapPartitionFunction<IN, OUT>>
-            implements OneInputStreamOperator<IN, OUT>, BoundedOneInput {
-
-        private ListState<IN> valuesState;
-
-        public MapPartitionOperator(MapPartitionFunction<IN, OUT> mapPartitionFunc) {
-            super(mapPartitionFunc);
-        }
-
-        @Override
-        public void initializeState(StateInitializationContext context) throws Exception {
-            super.initializeState(context);
-            ListStateDescriptor<IN> descriptor =
-                    new ListStateDescriptor<>(
-                            "inputState",
-                            getOperatorConfig()
-                                    .getTypeSerializerIn(0, getClass().getClassLoader()));
-            valuesState = context.getOperatorStateStore().getListState(descriptor);
-        }
-
-        @Override
-        public void endInput() throws Exception {
-            userFunction.mapPartition(valuesState.get(), new TimestampedCollector<>(output));
-            valuesState.clear();
-        }
-
-        @Override
-        public void processElement(StreamRecord<IN> input) throws Exception {
-            valuesState.add(input.getValue());
-        }
+    public static <T> DataStream<List<T>> sample(
+            DataStream<T> input, int numSamples, long randomSeed) {
+        return input.transform(
+                        "samplingOperator",
+                        Types.LIST(input.getType()),
+                        new SamplingOperator<>(numSamples, randomSeed))
+                .setParallelism(1);
     }
 }

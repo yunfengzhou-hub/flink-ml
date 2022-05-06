@@ -44,9 +44,9 @@ public class Checkpoints<T> implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(Checkpoints.class);
 
-    private final TypeSerializer<T> typeSerializer;
     private final FileSystem fileSystem;
     private final SupplierWithException<Path, IOException> pathSupplier;
+    private final TypeSerializer<T> typeSerializer;
 
     /**
      * Stores the pending checkpoints and whether they are canceled. This field would be shared
@@ -68,9 +68,9 @@ public class Checkpoints<T> implements AutoCloseable {
     private long latestCompletedCheckpointId;
 
     public Checkpoints(
-            TypeSerializer<T> typeSerializer,
             FileSystem fileSystem,
-            SupplierWithException<Path, IOException> pathSupplier) {
+            SupplierWithException<Path, IOException> pathSupplier,
+            TypeSerializer<T> typeSerializer) {
         this.typeSerializer = typeSerializer;
         this.fileSystem = fileSystem;
         checkState(!fileSystem.isDistributedFS(), "Currently only local fs is supported");
@@ -102,7 +102,7 @@ public class Checkpoints<T> implements AutoCloseable {
                             try {
                                 DataCacheWriter<T> dataCacheWriter =
                                         new DataCacheWriter<>(
-                                                typeSerializer, fileSystem, pathSupplier);
+                                                fileSystem, pathSupplier, null, typeSerializer);
                                 ResourceGuard.Lease snapshotLease = outputStream.acquireLease();
                                 return new Tuple2<>(
                                         new PendingCheckpoint(

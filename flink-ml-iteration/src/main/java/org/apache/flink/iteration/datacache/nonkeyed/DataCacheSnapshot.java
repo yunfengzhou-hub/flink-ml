@@ -24,29 +24,32 @@ import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.runtime.util.NonClosingInputStreamDecorator;
 import org.apache.flink.runtime.util.NonClosingOutpusStreamDecorator;
 import org.apache.flink.statefun.flink.core.feedback.FeedbackConsumer;
 import org.apache.flink.util.IOUtils;
+import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
 
 import org.apache.commons.io.input.BoundedInputStream;
 
 import javax.annotation.Nullable;
 
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
-/** The snapshot of a data cache. It could be written out or read from an external stream.O */
+/** The snapshot of a data cache. It could be written out or read from an external stream. */
 public class DataCacheSnapshot {
 
     private static final int CURRENT_VERSION = 1;
@@ -90,19 +93,19 @@ public class DataCacheSnapshot {
             }
 
             dos.writeBoolean(fileSystem.isDistributedFS());
+            for (Segment segment : segments) {
+                persistSegmentToDisk(segment);
+            }
             if (fileSystem.isDistributedFS()) {
                 // We only need to record the segments itself
                 serializeSegments(segments, dos);
             } else {
                 // We have to copy the whole streams.
-                int totalRecords = segments.stream().mapToInt(Segment::getCount).sum();
-                long totalSize = segments.stream().mapToLong(Segment::getSize).sum();
-                checkState(totalRecords >= 0, "overflowed: " + totalRecords);
-                dos.writeInt(totalRecords);
-                dos.writeLong(totalSize);
-
+                dos.writeInt(segments.size());
                 for (Segment segment : segments) {
-                    try (FSDataInputStream inputStream = fileSystem.open(segment.getPath())) {
+                    dos.writeInt(segment.count);
+                    dos.writeLong(segment.fsSize);
+                    try (FSDataInputStream inputStream = fileSystem.open(segment.path)) {
                         IOUtils.copyBytes(inputStream, checkpointOutputStream, false);
                     }
                 }
@@ -113,7 +116,6 @@ public class DataCacheSnapshot {
     public static <T> void replay(
             InputStream checkpointInputStream,
             TypeSerializer<T> serializer,
-            FileSystem fileSystem,
             FeedbackConsumer<T> feedbackConsumer)
             throws Exception {
         try (DataInputStream dis =
@@ -128,17 +130,25 @@ public class DataCacheSnapshot {
             if (isDistributedFS) {
                 List<Segment> segments = deserializeSegments(dis);
                 DataCacheReader<T> dataCacheReader =
-                        new DataCacheReader<>(serializer, fileSystem, segments);
+                        new DataCacheReader<>(null, serializer, segments);
                 while (dataCacheReader.hasNext()) {
                     feedbackConsumer.processFeedback(dataCacheReader.next());
                 }
             } else {
-                DataInputViewStreamWrapper dataInputView = new DataInputViewStreamWrapper(dis);
-                int totalRecords = dis.readInt();
-                // Ignore the total size.
-                dis.readLong();
-                for (int i = 0; i < totalRecords; ++i) {
-                    feedbackConsumer.processFeedback(serializer.deserialize(dataInputView));
+                int segmentNum = dis.readInt();
+                for (int ignored = 0; ignored < segmentNum; ignored++) {
+                    int totalRecords = dis.readInt();
+                    // Ignore the total size.
+                    dis.readLong();
+
+                    ObjectInputStream objectInputStream = new ObjectInputStream(dis);
+                    for (int i = 0; i < totalRecords; i++) {
+                        byte[] bytes = (byte[]) objectInputStream.readObject();
+                        ByteArrayInputStream inputStream = new ByteArrayInputStream(bytes);
+                        DataInputView tmpInputView = new DataInputViewStreamWrapper(inputStream);
+                        T value = serializer.deserialize(tmpInputView);
+                        feedbackConsumer.processFeedback(value);
+                    }
                 }
             }
         }
@@ -167,20 +177,24 @@ public class DataCacheSnapshot {
             if (isDistributedFS) {
                 segments = deserializeSegments(dis);
             } else {
-                int totalRecords = dis.readInt();
-                long totalSize = dis.readLong();
+                int segmentNum = dis.readInt();
+                segments = new ArrayList<>(segmentNum);
+                for (int i = 0; i < segmentNum; i++) {
+                    Segment segment = new Segment();
+                    segment.count = dis.readInt();
+                    segment.fsSize = dis.readLong();
+                    segment.path = pathGenerator.get();
+                    try (FSDataOutputStream outputStream =
+                            fileSystem.create(segment.path, FileSystem.WriteMode.NO_OVERWRITE)) {
 
-                Path path = pathGenerator.get();
-                try (FSDataOutputStream outputStream =
-                        fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE)) {
-
-                    BoundedInputStream inputStream =
-                            new BoundedInputStream(checkpointInputStream, totalSize);
-                    inputStream.setPropagateClose(false);
-                    IOUtils.copyBytes(inputStream, outputStream, false);
-                    inputStream.close();
+                        BoundedInputStream inputStream =
+                                new BoundedInputStream(checkpointInputStream, segment.fsSize);
+                        inputStream.setPropagateClose(false);
+                        IOUtils.copyBytes(inputStream, outputStream, false);
+                        inputStream.close();
+                    }
+                    segments.add(segment);
                 }
-                segments = Collections.singletonList(new Segment(path, totalRecords, totalSize));
             }
 
             return new DataCacheSnapshot(fileSystem, readerPosition, segments);
@@ -201,11 +215,25 @@ public class DataCacheSnapshot {
     private static void serializeSegments(List<Segment> segments, DataOutputStream dataOutputStream)
             throws IOException {
         dataOutputStream.writeInt(segments.size());
-        for (int i = 0; i < segments.size(); ++i) {
-            dataOutputStream.writeUTF(segments.get(i).getPath().toString());
-            dataOutputStream.writeInt(segments.get(i).getCount());
-            dataOutputStream.writeLong(segments.get(i).getSize());
+        for (Segment segment : segments) {
+            dataOutputStream.writeUTF(segment.path.toString());
+            dataOutputStream.writeInt(segment.count);
+            dataOutputStream.writeLong(segment.fsSize);
         }
+    }
+
+    private static void persistSegmentToDisk(Segment segment) throws IOException {
+        if (segment.isOnDisk()) {
+            return;
+        }
+        Preconditions.checkState(segment.isInMemory());
+
+        SegmentReader<Object> reader = new MemorySegmentReader<>(segment, 0);
+        SegmentWriter<Object> writer = new FsSegmentWriter<>(segment.serializer, segment.path);
+        while (reader.hasNext()) {
+            writer.addRecord(reader.next());
+        }
+        writer.finish().ifPresent(x -> segment.fsSize = x.fsSize);
     }
 
     private static List<Segment> deserializeSegments(DataInputStream dataInputStream)
