@@ -27,6 +27,7 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.ml.linalg.DenseVector;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 /** Specialized serializer for {@link DenseVector}. */
@@ -75,9 +76,11 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
 
         final int len = vector.values.length;
         target.writeInt(len);
+        ByteBuffer buffer = ByteBuffer.allocate(len << 3);
         for (int i = 0; i < len; i++) {
-            target.writeDouble(vector.get(i));
+            buffer.putDouble(vector.get(i));
         }
+        target.write(buffer.array());
     }
 
     @Override
@@ -91,8 +94,11 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
     // Reads `len` double values from `source` into `dst`.
     private static void readDoubleArray(double[] dst, DataInputView source, int len)
             throws IOException {
+        byte[] bytes = new byte[len << 3];
+        source.read(bytes);
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
         for (int i = 0; i < len; i++) {
-            dst[i] = source.readDouble();
+            dst[i] = buffer.getDouble();
         }
     }
 
