@@ -19,7 +19,6 @@
 package org.apache.flink.ml.benchmark.datagenerator.common;
 
 import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.benchmark.datagenerator.InputDataGenerator;
@@ -31,9 +30,9 @@ import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.util.NumberSequenceIterator;
 import org.apache.flink.util.Preconditions;
 
 import java.util.HashMap;
@@ -53,11 +52,17 @@ public class DenseVectorGenerator
     public Table[] getData(StreamTableEnvironment tEnv) {
         StreamExecutionEnvironment env = TableUtils.getExecutionEnvironment(tEnv);
 
+        //        DataStream<DenseVector> dataStream =
+        //                env.fromParallelCollection(
+        //                                new NumberSequenceIterator(1L, getNumValues()),
+        //                                BasicTypeInfo.LONG_TYPE_INFO)
+        //                        .map(new RandomDenseVectorGenerator(getSeed(), getVectorDim()));
+
         DataStream<DenseVector> dataStream =
-                env.fromParallelCollection(
-                                new NumberSequenceIterator(1L, getNumValues()),
-                                BasicTypeInfo.LONG_TYPE_INFO)
-                        .map(new RandomDenseVectorGenerator(getSeed(), getVectorDim()));
+                env.addSource(
+                                new RandomDenseVectorGeneratorSource(
+                                        getSeed(), getNumValues(), getVectorDim()))
+                        .setParallelism(1);
 
         Table dataTable = tEnv.fromDataStream(dataStream);
         if (getColNames() != null) {
@@ -66,6 +71,33 @@ public class DenseVectorGenerator
         }
 
         return new Table[] {dataTable};
+    }
+
+    private static class RandomDenseVectorGeneratorSource implements SourceFunction<DenseVector> {
+        private final long initSeed;
+        private final long num;
+        private final int vectorDim;
+
+        private RandomDenseVectorGeneratorSource(long initSeed, long num, int vectorDim) {
+            this.initSeed = initSeed;
+            this.num = num;
+            this.vectorDim = vectorDim;
+        }
+
+        @Override
+        public void run(SourceContext<DenseVector> sourceContext) throws Exception {
+            Random random = new Random(initSeed);
+            for (int count = 0; count < num; count++) {
+                double[] values = new double[vectorDim];
+                for (int i = 0; i < vectorDim; i++) {
+                    values[i] = random.nextDouble();
+                }
+                sourceContext.collect(Vectors.dense(values));
+            }
+        }
+
+        @Override
+        public void cancel() {}
     }
 
     private static class RandomDenseVectorGenerator extends RichMapFunction<Long, DenseVector> {

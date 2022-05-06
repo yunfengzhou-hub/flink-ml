@@ -120,6 +120,9 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                 body)
                         .get(0);
 
+        //        DataStream<KMeansModelData> finalModelData =
+        //                initCentroids.map(x -> new KMeansModelData(x, new DenseVector(x.length)));
+
         Table finalModelDataTable = tEnv.fromDataStream(finalModelData);
         KMeansModel model = new KMeansModel().setModelData(finalModelDataTable);
         ReadWriteUtils.updateExistingParams(model, paramMap);
@@ -265,15 +268,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
 
         private Path basePath;
         private StreamConfig config;
-        private StreamTask<?, ?> containingTask;
         private DataCacheWriter<DenseVector> dataCacheWriter;
-        //        private byte[] dataBufferArray = null;
-        //        private final List<DenseVector> dataBuffer = new ArrayList<>(400000);
-        //        private OutputStream dataBuffer;
-        //        private DataOutputViewStreamWrapper dataBufferView;
-        //        private ObjectOutputStream objectOutputStream;
-        //        private int count = 0;
-        //        private boolean isFlush = false;
 
         public SelectNearestCentroidOperator(DistanceMeasure distanceMeasure) {
             super();
@@ -296,7 +291,6 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                     .getSpillingDirectoriesPaths());
 
             this.config = config;
-            //            this.containingTask = containingTask;
         }
 
         @Override
@@ -314,42 +308,19 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                     OperatorUtils.createDataCacheFileGenerator(
                                     basePath, "cache", config.getOperatorID())
                             .get();
-            //            dataBuffer =
-            //                    basePath.getFileSystem().create(basePath,
-            // FileSystem.WriteMode.NO_OVERWRITE);
-            //
-            //            //            basePath =
-            //            //                    new Path(
-            //            //                            "/tmp/ml-benchmark"
-            //            //                                    + System.currentTimeMillis()
-            //            //                                    +
-            // getRuntimeContext().getIndexOfThisSubtask());
-            //            //            dataBuffer =
-            //            //                    basePath.getFileSystem().create(basePath,
-            //            // FileSystem.WriteMode.NO_OVERWRITE);
-            //
-            //            //            dataBuffer = new ByteArrayOutputStream();
-            //            //            dataBufferView = new
-            // DataOutputViewStreamWrapper(dataBuffer);
-            //            objectOutputStream = new ObjectOutputStream(dataBuffer);
 
             dataCacheWriter =
                     new DataCacheWriter<>(
-                            DenseVectorSerializer.INSTANCE,
                             basePath.getFileSystem(),
                             OperatorUtils.createDataCacheFileGenerator(
-                                    basePath, "cache", config.getOperatorID()));
+                                    basePath, "cache", config.getOperatorID()),
+                            getContainingTask().getEnvironment().getMemoryManager(),
+                            DenseVectorSerializer.INSTANCE);
         }
 
         @Override
         public void processElement1(StreamRecord<DenseVector> streamRecord) throws Exception {
             dataCacheWriter.addRecord(streamRecord.getValue());
-            //            DenseVectorSerializer.INSTANCE.serialize(streamRecord.getValue(),
-            // dataBufferView);
-            //            objectOutputStream.writeObject(streamRecord.getValue());
-            //            dataBuffer.add(streamRecord.getValue());
-            //            count++;
-            //            isFlush = true;
             if (centroids != null) {
                 DenseVector point = streamRecord.getValue();
                 int closestCentroidId = findClosestCentroidId(centroids, point, distanceMeasure);
@@ -363,45 +334,6 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             centroidsState.add(streamRecord.getValue());
             centroids = streamRecord.getValue();
 
-            //            for (DenseVector point : dataBuffer) {
-            //                int closestCentroidId = findClosestCentroidId(centroids, point,
-            // distanceMeasure);
-            //                output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId,
-            // point)));
-            //            }
-
-            //            DataInputView bInput =
-            //                    new DataInputViewStreamWrapper(
-            //                            new ByteArrayInputStream(dataBuffer.toByteArray()));
-
-            //            if (isFlush) {
-            //                dataBuffer.flush();
-            //                isFlush = false;
-            //            }
-            //            DataInputView bInput =
-            //                    new
-            // DataInputViewStreamWrapper(basePath.getFileSystem().open(basePath));
-            //
-            //            for (int i = 0; i < count; i++) {
-            //                DenseVector point =
-            // DenseVectorSerializer.INSTANCE.deserialize(bInput);
-            //                int closestCentroidId = findClosestCentroidId(centroids, point,
-            // distanceMeasure);
-            //                output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId,
-            // point)));
-            //            }
-
-            //            objectOutputStream.flush();
-            //            ObjectInputStream inputStream =
-            //                    new ObjectInputStream(basePath.getFileSystem().open(basePath));
-            //            for (int i = 0; i < count; i++) {
-            //                DenseVector point = (DenseVector) inputStream.readObject();
-            //                int closestCentroidId = findClosestCentroidId(centroids, point,
-            // distanceMeasure);
-            //                output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId,
-            // point)));
-            //            }
-
             dataCacheWriter.finishCurrentSegment();
             List<Segment> pendingSegments = dataCacheWriter.getFinishSegments();
             if (pendingSegments.size() == 0) {
@@ -409,8 +341,8 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             }
             DataCacheReader<DenseVector> dataCacheReader =
                     new DataCacheReader<>(
+                            getContainingTask().getEnvironment().getMemoryManager(),
                             DenseVectorSerializer.INSTANCE,
-                            basePath.getFileSystem(),
                             pendingSegments);
 
             while (dataCacheReader.hasNext()) {
@@ -431,7 +363,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         public void onIterationTerminated(
                 Context context, Collector<Tuple2<Integer, DenseVector>> collector)
                 throws IOException {
-            //            dataCacheWriter.cleanup();
+            dataCacheWriter.cleanup();
             centroids = null;
             centroidsState.clear();
         }
@@ -462,8 +394,12 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                             public void mapPartition(
                                     Iterable<DenseVector> iterable, Collector<DenseVector[]> out) {
                                 List<DenseVector> vectors = new ArrayList<>();
+                                Random random = new Random(seed);
                                 for (DenseVector vector : iterable) {
                                     vectors.add(vector);
+                                    if (vectors.size() >= k) {
+                                        break;
+                                    }
                                 }
                                 Collections.shuffle(vectors, new Random(seed));
                                 out.collect(vectors.subList(0, k).toArray(new DenseVector[0]));

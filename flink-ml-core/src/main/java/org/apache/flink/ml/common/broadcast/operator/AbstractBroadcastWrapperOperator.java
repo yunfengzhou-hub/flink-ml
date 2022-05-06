@@ -394,9 +394,9 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
         if (pendingSegments.size() != 0) {
             DataCacheReader dataCacheReader =
                     new DataCacheReader<>(
+                            containingTask.getEnvironment().getMemoryManager(),
                             new CacheElementTypeInfo<>(inTypes[inputIndex])
                                     .createSerializer(containingTask.getExecutionConfig()),
-                            basePath.getFileSystem(),
                             pendingSegments);
             while (dataCacheReader.hasNext()) {
                 CacheElement cacheElement = (CacheElement) dataCacheReader.next();
@@ -520,11 +520,12 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
             for (int i = 0; i < numInputs; i++) {
                 dataCacheWriters[i] =
                         new DataCacheWriter(
-                                new CacheElementTypeInfo<>(inTypes[i])
-                                        .createSerializer(containingTask.getExecutionConfig()),
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
-                                        basePath, "cache", streamConfig.getOperatorID()));
+                                        basePath, "cache", streamConfig.getOperatorID()),
+                                containingTask.getEnvironment().getMemoryManager(),
+                                new CacheElementTypeInfo<>(inTypes[i])
+                                        .createSerializer(containingTask.getExecutionConfig()));
             }
         } else {
             InputStream inputStream = inputs.get(0).getStream();
@@ -540,11 +541,12 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
                                         basePath, "cache", streamConfig.getOperatorID()));
                 dataCacheWriters[i] =
                         new DataCacheWriter(
-                                new CacheElementTypeInfo<>(inTypes[i])
-                                        .createSerializer(containingTask.getExecutionConfig()),
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
                                         basePath, "cache", streamConfig.getOperatorID()),
+                                containingTask.getEnvironment().getMemoryManager(),
+                                new CacheElementTypeInfo<>(inTypes[i])
+                                        .createSerializer(containingTask.getExecutionConfig()),
                                 dataCacheSnapshot.getSegments());
             }
         }

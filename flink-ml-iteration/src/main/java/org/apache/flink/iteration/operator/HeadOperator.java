@@ -238,10 +238,11 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
                                 .getSpillingDirectoriesPaths());
         this.checkpoints =
                 new Checkpoints<>(
-                        config.getTypeSerializerOut(getClass().getClassLoader()),
                         dataCachePath.getFileSystem(),
                         OperatorUtils.createDataCacheFileGenerator(
-                                dataCachePath, "header-cp", getOperatorConfig().getOperatorID()));
+                                dataCachePath, "header-cp", getOperatorConfig().getOperatorID()),
+                        getContainingTask().getEnvironment().getMemoryManager(),
+                        config.getTypeSerializerOut(getClass().getClassLoader()));
         CheckpointsBroker.get()
                 .setCheckpoints(
                         OperatorUtils.<IterationRecord<?>>createFeedbackKey(
@@ -254,9 +255,9 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
         try {
             for (StatePartitionStreamProvider rawStateInput : context.getRawOperatorStateInputs()) {
                 DataCacheSnapshot.replay(
+                        getContainingTask().getEnvironment().getMemoryManager(),
                         rawStateInput.getStream(),
                         checkpoints.getTypeSerializer(),
-                        checkpoints.getFileSystem(),
                         (record) ->
                                 recordProcessor.processFeedbackElement(new StreamRecord<>(record)));
             }

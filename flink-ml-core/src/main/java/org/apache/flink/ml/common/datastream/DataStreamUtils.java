@@ -37,6 +37,7 @@ import org.apache.flink.streaming.api.operators.TimestampedCollector;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 
+import java.util.Iterator;
 import java.util.List;
 
 /** Provides utility functions for {@link DataStream}. */
@@ -90,7 +91,6 @@ public class DataStreamUtils {
         private StreamConfig config;
         private StreamTask<?, ?> containingTask;
         private DataCacheWriter<IN> dataCacheWriter;
-        //        private final List<IN> buffer = new ArrayList<>();
         private final TypeInformation<IN> inputType;
 
         public MapPartitionOperator(
@@ -123,32 +123,53 @@ public class DataStreamUtils {
             super.initializeState(context);
             dataCacheWriter =
                     new DataCacheWriter<>(
-                            inputType.createSerializer(containingTask.getExecutionConfig()),
                             basePath.getFileSystem(),
                             OperatorUtils.createDataCacheFileGenerator(
-                                    basePath, "cache", config.getOperatorID()));
+                                    basePath, "cache", config.getOperatorID()),
+                            containingTask.getEnvironment().getMemoryManager(),
+                            inputType.createSerializer(containingTask.getExecutionConfig()));
         }
 
         @Override
         public void endInput() throws Exception {
             dataCacheWriter.finishCurrentSegment();
             List<Segment> pendingSegments = dataCacheWriter.getFinishSegments();
-            DataCacheReader<IN> dataCacheReader =
-                    new DataCacheReader<>(
-                            inputType.createSerializer(containingTask.getExecutionConfig()),
-                            basePath.getFileSystem(),
-                            pendingSegments);
-            userFunction.mapPartition(() -> dataCacheReader, new TimestampedCollector<>(output));
+            userFunction.mapPartition(
+                    new DataCacheReaderIterable<>(
+                            basePath, containingTask, pendingSegments, inputType),
+                    new TimestampedCollector<>(output));
             dataCacheWriter.cleanup();
+        }
 
-            //            userFunction.mapPartition(buffer::listIterator, new
-            // TimestampedCollector<>(output));
+        private static class DataCacheReaderIterable<T> implements Iterable<T> {
+            private final Path basePath;
+            private final StreamTask<?, ?> containingTask;
+            private final List<Segment> pendingSegments;
+            private final TypeInformation<T> type;
+
+            private DataCacheReaderIterable(
+                    Path basePath,
+                    StreamTask<?, ?> containingTask,
+                    List<Segment> pendingSegments,
+                    TypeInformation<T> type) {
+                this.basePath = basePath;
+                this.containingTask = containingTask;
+                this.pendingSegments = pendingSegments;
+                this.type = type;
+            }
+
+            @Override
+            public Iterator<T> iterator() {
+                return new DataCacheReader<>(
+                        containingTask.getEnvironment().getMemoryManager(),
+                        type.createSerializer(containingTask.getExecutionConfig()),
+                        pendingSegments);
+            }
         }
 
         @Override
         public void processElement(StreamRecord<IN> input) throws Exception {
             dataCacheWriter.addRecord(input.getValue());
-            //            buffer.add(input.getValue());
         }
     }
 }

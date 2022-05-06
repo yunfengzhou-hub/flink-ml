@@ -19,8 +19,11 @@
 package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.memory.MemorySegment;
 
+import java.io.IOException;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Objects;
 
 /** A segment represents a single file for the cache. */
@@ -31,13 +34,15 @@ public class Segment implements Serializable {
     /** The count of the records in the file. */
     private final int count;
 
-    /** The total length of file. */
-    private final long size;
+    private transient List<MemorySegment> bufferedMemorySegment;
 
-    public Segment(Path path, int count, long size) {
+    public Segment(Path path, int count) {
         this.path = path;
         this.count = count;
-        this.size = size;
+    }
+
+    public boolean isOnDisk() throws IOException {
+        return path.getFileSystem().exists(path);
     }
 
     public Path getPath() {
@@ -48,8 +53,16 @@ public class Segment implements Serializable {
         return count;
     }
 
-    public long getSize() {
-        return size;
+    public boolean isInMemory() {
+        return bufferedMemorySegment != null;
+    }
+
+    public List<MemorySegment> getBufferedMemorySegment() {
+        return bufferedMemorySegment;
+    }
+
+    public void setBufferedMemorySegments(List<MemorySegment> bufferedMemorySegment) {
+        this.bufferedMemorySegment = bufferedMemorySegment;
     }
 
     @Override
@@ -63,16 +76,16 @@ public class Segment implements Serializable {
         }
 
         Segment segment = (Segment) o;
-        return count == segment.count && size == segment.size && Objects.equals(path, segment.path);
+        return count == segment.count && Objects.equals(path, segment.path);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(path, count, size);
+        return Objects.hash(path, count);
     }
 
     @Override
     public String toString() {
-        return "Segment{" + "path=" + path + ", count=" + count + ", size=" + size + '}';
+        return "Segment{" + "path=" + path + ", count=" + count + '}';
     }
 }

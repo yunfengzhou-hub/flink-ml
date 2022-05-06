@@ -23,6 +23,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
+import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.util.OperatingSystem;
 import org.apache.flink.util.TestLogger;
 
@@ -134,9 +135,10 @@ public class DataCacheSnapshotTest extends TestLogger {
             throws IOException {
         DataCacheWriter<Integer> writer =
                 new DataCacheWriter<>(
-                        IntSerializer.INSTANCE,
                         fileSystem,
-                        () -> new Path(basePath, "writer." + UUID.randomUUID().toString()));
+                        () -> new Path(basePath, "writer." + UUID.randomUUID()),
+                        null,
+                        IntSerializer.INSTANCE);
         int nextNumber = 0;
         for (int numRecord : numRecordsPerSegment) {
             for (int i = 0; i < numRecord; ++i) {
@@ -163,8 +165,8 @@ public class DataCacheSnapshotTest extends TestLogger {
         }
 
         ByteArrayInputStream replayInputStream = new ByteArrayInputStream(data);
-        for (DataCacheSnapshot dataCacheSnapshot : dataCacheSnapshots) {
-            checkReplay(dataCacheSnapshot, replayInputStream, numRecordsPerSegment);
+        for (DataCacheSnapshot ignored : dataCacheSnapshots) {
+            checkReplay(null, replayInputStream, numRecordsPerSegment);
         }
     }
 
@@ -175,22 +177,20 @@ public class DataCacheSnapshotTest extends TestLogger {
                         inputStream,
                         dataCacheSnapshot.getFileSystem(),
                         () -> new Path(basePath, "writer." + UUID.randomUUID().toString()));
-        if (dataCacheSnapshot.getFileSystem().isDistributedFS()) {
-            assertEquals(dataCacheSnapshot.getSegments(), copied.getSegments());
-        } else {
-            assertEquals(readElements(dataCacheSnapshot), readElements(copied));
-        }
+        //        if (dataCacheSnapshot.getFileSystem().isDistributedFS()) {
+        //            assertEquals(dataCacheSnapshot.getSegments(), copied.getSegments());
+        //        } else {
+        assertEquals(readElements(dataCacheSnapshot), readElements(copied));
+        //        }
 
         assertEquals(dataCacheSnapshot.getReaderPosition(), copied.getReaderPosition());
     }
 
     private void checkReplay(
-            DataCacheSnapshot dataCacheSnapshot,
-            InputStream inputStream,
-            int[] numRecordsPerSegment)
+            MemoryManager memoryManager, InputStream inputStream, int[] numRecordsPerSegment)
             throws Exception {
         List<Integer> elements = new ArrayList<>();
-        DataCacheSnapshot.replay(inputStream, IntSerializer.INSTANCE, fileSystem, elements::add);
+        DataCacheSnapshot.replay(memoryManager, inputStream, IntSerializer.INSTANCE, elements::add);
 
         int totalRecords = IntStream.of(numRecordsPerSegment).sum();
         assertEquals(
@@ -200,9 +200,7 @@ public class DataCacheSnapshotTest extends TestLogger {
     private List<Integer> readElements(DataCacheSnapshot dataCacheSnapshot) throws IOException {
         DataCacheReader<Integer> reader =
                 new DataCacheReader<>(
-                        IntSerializer.INSTANCE,
-                        dataCacheSnapshot.getFileSystem(),
-                        dataCacheSnapshot.getSegments());
+                        null, IntSerializer.INSTANCE, dataCacheSnapshot.getSegments());
         List<Integer> result = new ArrayList<>();
         while (reader.hasNext()) {
             result.add(reader.next());

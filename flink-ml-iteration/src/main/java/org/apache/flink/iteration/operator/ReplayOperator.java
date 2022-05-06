@@ -169,9 +169,10 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
 
             dataCacheWriter =
                     new DataCacheWriter<>(
-                            typeSerializer,
                             fileSystem,
                             pathGenerator,
+                            getContainingTask().getEnvironment().getMemoryManager(),
+                            typeSerializer,
                             dataCacheSnapshot == null
                                     ? Collections.emptyList()
                                     : dataCacheSnapshot.getSegments());
@@ -179,8 +180,8 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
             if (dataCacheSnapshot != null && dataCacheSnapshot.getReaderPosition() != null) {
                 currentDataCacheReader =
                         new DataCacheReader<>(
+                                getContainingTask().getEnvironment().getMemoryManager(),
                                 typeSerializer,
-                                fileSystem,
                                 dataCacheSnapshot.getSegments(),
                                 dataCacheSnapshot.getReaderPosition());
             }
@@ -271,12 +272,14 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
         }
 
         // At this point, there would be no more inputs before we finish replaying all the data.
-        // Thus it is safe we implement ourself mailbox loop.
+        // Thus it is safe for us to implement our own mailbox loop.
         checkState(currentDataCacheReader == null, "Concurrent replay is not supported");
         currentEpoch = epochWatermark;
         currentDataCacheReader =
                 new DataCacheReader<>(
-                        typeSerializer, fileSystem, dataCacheWriter.getFinishSegments());
+                        getContainingTask().getEnvironment().getMemoryManager(),
+                        typeSerializer,
+                        dataCacheWriter.getFinishSegments());
         replayRecords(currentDataCacheReader, epochWatermark);
     }
 

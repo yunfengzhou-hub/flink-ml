@@ -19,59 +19,67 @@
 package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
+import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.util.function.SupplierWithException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
-/** Records the data received and replayed them on required. */
+/** Records the data received and replays them on required. */
 public class DataCacheWriter<T> {
-
-    private final TypeSerializer<T> serializer;
 
     private final FileSystem fileSystem;
 
     private final SupplierWithException<Path, IOException> pathGenerator;
 
+    private final MemoryManager memoryManager;
+
+    private final TypeSerializer<T> serializer;
+
     private final List<Segment> finishSegments;
 
-    private SegmentWriter currentSegment;
+    private SegmentWriter currentWriter;
 
     public DataCacheWriter(
-            TypeSerializer<T> serializer,
             FileSystem fileSystem,
-            SupplierWithException<Path, IOException> pathGenerator)
+            SupplierWithException<Path, IOException> pathGenerator,
+            MemoryManager memoryManager,
+            TypeSerializer<T> serializer)
             throws IOException {
-        this(serializer, fileSystem, pathGenerator, Collections.emptyList());
+        this(fileSystem, pathGenerator, memoryManager, serializer, Collections.emptyList());
     }
 
     public DataCacheWriter(
-            TypeSerializer<T> serializer,
             FileSystem fileSystem,
             SupplierWithException<Path, IOException> pathGenerator,
+            MemoryManager memoryManager,
+            TypeSerializer<T> serializer,
             List<Segment> priorFinishedSegments)
             throws IOException {
         this.serializer = serializer;
         this.fileSystem = fileSystem;
         this.pathGenerator = pathGenerator;
+        this.memoryManager = memoryManager;
 
         this.finishSegments = new ArrayList<>(priorFinishedSegments);
 
-        this.currentSegment = new SegmentWriter(pathGenerator.get());
+        this.currentWriter = createSegmentWriter(pathGenerator, memoryManager);
     }
 
-    public void addRecord(T record) throws IOException {
-        currentSegment.addRecord(record);
+    public boolean addRecord(T record) throws IOException {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        DataOutputView outputView = new DataOutputViewStreamWrapper(byteArrayOutputStream);
+        serializer.serialize(record, outputView);
+        byte[] bytes = byteArrayOutputStream.toByteArray();
+
+        return currentWriter.addRecord(bytes);
     }
 
     public void finishCurrentSegment() throws IOException {
@@ -92,60 +100,28 @@ public class DataCacheWriter<T> {
     }
 
     private void finishCurrentSegment(boolean newSegment) throws IOException {
-        if (currentSegment != null) {
-            currentSegment.finish().ifPresent(finishSegments::add);
-            currentSegment = null;
+        if (currentWriter != null) {
+            currentWriter.finish().ifPresent(finishSegments::add);
+            currentWriter = null;
         }
 
         if (newSegment) {
-            currentSegment = new SegmentWriter(pathGenerator.get());
+            currentWriter = createSegmentWriter(pathGenerator, memoryManager);
         }
     }
 
-    private class SegmentWriter {
+    private static SegmentWriter createSegmentWriter(
+            SupplierWithException<Path, IOException> pathGenerator, MemoryManager memoryManager)
+            throws IOException {
+        boolean shouldCacheInMemory =
+                memoryManager != null
+                        && (double) memoryManager.availableMemory() / memoryManager.getMemorySize()
+                                > 0.5;
 
-        private final Path path;
-
-        private final FSDataOutputStream outputStream;
-
-        private final ObjectOutputStream objectOutputStream;
-
-        private final ByteArrayOutputStream byteArrayOutputStream;
-
-        private final DataOutputView outputView;
-
-        private int currentSegmentCount;
-
-        public SegmentWriter(Path path) throws IOException {
-            this.path = path;
-            this.outputStream = fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE);
-            this.objectOutputStream = new ObjectOutputStream(outputStream);
-
-            this.byteArrayOutputStream = new ByteArrayOutputStream();
-            this.outputView = new DataOutputViewStreamWrapper(byteArrayOutputStream);
+        if (shouldCacheInMemory) {
+            return new MemorySegmentWriter(pathGenerator.get(), memoryManager);
         }
-
-        public void addRecord(T record) throws IOException {
-            serializer.serialize(record, outputView);
-            objectOutputStream.writeObject(byteArrayOutputStream.toByteArray());
-            byteArrayOutputStream.reset();
-            currentSegmentCount += 1;
-        }
-
-        public Optional<Segment> finish() throws IOException {
-            this.objectOutputStream.flush();
-            this.outputStream.flush();
-            long size = outputStream.getPos();
-            this.outputStream.close();
-
-            if (currentSegmentCount > 0) {
-                return Optional.of(new Segment(path, currentSegmentCount, size));
-            } else {
-                // If there are no records, we tend to directly delete this file
-                fileSystem.delete(path, false);
-                return Optional.empty();
-            }
-        }
+        return new FsSegmentWriter(pathGenerator.get());
     }
 
     public void cleanup() throws IOException {
