@@ -19,127 +19,104 @@
 package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.core.memory.DataOutputView;
-import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
+import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
-/** Records the data received and replayed them on required. */
+/** Records the data received and replays them on required. */
 public class DataCacheWriter<T> {
-
-    private final TypeSerializer<T> serializer;
 
     private final FileSystem fileSystem;
 
     private final SupplierWithException<Path, IOException> pathGenerator;
 
-    private final List<Segment> finishSegments;
+    private final LimitedSizeMemoryManager memoryManager;
 
-    private SegmentWriter currentSegment;
+    private final TypeSerializer<T> serializer;
+
+    private final List<Segment> finishedSegments;
+
+    private SegmentWriter<T> currentWriter;
 
     public DataCacheWriter(
             TypeSerializer<T> serializer,
             FileSystem fileSystem,
-            SupplierWithException<Path, IOException> pathGenerator)
+            SupplierWithException<Path, IOException> pathGenerator,
+            LimitedSizeMemoryManager memoryManager)
             throws IOException {
-        this(serializer, fileSystem, pathGenerator, Collections.emptyList());
+        this(serializer, fileSystem, pathGenerator, memoryManager, Collections.emptyList());
     }
 
     public DataCacheWriter(
             TypeSerializer<T> serializer,
             FileSystem fileSystem,
             SupplierWithException<Path, IOException> pathGenerator,
+            LimitedSizeMemoryManager memoryManager,
             List<Segment> priorFinishedSegments)
             throws IOException {
         this.serializer = serializer;
         this.fileSystem = fileSystem;
         this.pathGenerator = pathGenerator;
-
-        this.finishSegments = new ArrayList<>(priorFinishedSegments);
-
-        this.currentSegment = new SegmentWriter(pathGenerator.get());
+        this.memoryManager = memoryManager;
+        this.finishedSegments = new ArrayList<>(priorFinishedSegments);
+        this.currentWriter =
+                SegmentWriter.create(
+                        pathGenerator.get(), this.memoryManager, serializer, 0L, true, true);
     }
 
     public void addRecord(T record) throws IOException {
-        currentSegment.addRecord(record);
+        boolean success = currentWriter.addRecord(record);
+        if (!success) {
+            currentWriter.finish().ifPresent(finishedSegments::add);
+            currentWriter = new FsSegmentWriter<>(serializer, pathGenerator.get());
+            success = currentWriter.addRecord(record);
+            Preconditions.checkState(success);
+        }
     }
 
-    public void finishCurrentSegment() throws IOException {
-        finishCurrentSegment(true);
+    public void finishCurrentSegmentIfAny() throws IOException {
+        if (currentWriter == null || currentWriter.getCount() == 0) {
+            return;
+        }
+
+        currentWriter.finish().ifPresent(finishedSegments::add);
+        currentWriter =
+                SegmentWriter.create(
+                        pathGenerator.get(), memoryManager, serializer, 0L, true, true);
     }
 
     public List<Segment> finish() throws IOException {
-        finishCurrentSegment(false);
-        return finishSegments;
+        if (currentWriter != null) {
+            currentWriter.finish().ifPresent(finishedSegments::add);
+            currentWriter = null;
+        }
+        return finishedSegments;
     }
 
     public FileSystem getFileSystem() {
         return fileSystem;
     }
 
-    public List<Segment> getFinishSegments() {
-        return finishSegments;
-    }
-
-    private void finishCurrentSegment(boolean newSegment) throws IOException {
-        if (currentSegment != null) {
-            currentSegment.finish().ifPresent(finishSegments::add);
-            currentSegment = null;
-        }
-
-        if (newSegment) {
-            currentSegment = new SegmentWriter(pathGenerator.get());
-        }
-    }
-
-    private class SegmentWriter {
-
-        private final Path path;
-
-        private final FSDataOutputStream outputStream;
-
-        private final DataOutputView outputView;
-
-        private int currentSegmentCount;
-
-        public SegmentWriter(Path path) throws IOException {
-            this.path = path;
-            this.outputStream = fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE);
-            this.outputView = new DataOutputViewStreamWrapper(outputStream);
-        }
-
-        public void addRecord(T record) throws IOException {
-            serializer.serialize(record, outputView);
-            currentSegmentCount += 1;
-        }
-
-        public Optional<Segment> finish() throws IOException {
-            this.outputStream.flush();
-            long size = outputStream.getPos();
-            this.outputStream.close();
-
-            if (currentSegmentCount > 0) {
-                return Optional.of(new Segment(path, currentSegmentCount, size));
-            } else {
-                // If there are no records, we tend to directly delete this file
-                fileSystem.delete(path, false);
-                return Optional.empty();
-            }
-        }
+    public List<Segment> getFinishedSegments() {
+        return finishedSegments;
     }
 
     public void cleanup() throws IOException {
-        finishCurrentSegment();
-        for (Segment segment : finishSegments) {
-            fileSystem.delete(segment.getPath(), false);
+        finish();
+        for (Segment segment : finishedSegments) {
+            if (segment.isOnDisk()) {
+                fileSystem.delete(segment.getPath(), false);
+            }
+            if (segment.isCached()) {
+                memoryManager.releaseAll(segment.getCacheKey());
+            }
         }
+        finishedSegments.clear();
     }
 }

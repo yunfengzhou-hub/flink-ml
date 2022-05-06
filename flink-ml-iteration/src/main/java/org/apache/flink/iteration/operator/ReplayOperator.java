@@ -172,6 +172,7 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
                             typeSerializer,
                             fileSystem,
                             pathGenerator,
+                            null,
                             dataCacheSnapshot == null
                                     ? Collections.emptyList()
                                     : dataCacheSnapshot.getSegments());
@@ -180,7 +181,7 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
                 currentDataCacheReader =
                         new DataCacheReader<>(
                                 typeSerializer,
-                                fileSystem,
+                                null,
                                 dataCacheSnapshot.getSegments(),
                                 dataCacheSnapshot.getReaderPosition());
             }
@@ -203,14 +204,14 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
 
         currentEpochState.update(Collections.singletonList(currentEpoch));
 
-        dataCacheWriter.finishCurrentSegment();
+        dataCacheWriter.finishCurrentSegmentIfAny();
         DataCacheSnapshot dataCacheSnapshot =
                 new DataCacheSnapshot(
                         fileSystem,
                         currentDataCacheReader == null
                                 ? null
                                 : currentDataCacheReader.getPosition(),
-                        dataCacheWriter.getFinishSegments());
+                        dataCacheWriter.getFinishedSegments());
         context.getRawOperatorStateOutput().startNewPartition();
         dataCacheSnapshot.writeTo(context.getRawOperatorStateOutput());
     }
@@ -262,6 +263,8 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
     public void onEpochWatermarkIncrement(int epochWatermark) throws IOException {
         if (epochWatermark == 0) {
             // No need to replay for the round 0, it is output directly.
+            // TODO: free cached records when they will no longer be replayed, and enable caching
+            // data in memory.
             dataCacheWriter.finish();
             emitEpochWatermark(epochWatermark);
             return;
@@ -271,12 +274,11 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
         }
 
         // At this point, there would be no more inputs before we finish replaying all the data.
-        // Thus it is safe we implement ourself mailbox loop.
+        // Thus it is safe for us to implement our own mailbox loop.
         checkState(currentDataCacheReader == null, "Concurrent replay is not supported");
         currentEpoch = epochWatermark;
         currentDataCacheReader =
-                new DataCacheReader<>(
-                        typeSerializer, fileSystem, dataCacheWriter.getFinishSegments());
+                new DataCacheReader<>(typeSerializer, null, dataCacheWriter.getFinishedSegments());
         replayRecords(currentDataCacheReader, epochWatermark);
     }
 
