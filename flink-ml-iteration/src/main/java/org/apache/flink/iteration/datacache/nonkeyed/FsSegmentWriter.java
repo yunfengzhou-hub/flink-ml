@@ -26,6 +26,7 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
@@ -38,6 +39,9 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
 
     // TODO: adjust the file size limit automatically according to the provided file system.
     private static final int CACHE_FILE_SIZE_LIMIT = 100 * 1024 * 1024; // 100MB
+
+    // TODO: adjust the buffer size automatically to achieve best performance.
+    private static final int STREAM_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
     private final TypeSerializer<T> serializer;
 
@@ -59,7 +63,8 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
         this.fileSystem = path.getFileSystem();
         this.outputStream = fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE);
         this.byteArrayOutputStream = new ByteArrayOutputStream();
-        this.objectOutputStream = new ObjectOutputStream(outputStream);
+        this.objectOutputStream =
+                new ObjectOutputStream(new BufferedOutputStream(outputStream, STREAM_BUFFER_SIZE));
         this.outputView = new DataOutputViewStreamWrapper(byteArrayOutputStream);
     }
 
