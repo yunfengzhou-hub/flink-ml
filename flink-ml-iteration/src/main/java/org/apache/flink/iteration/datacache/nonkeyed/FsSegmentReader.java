@@ -22,9 +22,10 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
+import org.apache.flink.util.IOUtils;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -59,8 +60,13 @@ class FsSegmentReader<T> implements SegmentReader<T> {
             throws IOException {
         this.serializer = serializer;
         this.inputStream = inputStream;
+
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        IOUtils.copyBytes(inputStream, byteArrayOutputStream, false);
+
         this.objectInputStream =
-                new ObjectInputStream(new BufferedInputStream(inputStream, STREAM_BUFFER_SIZE));
+                new ObjectInputStream(
+                        new ByteArrayInputStream(byteArrayOutputStream.toByteArray()));
         this.offset = 0;
         this.totalCount = totalCount;
 
