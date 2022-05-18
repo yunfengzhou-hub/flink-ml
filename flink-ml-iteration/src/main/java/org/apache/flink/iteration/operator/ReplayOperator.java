@@ -204,14 +204,14 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
 
         currentEpochState.update(Collections.singletonList(currentEpoch));
 
-        dataCacheWriter.finishCurrentSegment();
+        dataCacheWriter.finishCurrentSegmentIfAny();
         DataCacheSnapshot dataCacheSnapshot =
                 new DataCacheSnapshot(
                         fileSystem,
                         currentDataCacheReader == null
                                 ? null
                                 : currentDataCacheReader.getPosition(),
-                        dataCacheWriter.getFinishSegments());
+                        dataCacheWriter.getFinishedSegments());
         context.getRawOperatorStateOutput().startNewPartition();
         dataCacheSnapshot.writeTo(context.getRawOperatorStateOutput());
     }
@@ -278,7 +278,7 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
         checkState(currentDataCacheReader == null, "Concurrent replay is not supported");
         currentEpoch = epochWatermark;
         currentDataCacheReader =
-                new DataCacheReader<>(typeSerializer, null, dataCacheWriter.getFinishSegments());
+                new DataCacheReader<>(typeSerializer, null, dataCacheWriter.getFinishedSegments());
         replayRecords(currentDataCacheReader, epochWatermark);
     }
 

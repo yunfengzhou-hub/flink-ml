@@ -27,7 +27,10 @@ import java.util.Optional;
 @Internal
 interface SegmentWriter<T> {
     /** Adds a record to the writer. */
-    boolean addRecord(T record) throws IOException;
+    boolean addRecord(T record);
+
+    /** Gets the number of records added so far. */
+    int getCount();
 
     /**
      * Finishes the writer and returns a segment if any record has ever been added through {@link

@@ -21,7 +21,6 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.runtime.memory.MemoryAllocationException;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
@@ -42,7 +41,7 @@ public class DataCacheWriter<T> {
 
     private final TypeSerializer<T> serializer;
 
-    private final List<Segment> finishSegments;
+    private final List<Segment> finishedSegments;
 
     private SegmentWriter<T> currentWriter;
 
@@ -65,43 +64,44 @@ public class DataCacheWriter<T> {
         this.serializer = serializer;
         this.fileSystem = fileSystem;
         this.pathGenerator = pathGenerator;
-        this.memoryManager = memoryManager;
-        this.finishSegments = new ArrayList<>(priorFinishedSegments);
+        this.memoryManager = null;
+        this.finishedSegments = new ArrayList<>(priorFinishedSegments);
         this.currentWriter = createSegmentWriter(pathGenerator, this.memoryManager);
     }
 
     public void addRecord(T record) throws IOException {
         boolean success = currentWriter.addRecord(record);
         if (!success) {
-            finishCurrentSegment();
+            currentWriter.finish().ifPresent(finishedSegments::add);
+            currentWriter = new FsSegmentWriter<>(serializer, pathGenerator.get());
             success = currentWriter.addRecord(record);
             Preconditions.checkState(success);
         }
     }
 
-    public void finishCurrentSegment() throws IOException {
-        if (currentWriter != null) {
-            currentWriter.finish().ifPresent(finishSegments::add);
-            currentWriter = null;
+    public void finishCurrentSegmentIfAny() throws IOException {
+        if (currentWriter == null || currentWriter.getCount() == 0) {
+            return;
         }
 
+        currentWriter.finish().ifPresent(finishedSegments::add);
         currentWriter = createSegmentWriter(pathGenerator, memoryManager);
     }
 
     public List<Segment> finish() throws IOException {
         if (currentWriter != null) {
-            currentWriter.finish().ifPresent(finishSegments::add);
+            currentWriter.finish().ifPresent(finishedSegments::add);
             currentWriter = null;
         }
-        return finishSegments;
+        return finishedSegments;
     }
 
     public FileSystem getFileSystem() {
         return fileSystem;
     }
 
-    public List<Segment> getFinishSegments() {
-        return finishSegments;
+    public List<Segment> getFinishedSegments() {
+        return finishedSegments;
     }
 
     private SegmentWriter<T> createSegmentWriter(
@@ -110,18 +110,14 @@ public class DataCacheWriter<T> {
         boolean shouldCacheInMemory = MemoryUtils.isMemoryEnoughForCache(memoryManager);
 
         if (shouldCacheInMemory) {
-            try {
-                return new MemorySegmentWriter<>(pathGenerator.get(), memoryManager);
-            } catch (MemoryAllocationException e) {
-                return new FsSegmentWriter<>(serializer, pathGenerator.get());
-            }
+            return new MemorySegmentWriter<>(pathGenerator.get(), memoryManager);
         }
         return new FsSegmentWriter<>(serializer, pathGenerator.get());
     }
 
     public void cleanup() throws IOException {
         finish();
-        for (Segment segment : finishSegments) {
+        for (Segment segment : finishedSegments) {
             if (segment.isOnDisk()) {
                 fileSystem.delete(segment.path, false);
             }
@@ -129,6 +125,6 @@ public class DataCacheWriter<T> {
                 memoryManager.releaseMemory(segment.path, segment.inMemorySize);
             }
         }
-        finishSegments.clear();
+        finishedSegments.clear();
     }
 }

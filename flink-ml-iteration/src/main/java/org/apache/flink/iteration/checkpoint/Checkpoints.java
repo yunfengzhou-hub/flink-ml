@@ -158,7 +158,7 @@ public class Checkpoints<T> implements AutoCloseable {
                                                 fileSystem,
                                                 null,
                                                 pendingCheckpoint.dataCacheWriter
-                                                        .getFinishSegments());
+                                                        .getFinishedSegments());
                                 pendingCheckpoint.checkpointOutputStream.startNewPartition();
                                 snapshot.writeTo(pendingCheckpoint.checkpointOutputStream);
 

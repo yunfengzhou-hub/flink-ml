@@ -160,7 +160,7 @@ public class DataCacheWriteReadTest extends TestLogger {
                 writer.addRecord(i * numRecordsPerSegment + j);
             }
 
-            writer.finishCurrentSegment();
+            writer.finishCurrentSegmentIfAny();
         }
         List<Segment> segments = writer.finish();
 

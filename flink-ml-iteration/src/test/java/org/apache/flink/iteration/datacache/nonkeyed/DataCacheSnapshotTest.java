@@ -104,7 +104,7 @@ public class DataCacheSnapshotTest extends TestLogger {
         int[] numRecordsPerSegment = {100, 200, 300};
         DataCacheWriter<Integer> writer = createWriterAndAddRecords(numRecordsPerSegment);
         DataCacheSnapshot dataCacheSnapshot =
-                new DataCacheSnapshot(fileSystem, null, writer.getFinishSegments());
+                new DataCacheSnapshot(fileSystem, null, writer.getFinishedSegments());
         checkWriteAndRecoverAndReplay(numRecordsPerSegment, dataCacheSnapshot);
     }
 
@@ -113,7 +113,8 @@ public class DataCacheSnapshotTest extends TestLogger {
         int[] numRecordsPerSegment = {100, 200, 300};
         DataCacheWriter<Integer> writer = createWriterAndAddRecords(numRecordsPerSegment);
         DataCacheSnapshot dataCacheSnapshot =
-                new DataCacheSnapshot(fileSystem, new Tuple2<>(0, 50), writer.getFinishSegments());
+                new DataCacheSnapshot(
+                        fileSystem, new Tuple2<>(0, 50), writer.getFinishedSegments());
         checkWriteAndRecoverAndReplay(numRecordsPerSegment, dataCacheSnapshot);
     }
 
@@ -125,8 +126,8 @@ public class DataCacheSnapshotTest extends TestLogger {
 
         checkWriteAndRecoverAndReplay(
                 numRecordsPerSegment,
-                new DataCacheSnapshot(fileSystem, null, writer1.getFinishSegments()),
-                new DataCacheSnapshot(fileSystem, null, writer2.getFinishSegments()));
+                new DataCacheSnapshot(fileSystem, null, writer1.getFinishedSegments()),
+                new DataCacheSnapshot(fileSystem, null, writer2.getFinishedSegments()));
     }
 
     private DataCacheWriter<Integer> createWriterAndAddRecords(int[] numRecordsPerSegment)
@@ -142,7 +143,7 @@ public class DataCacheSnapshotTest extends TestLogger {
             for (int i = 0; i < numRecord; ++i) {
                 writer.addRecord(nextNumber++);
             }
-            writer.finishCurrentSegment();
+            writer.finishCurrentSegmentIfAny();
         }
         writer.finish();
         return writer;

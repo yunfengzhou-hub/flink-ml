@@ -20,8 +20,8 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.runtime.memory.MemoryAllocationException;
 import org.apache.flink.runtime.memory.MemoryManager;
+import org.apache.flink.runtime.memory.MemoryReservationException;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -52,7 +52,7 @@ public class DataCacheReader<T> implements Iterator<T> {
             MemoryManager memoryManager,
             List<Segment> segments,
             Tuple2<Integer, Integer> readerPosition) {
-        this.memoryManager = memoryManager;
+        this.memoryManager = null;
         this.serializer = serializer;
         this.segments = segments;
         this.segmentIndex = readerPosition.f0;
@@ -83,7 +83,7 @@ public class DataCacheReader<T> implements Iterator<T> {
                                 memoryManager,
                                 segments.get(index).inMemorySize);
             }
-        } catch (MemoryAllocationException e) {
+        } catch (MemoryReservationException e) {
             cacheWriter = null;
         } catch (IOException e) {
             throw new RuntimeException(e);

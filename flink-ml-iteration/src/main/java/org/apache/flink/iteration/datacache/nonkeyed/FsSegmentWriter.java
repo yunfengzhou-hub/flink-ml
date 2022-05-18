@@ -38,7 +38,7 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
     private final FileSystem fileSystem;
 
     // TODO: adjust the file size limit automatically according to the provided file system.
-    private static final int CACHE_FILE_SIZE_LIMIT = 100 * 1024 * 1024; // 100MB
+    private static final long CACHE_FILE_SIZE_LIMIT = 100L * 1024L * 1024L; // 100MB
 
     // TODO: adjust the buffer size automatically to achieve best performance.
     private static final int STREAM_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
@@ -69,17 +69,27 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
     }
 
     @Override
-    public boolean addRecord(T record) throws IOException {
-        if (outputStream.getPos() > CACHE_FILE_SIZE_LIMIT) {
+    public boolean addRecord(T record) {
+        try {
+            if (outputStream.getPos() > CACHE_FILE_SIZE_LIMIT) {
+                return false;
+            }
+            // TODO: Simplify and improve performance of disk IO.
+            serializer.serialize(record, outputView);
+            objectOutputStream.writeObject(byteArrayOutputStream.toByteArray());
+            byteArrayOutputStream.reset();
+
+            count++;
+            return true;
+        } catch (IOException | RuntimeException e) {
+            e.printStackTrace();
             return false;
         }
+    }
 
-        serializer.serialize(record, outputView);
-        objectOutputStream.writeObject(byteArrayOutputStream.toByteArray());
-        byteArrayOutputStream.reset();
-
-        count++;
-        return true;
+    @Override
+    public int getCount() {
+        return count;
     }
 
     @Override
@@ -88,6 +98,7 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
         this.outputStream.flush();
         long size = outputStream.getPos();
         this.outputStream.close();
+        System.out.println(size);
 
         if (count > 0) {
             Segment segment = new Segment(path, count, size);

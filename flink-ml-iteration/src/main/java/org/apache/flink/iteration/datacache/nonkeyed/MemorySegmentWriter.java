@@ -20,7 +20,6 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.runtime.memory.MemoryAllocationException;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.memory.MemoryReservationException;
 import org.apache.flink.util.Preconditions;
@@ -38,23 +37,35 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
     private final MemoryManager memoryManager;
 
-    public MemorySegmentWriter(Path path, MemoryManager memoryManager)
-            throws MemoryAllocationException {
-        this(path, memoryManager, 0L);
-    }
+    private long reservedMemorySize;
 
-    public MemorySegmentWriter(Path path, MemoryManager memoryManager, long expectedSize)
-            throws MemoryAllocationException {
+    public MemorySegmentWriter(Path path, MemoryManager memoryManager) {
         Preconditions.checkNotNull(memoryManager);
         this.segment = new Segment();
         this.segment.path = path;
         this.segment.cache = new ArrayList<>();
         this.segment.inMemorySize = 0L;
         this.memoryManager = memoryManager;
+        this.reservedMemorySize = 0L;
+    }
+
+    public MemorySegmentWriter(Path path, MemoryManager memoryManager, long expectedSize)
+            throws MemoryReservationException {
+        Preconditions.checkNotNull(memoryManager);
+        this.segment = new Segment();
+        this.segment.path = path;
+        this.segment.cache = new ArrayList<>();
+        this.segment.inMemorySize = 0L;
+        this.memoryManager = memoryManager;
+
+        if (expectedSize > 0) {
+            memoryManager.reserveMemory(this, expectedSize);
+        }
+        this.reservedMemorySize = expectedSize;
     }
 
     @Override
-    public boolean addRecord(T record) throws IOException {
+    public boolean addRecord(T record) {
         if (!MemoryUtils.isMemoryEnoughForCache(memoryManager)) {
             return false;
         }
@@ -62,7 +73,11 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
         long recordSize = GraphLayout.parseInstance(record).totalSize();
 
         try {
-            memoryManager.reserveMemory(this, recordSize);
+            long memorySizeToReserve = segment.inMemorySize + recordSize - reservedMemorySize;
+            if (memorySizeToReserve > 0) {
+                memoryManager.reserveMemory(this, memorySizeToReserve);
+                reservedMemorySize += memorySizeToReserve;
+            }
         } catch (MemoryReservationException e) {
             return false;
         }
@@ -72,6 +87,11 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
         this.segment.count++;
         return true;
+    }
+
+    @Override
+    public int getCount() {
+        return this.segment.count;
     }
 
     @Override

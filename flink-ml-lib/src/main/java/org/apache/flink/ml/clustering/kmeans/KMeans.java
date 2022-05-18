@@ -335,11 +335,6 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         @Override
         public void processElement1(StreamRecord<DenseVector> streamRecord) throws Exception {
             dataCacheWriter.addRecord(streamRecord.getValue());
-            if (centroids != null) {
-                DenseVector point = streamRecord.getValue();
-                int closestCentroidId = findClosestCentroidId(centroids, point, distanceMeasure);
-                output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId, point)));
-            }
         }
 
         @Override
@@ -347,9 +342,14 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             Preconditions.checkState(centroids == null);
             centroidsState.add(streamRecord.getValue());
             centroids = streamRecord.getValue();
+        }
 
-            dataCacheWriter.finishCurrentSegment();
-            List<Segment> pendingSegments = dataCacheWriter.getFinishSegments();
+        @Override
+        public void onEpochWatermarkIncremented(
+                int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out)
+                throws IOException {
+            dataCacheWriter.finishCurrentSegmentIfAny();
+            List<Segment> pendingSegments = dataCacheWriter.getFinishedSegments();
             if (pendingSegments.size() == 0) {
                 return;
             }
@@ -364,11 +364,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                 int closestCentroidId = findClosestCentroidId(centroids, point, distanceMeasure);
                 output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId, point)));
             }
-        }
 
-        @Override
-        public void onEpochWatermarkIncremented(
-                int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out) {
             centroids = null;
             centroidsState.clear();
         }

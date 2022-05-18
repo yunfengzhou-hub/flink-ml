@@ -224,8 +224,8 @@ public class DataStreamUtils {
 
         @Override
         public void endInput() throws Exception {
-            dataCacheWriter.finishCurrentSegment();
-            List<Segment> pendingSegments = dataCacheWriter.getFinishSegments();
+            dataCacheWriter.finishCurrentSegmentIfAny();
+            List<Segment> pendingSegments = dataCacheWriter.getFinishedSegments();
             userFunction.mapPartition(
                     new DataCacheReaderIterable<>(containingTask, pendingSegments, inputType),
                     new TimestampedCollector<>(output));
