@@ -118,12 +118,11 @@ public class DataCacheWriter<T> {
     public void cleanup() throws IOException {
         finish();
         for (Segment segment : finishedSegments) {
-            if (segment.getFsSegment() != null) {
-                fileSystem.delete(segment.getFsSegment().getPath(), false);
+            if (segment.isOnDisk()) {
+                fileSystem.delete(segment.getPath(), false);
             }
-            if (segment.getMemorySegment() != null) {
-                memoryManager.releaseMemory(
-                        segment.getMemorySegment().getPath(), segment.getMemorySegment().getSize());
+            if (segment.isCached()) {
+                memoryManager.releaseAllMemory(segment.getPath());
             }
         }
         finishedSegments.clear();

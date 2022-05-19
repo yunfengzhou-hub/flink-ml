@@ -103,9 +103,8 @@ public class DataCacheSnapshot {
                 dos.writeInt(segments.size());
                 for (Segment segment : segments) {
                     dos.writeInt(segment.getCount());
-                    dos.writeLong(segment.getFsSegment().getSize());
-                    try (FSDataInputStream inputStream =
-                            fileSystem.open(segment.getFsSegment().getPath())) {
+                    dos.writeLong(segment.getFsSize());
+                    try (FSDataInputStream inputStream = fileSystem.open(segment.getPath())) {
                         IOUtils.copyBytes(inputStream, checkpointOutputStream, false);
                     }
                 }
@@ -215,31 +214,24 @@ public class DataCacheSnapshot {
             throws IOException {
         dataOutputStream.writeInt(segments.size());
         for (Segment segment : segments) {
-            Segment.FsSegment fsSegment = segment.getFsSegment();
-            dataOutputStream.writeUTF(fsSegment.getPath().toString());
+            dataOutputStream.writeUTF(segment.getPath().toString());
             dataOutputStream.writeInt(segment.getCount());
-            dataOutputStream.writeLong(fsSegment.getSize());
+            dataOutputStream.writeLong(segment.getFsSize());
         }
     }
 
     private static void persistSegmentToDisk(Segment segment) throws IOException {
-        if (segment.getFsSegment() != null) {
+        if (segment.isOnDisk()) {
             return;
         }
 
         SegmentReader<Object> reader = new MemorySegmentReader<>(segment, 0);
         SegmentWriter<Object> writer =
-                new FsSegmentWriter<>(
-                        segment.getMemorySegment().getTypeSerializer(),
-                        segment.getMemorySegment().getPath());
+                new FsSegmentWriter<>(segment.getTypeSerializer(), segment.getPath());
         while (reader.hasNext()) {
             writer.addRecord(reader.next());
         }
-        writer.finish()
-                .ifPresent(
-                        x ->
-                                segment.setFsSegment(
-                                        x.getFsSegment().getPath(), x.getFsSegment().getSize()));
+        writer.finish().ifPresent(x -> segment.setDiskInfo(x.getFsSize()));
     }
 
     private static List<Segment> deserializeSegments(DataInputStream dataInputStream)

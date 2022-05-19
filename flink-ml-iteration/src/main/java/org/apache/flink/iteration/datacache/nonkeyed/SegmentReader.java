@@ -40,7 +40,7 @@ interface SegmentReader<T> {
 
     static <T> SegmentReader<T> create(
             TypeSerializer<T> serializer, Segment segment, int startOffset) throws IOException {
-        if (segment.getMemorySegment() != null) {
+        if (segment.isCached()) {
             return new MemorySegmentReader<>(segment, startOffset);
         }
         return new FsSegmentReader<>(serializer, segment, startOffset);

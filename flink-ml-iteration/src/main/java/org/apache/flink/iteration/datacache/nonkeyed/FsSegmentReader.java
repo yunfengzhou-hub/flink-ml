@@ -49,9 +49,8 @@ class FsSegmentReader<T> implements SegmentReader<T> {
     FsSegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
             throws IOException {
         this.serializer = serializer;
-        Path path = segment.getFsSegment().getPath();
+        Path path = segment.getPath();
         this.inputStream = path.getFileSystem().open(path);
-
         this.objectInputStream =
                 new ObjectInputStream(new BufferedInputStream(inputStream, STREAM_BUFFER_SIZE));
         this.offset = 0;

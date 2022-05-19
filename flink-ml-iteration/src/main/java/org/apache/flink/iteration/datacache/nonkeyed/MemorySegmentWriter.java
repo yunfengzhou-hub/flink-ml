@@ -114,10 +114,9 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
         if (count > 0) {
             return Optional.of(
                     new Segment(
-                            count,
                             path,
+                            count,
                             (List<Object>) cache,
-                            inMemorySize,
                             (TypeSerializer<Object>) serializer));
         } else {
             memoryManager.releaseMemory(path, inMemorySize);

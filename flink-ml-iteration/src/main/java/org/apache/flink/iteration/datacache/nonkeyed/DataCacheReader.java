@@ -79,10 +79,10 @@ public class DataCacheReader<T> implements Iterator<T> {
             if (shouldCacheInMemory) {
                 cacheWriter =
                         new MemorySegmentWriter<>(
-                                segments.get(index).getFsSegment().getPath(),
+                                segments.get(index).getPath(),
                                 memoryManager,
                                 serializer,
-                                segments.get(index).getFsSegment().getSize());
+                                segments.get(index).getFsSize());
             }
         } catch (MemoryReservationException e) {
             cacheWriter = null;
@@ -105,11 +105,7 @@ public class DataCacheReader<T> implements Iterator<T> {
                 if (!cacheWriter.addRecord(record)) {
                     cacheWriter
                             .finish()
-                            .ifPresent(
-                                    x ->
-                                            memoryManager.releaseMemory(
-                                                    x.getMemorySegment().getPath(),
-                                                    x.getMemorySegment().getSize()));
+                            .ifPresent(x -> memoryManager.releaseAllMemory(x.getPath()));
                     cacheWriter = null;
                 }
             }
@@ -122,7 +118,8 @@ public class DataCacheReader<T> implements Iterator<T> {
                             .ifPresent(
                                     x ->
                                             segments.get(segmentIndex)
-                                                    .setMemorySegment(x.getMemorySegment()));
+                                                    .setCacheInfo(
+                                                            x.getCache(), x.getTypeSerializer()));
                 }
                 segmentIndex++;
                 createSegmentReaderAndCache(segmentIndex, 0);

@@ -23,7 +23,7 @@ import org.apache.flink.annotation.Internal;
 import java.io.IOException;
 import java.util.List;
 
-/** A class that reads the cached data in a segment from memory segments. */
+/** A class that reads data cached in memory. */
 @Internal
 public class MemorySegmentReader<T> implements SegmentReader<T> {
     private final Segment segment;
@@ -34,7 +34,7 @@ public class MemorySegmentReader<T> implements SegmentReader<T> {
 
     public MemorySegmentReader(Segment segment, int startOffset) {
         this.segment = segment;
-        this.cache = segment.getMemorySegment().getCache();
+        this.cache = segment.getCache();
         this.globalCount = startOffset;
     }
 

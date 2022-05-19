@@ -293,8 +293,6 @@ public class DataCacheWriteReadTest extends TestLogger {
 
     private void verifySegment(int expectedCount, Segment segment) throws IOException {
         assertEquals(expectedCount, segment.getCount());
-        assertEquals(
-                fileSystem.getFileStatus(segment.getFsSegment().getPath()).getLen(),
-                segment.getFsSegment().getSize());
+        assertEquals(fileSystem.getFileStatus(segment.getPath()).getLen(), segment.getFsSize());
     }
 }
