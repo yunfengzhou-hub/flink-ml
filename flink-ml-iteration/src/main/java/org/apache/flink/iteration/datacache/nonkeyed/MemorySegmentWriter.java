@@ -89,7 +89,7 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
         try {
             long memorySizeToReserve = inMemorySize + recordSize - reservedMemorySize;
             if (memorySizeToReserve > 0) {
-                memoryManager.reserveMemory(this, memorySizeToReserve);
+                memoryManager.reserveMemory(this.path, memorySizeToReserve);
                 reservedMemorySize += memorySizeToReserve;
             }
         } catch (MemoryReservationException e) {
