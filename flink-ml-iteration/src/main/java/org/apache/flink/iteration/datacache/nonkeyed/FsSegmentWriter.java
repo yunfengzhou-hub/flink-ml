@@ -37,9 +37,6 @@ import java.util.Optional;
 public class FsSegmentWriter<T> implements SegmentWriter<T> {
     private final FileSystem fileSystem;
 
-    // TODO: adjust the file size limit automatically according to the provided file system.
-    private static final long CACHE_FILE_SIZE_LIMIT = 100L * 1024L * 1024L; // 100MB
-
     // TODO: adjust the buffer size automatically to achieve best performance.
     private static final int STREAM_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -71,9 +68,6 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
     @Override
     public boolean addRecord(T record) {
         try {
-            if (outputStream.getPos() > CACHE_FILE_SIZE_LIMIT) {
-                return false;
-            }
             // TODO: Simplify and improve performance of disk IO.
             serializer.serialize(record, outputView);
             objectOutputStream.writeObject(byteArrayOutputStream.toByteArray());
@@ -81,7 +75,7 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
 
             count++;
             return true;
-        } catch (IOException | RuntimeException e) {
+        } catch (Exception | Error e) {
             e.printStackTrace();
             return false;
         }

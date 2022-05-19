@@ -23,10 +23,9 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
-import org.apache.flink.util.IOUtils;
 
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -34,6 +33,9 @@ import java.io.ObjectInputStream;
 /** A class that reads the cached data in a segment from file system. */
 @Internal
 class FsSegmentReader<T> implements SegmentReader<T> {
+    // TODO: adjust the buffer size automatically to achieve best performance.
+    private static final int STREAM_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
+
     private final TypeSerializer<T> serializer;
 
     private final int totalCount;
@@ -50,12 +52,8 @@ class FsSegmentReader<T> implements SegmentReader<T> {
         Path path = segment.getFsSegment().getPath();
         this.inputStream = path.getFileSystem().open(path);
 
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        IOUtils.copyBytes(inputStream, byteArrayOutputStream, false);
-
         this.objectInputStream =
-                new ObjectInputStream(
-                        new ByteArrayInputStream(byteArrayOutputStream.toByteArray()));
+                new ObjectInputStream(new BufferedInputStream(inputStream, STREAM_BUFFER_SIZE));
         this.offset = 0;
         this.totalCount = segment.getCount();
 

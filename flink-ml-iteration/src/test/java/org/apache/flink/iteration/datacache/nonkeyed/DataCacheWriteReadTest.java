@@ -201,7 +201,7 @@ public class DataCacheWriteReadTest extends TestLogger {
         }
 
         List<Segment> segments = writer.finish();
-        assertEquals(1, segments.size());
+        assertEquals(2, segments.size());
         assertTrue(memoryManager.availableMemory() < memoryManager.getMemorySize());
         long availableMemory = memoryManager.availableMemory();
 
