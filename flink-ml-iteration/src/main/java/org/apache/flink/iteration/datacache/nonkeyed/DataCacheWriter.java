@@ -64,7 +64,7 @@ public class DataCacheWriter<T> {
         this.serializer = serializer;
         this.fileSystem = fileSystem;
         this.pathGenerator = pathGenerator;
-        this.memoryManager = null;
+        this.memoryManager = memoryManager;
         this.finishedSegments = new ArrayList<>(priorFinishedSegments);
         this.currentWriter = createSegmentWriter(pathGenerator, this.memoryManager);
     }
@@ -110,7 +110,7 @@ public class DataCacheWriter<T> {
         boolean shouldCacheInMemory = MemoryUtils.isMemoryEnoughForCache(memoryManager);
 
         if (shouldCacheInMemory) {
-            return new MemorySegmentWriter<>(pathGenerator.get(), memoryManager);
+            return new MemorySegmentWriter<>(pathGenerator.get(), memoryManager, serializer);
         }
         return new FsSegmentWriter<>(serializer, pathGenerator.get());
     }
@@ -118,11 +118,12 @@ public class DataCacheWriter<T> {
     public void cleanup() throws IOException {
         finish();
         for (Segment segment : finishedSegments) {
-            if (segment.isOnDisk()) {
-                fileSystem.delete(segment.path, false);
+            if (segment.getFsSegment() != null) {
+                fileSystem.delete(segment.getFsSegment().getPath(), false);
             }
-            if (segment.isInMemory()) {
-                memoryManager.releaseMemory(segment.path, segment.inMemorySize);
+            if (segment.getMemorySegment() != null) {
+                memoryManager.releaseMemory(
+                        segment.getMemorySegment().getPath(), segment.getMemorySegment().getSize());
             }
         }
         finishedSegments.clear();

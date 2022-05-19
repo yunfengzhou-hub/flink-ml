@@ -34,13 +34,13 @@ public class MemorySegmentReader<T> implements SegmentReader<T> {
 
     public MemorySegmentReader(Segment segment, int startOffset) {
         this.segment = segment;
-        this.cache = (List<T>) segment.cache;
+        this.cache = segment.getMemorySegment().getCache();
         this.globalCount = startOffset;
     }
 
     @Override
     public boolean hasNext() {
-        return globalCount < segment.count;
+        return globalCount < segment.getCount();
     }
 
     @Override

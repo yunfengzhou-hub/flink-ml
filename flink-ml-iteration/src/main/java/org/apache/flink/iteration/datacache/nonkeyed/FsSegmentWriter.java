@@ -98,7 +98,6 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
         this.outputStream.flush();
         long size = outputStream.getPos();
         this.outputStream.close();
-        System.out.println(size);
 
         if (count > 0) {
             Segment segment = new Segment(path, count, size);

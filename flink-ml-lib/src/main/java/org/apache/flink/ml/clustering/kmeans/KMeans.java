@@ -351,6 +351,8 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             dataCacheWriter.finishCurrentSegmentIfAny();
             List<Segment> pendingSegments = dataCacheWriter.getFinishedSegments();
             if (pendingSegments.size() == 0) {
+                centroids = null;
+                centroidsState.clear();
                 return;
             }
             DataCacheReader<DenseVector> dataCacheReader =

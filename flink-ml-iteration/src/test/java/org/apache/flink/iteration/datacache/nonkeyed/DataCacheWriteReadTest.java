@@ -283,7 +283,7 @@ public class DataCacheWriteReadTest extends TestLogger {
 
             assertEquals(IntStream.range(0, numRecords).boxed().collect(Collectors.toList()), read);
             if (availableMemory == memoryManager.getMemorySize()) {
-                assertTrue(memoryManager.availableMemory() < memoryManager.getMemorySize());
+                assertEquals(memoryManager.availableMemory(), memoryManager.getMemorySize());
                 availableMemory = memoryManager.availableMemory();
             } else {
                 assertEquals(availableMemory, memoryManager.availableMemory());
@@ -292,7 +292,9 @@ public class DataCacheWriteReadTest extends TestLogger {
     }
 
     private void verifySegment(int expectedCount, Segment segment) throws IOException {
-        assertEquals(expectedCount, segment.count);
-        assertEquals(fileSystem.getFileStatus(segment.path).getLen(), segment.fsSize);
+        assertEquals(expectedCount, segment.getCount());
+        assertEquals(
+                fileSystem.getFileStatus(segment.getFsSegment().getPath()).getLen(),
+                segment.getFsSegment().getSize());
     }
 }

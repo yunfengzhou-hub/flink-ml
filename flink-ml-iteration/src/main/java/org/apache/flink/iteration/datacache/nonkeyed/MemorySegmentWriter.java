@@ -19,6 +19,7 @@
 package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.memory.MemoryReservationException;
@@ -28,38 +29,51 @@ import org.openjdk.jol.info.GraphLayout;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /** A class that writes cache data to memory segments. */
 @Internal
 public class MemorySegmentWriter<T> implements SegmentWriter<T> {
-    private final Segment segment;
-
     private final MemoryManager memoryManager;
+
+    private final Path path;
+
+    private final List<T> cache;
+
+    private final TypeSerializer<T> serializer;
+
+    private long inMemorySize;
+
+    private int count;
 
     private long reservedMemorySize;
 
-    public MemorySegmentWriter(Path path, MemoryManager memoryManager) {
+    public MemorySegmentWriter(
+            Path path, MemoryManager memoryManager, TypeSerializer<T> serializer) {
+        this.serializer = serializer;
         Preconditions.checkNotNull(memoryManager);
-        this.segment = new Segment();
-        this.segment.path = path;
-        this.segment.cache = new ArrayList<>();
-        this.segment.inMemorySize = 0L;
+        this.path = path;
+        this.cache = new ArrayList<>();
+        this.inMemorySize = 0L;
+        this.count = 0;
         this.memoryManager = memoryManager;
         this.reservedMemorySize = 0L;
     }
 
-    public MemorySegmentWriter(Path path, MemoryManager memoryManager, long expectedSize)
+    public MemorySegmentWriter(
+            Path path, MemoryManager memoryManager, TypeSerializer<T> serializer, long expectedSize)
             throws MemoryReservationException {
+        this.serializer = serializer;
         Preconditions.checkNotNull(memoryManager);
-        this.segment = new Segment();
-        this.segment.path = path;
-        this.segment.cache = new ArrayList<>();
-        this.segment.inMemorySize = 0L;
+        this.path = path;
+        this.cache = new ArrayList<>();
+        this.inMemorySize = 0L;
+        this.count = 0;
         this.memoryManager = memoryManager;
 
         if (expectedSize > 0) {
-            memoryManager.reserveMemory(this, expectedSize);
+            memoryManager.reserveMemory(this.path, expectedSize);
         }
         this.reservedMemorySize = expectedSize;
     }
@@ -73,7 +87,7 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
         long recordSize = GraphLayout.parseInstance(record).totalSize();
 
         try {
-            long memorySizeToReserve = segment.inMemorySize + recordSize - reservedMemorySize;
+            long memorySizeToReserve = inMemorySize + recordSize - reservedMemorySize;
             if (memorySizeToReserve > 0) {
                 memoryManager.reserveMemory(this, memorySizeToReserve);
                 reservedMemorySize += memorySizeToReserve;
@@ -82,24 +96,31 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
             return false;
         }
 
-        this.segment.cache.add(record);
-        segment.inMemorySize += recordSize;
+        this.cache.add(record);
+        inMemorySize += recordSize;
 
-        this.segment.count++;
+        this.count++;
         return true;
     }
 
     @Override
     public int getCount() {
-        return this.segment.count;
+        return this.count;
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Optional<Segment> finish() throws IOException {
-        if (segment.count > 0) {
-            return Optional.of(segment);
+        if (count > 0) {
+            return Optional.of(
+                    new Segment(
+                            count,
+                            path,
+                            (List<Object>) cache,
+                            inMemorySize,
+                            (TypeSerializer<Object>) serializer));
         } else {
-            memoryManager.releaseMemory(segment.path, segment.inMemorySize);
+            memoryManager.releaseMemory(path, inMemorySize);
             return Optional.empty();
         }
     }

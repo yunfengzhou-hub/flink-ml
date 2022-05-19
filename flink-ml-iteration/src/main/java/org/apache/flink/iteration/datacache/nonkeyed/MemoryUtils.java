@@ -24,8 +24,8 @@ import org.apache.flink.runtime.memory.MemoryManager;
 /** Utility variables and methods for memory operation. */
 @Internal
 class MemoryUtils {
-    // Cache is not suggested if over 80% of memory has been occupied.
-    private static final double CACHE_MEMORY_THRESHOLD = 0.2;
+    // Cache is not suggested if over 50% of managed memory has been occupied.
+    private static final double CACHE_MEMORY_THRESHOLD = 0.5;
 
     static boolean isMemoryEnoughForCache(MemoryManager memoryManager) {
         if (memoryManager == null) {

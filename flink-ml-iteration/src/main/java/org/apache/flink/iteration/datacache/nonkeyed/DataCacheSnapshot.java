@@ -30,7 +30,6 @@ import org.apache.flink.runtime.util.NonClosingInputStreamDecorator;
 import org.apache.flink.runtime.util.NonClosingOutpusStreamDecorator;
 import org.apache.flink.statefun.flink.core.feedback.FeedbackConsumer;
 import org.apache.flink.util.IOUtils;
-import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
 
 import org.apache.commons.io.input.BoundedInputStream;
@@ -103,9 +102,10 @@ public class DataCacheSnapshot {
                 // We have to copy the whole streams.
                 dos.writeInt(segments.size());
                 for (Segment segment : segments) {
-                    dos.writeInt(segment.count);
-                    dos.writeLong(segment.fsSize);
-                    try (FSDataInputStream inputStream = fileSystem.open(segment.path)) {
+                    dos.writeInt(segment.getCount());
+                    dos.writeLong(segment.getFsSegment().getSize());
+                    try (FSDataInputStream inputStream =
+                            fileSystem.open(segment.getFsSegment().getPath())) {
                         IOUtils.copyBytes(inputStream, checkpointOutputStream, false);
                     }
                 }
@@ -180,20 +180,19 @@ public class DataCacheSnapshot {
                 int segmentNum = dis.readInt();
                 segments = new ArrayList<>(segmentNum);
                 for (int i = 0; i < segmentNum; i++) {
-                    Segment segment = new Segment();
-                    segment.count = dis.readInt();
-                    segment.fsSize = dis.readLong();
-                    segment.path = pathGenerator.get();
+                    int count = dis.readInt();
+                    long fsSize = dis.readLong();
+                    Path path = pathGenerator.get();
                     try (FSDataOutputStream outputStream =
-                            fileSystem.create(segment.path, FileSystem.WriteMode.NO_OVERWRITE)) {
+                            fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE)) {
 
                         BoundedInputStream inputStream =
-                                new BoundedInputStream(checkpointInputStream, segment.fsSize);
+                                new BoundedInputStream(checkpointInputStream, fsSize);
                         inputStream.setPropagateClose(false);
                         IOUtils.copyBytes(inputStream, outputStream, false);
                         inputStream.close();
                     }
-                    segments.add(segment);
+                    segments.add(new Segment(path, count, fsSize));
                 }
             }
 
@@ -216,24 +215,31 @@ public class DataCacheSnapshot {
             throws IOException {
         dataOutputStream.writeInt(segments.size());
         for (Segment segment : segments) {
-            dataOutputStream.writeUTF(segment.path.toString());
-            dataOutputStream.writeInt(segment.count);
-            dataOutputStream.writeLong(segment.fsSize);
+            Segment.FsSegment fsSegment = segment.getFsSegment();
+            dataOutputStream.writeUTF(fsSegment.getPath().toString());
+            dataOutputStream.writeInt(segment.getCount());
+            dataOutputStream.writeLong(fsSegment.getSize());
         }
     }
 
     private static void persistSegmentToDisk(Segment segment) throws IOException {
-        if (segment.isOnDisk()) {
+        if (segment.getFsSegment() != null) {
             return;
         }
-        Preconditions.checkState(segment.isInMemory());
 
         SegmentReader<Object> reader = new MemorySegmentReader<>(segment, 0);
-        SegmentWriter<Object> writer = new FsSegmentWriter<>(segment.serializer, segment.path);
+        SegmentWriter<Object> writer =
+                new FsSegmentWriter<>(
+                        segment.getMemorySegment().getTypeSerializer(),
+                        segment.getMemorySegment().getPath());
         while (reader.hasNext()) {
             writer.addRecord(reader.next());
         }
-        writer.finish().ifPresent(x -> segment.fsSize = x.fsSize);
+        writer.finish()
+                .ifPresent(
+                        x ->
+                                segment.setFsSegment(
+                                        x.getFsSegment().getPath(), x.getFsSegment().getSize()));
     }
 
     private static List<Segment> deserializeSegments(DataInputStream dataInputStream)

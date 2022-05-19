@@ -52,7 +52,7 @@ public class DataCacheReader<T> implements Iterator<T> {
             MemoryManager memoryManager,
             List<Segment> segments,
             Tuple2<Integer, Integer> readerPosition) {
-        this.memoryManager = null;
+        this.memoryManager = memoryManager;
         this.serializer = serializer;
         this.segments = segments;
         this.segmentIndex = readerPosition.f0;
@@ -79,9 +79,10 @@ public class DataCacheReader<T> implements Iterator<T> {
             if (shouldCacheInMemory) {
                 cacheWriter =
                         new MemorySegmentWriter<>(
-                                segments.get(index).path,
+                                segments.get(index).getFsSegment().getPath(),
                                 memoryManager,
-                                segments.get(index).inMemorySize);
+                                serializer,
+                                segments.get(index).getFsSegment().getSize());
             }
         } catch (MemoryReservationException e) {
             cacheWriter = null;
@@ -104,7 +105,11 @@ public class DataCacheReader<T> implements Iterator<T> {
                 if (!cacheWriter.addRecord(record)) {
                     cacheWriter
                             .finish()
-                            .ifPresent(x -> memoryManager.releaseMemory(x.path, x.inMemorySize));
+                            .ifPresent(
+                                    x ->
+                                            memoryManager.releaseMemory(
+                                                    x.getMemorySegment().getPath(),
+                                                    x.getMemorySegment().getSize()));
                     cacheWriter = null;
                 }
             }
@@ -115,10 +120,9 @@ public class DataCacheReader<T> implements Iterator<T> {
                     cacheWriter
                             .finish()
                             .ifPresent(
-                                    x -> {
-                                        x.fsSize = segments.get(segmentIndex).fsSize;
-                                        segments.set(segmentIndex, x);
-                                    });
+                                    x ->
+                                            segments.get(segmentIndex)
+                                                    .setMemorySegment(x.getMemorySegment()));
                 }
                 segmentIndex++;
                 createSegmentReaderAndCache(segmentIndex, 0);

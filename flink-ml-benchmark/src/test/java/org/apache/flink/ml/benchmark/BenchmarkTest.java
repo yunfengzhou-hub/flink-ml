@@ -24,13 +24,10 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.test.util.AbstractTestBase;
 
-import org.apache.commons.io.FileUtils;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.io.File;
-import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -41,18 +38,20 @@ import static org.junit.Assert.assertTrue;
 public class BenchmarkTest extends AbstractTestBase {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
-    @Test
-    public void testParseJsonFile() throws Exception {
-        File configFile = new File(tempFolder.newFolder().getAbsolutePath() + "/test-conf.json");
-        InputStream inputStream =
-                this.getClass().getClassLoader().getResourceAsStream("benchmark-conf.json");
-        FileUtils.copyInputStreamToFile(inputStream, configFile);
-
-        Map<String, ?> benchmarks = BenchmarkUtils.parseJsonFile(configFile.getAbsolutePath());
-        assertEquals(benchmarks.size(), 8);
-        assertTrue(benchmarks.containsKey("KMeans-1"));
-        assertTrue(benchmarks.containsKey("KMeansModel-1"));
-    }
+    //    @Test
+    //    public void testParseJsonFile() throws Exception {
+    //        File configFile = new File(tempFolder.newFolder().getAbsolutePath() +
+    // "/test-conf.json");
+    //        InputStream inputStream =
+    //                this.getClass().getClassLoader().getResourceAsStream("benchmark-conf.json");
+    //        FileUtils.copyInputStreamToFile(inputStream, configFile);
+    //
+    //        Map<String, ?> benchmarks =
+    // BenchmarkUtils.parseJsonFile(configFile.getAbsolutePath());
+    //        assertEquals(benchmarks.size(), 8);
+    //        assertTrue(benchmarks.containsKey("KMeans-1"));
+    //        assertTrue(benchmarks.containsKey("KMeansModel-1"));
+    //    }
 
     @Test
     public void testRunBenchmark() throws Exception {
