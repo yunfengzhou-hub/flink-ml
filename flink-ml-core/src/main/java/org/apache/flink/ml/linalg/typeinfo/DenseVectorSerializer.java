@@ -27,7 +27,6 @@ import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.ml.linalg.DenseVector;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 /** Specialized serializer for {@link DenseVector}. */
@@ -77,20 +76,14 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
         final int len = vector.values.length;
         target.writeInt(len);
 
-        //        byte[] bytes = new byte[1024];
-        //        for (int i = 0; i < len; i++) {
-        //            Bits.putDouble(bytes, i << 3, vector.values[i]);
-        //            if (i % 128 == 127) {
-        //                target.write(bytes);
-        //            }
-        //        }
-        //        target.write(bytes, (len % 128) << 3, 1024 - (len % 128) << 3);
-
-        ByteBuffer buffer = ByteBuffer.allocate(len << 3);
+        byte[] bytes = new byte[1024];
         for (int i = 0; i < len; i++) {
-            buffer.putDouble(vector.get(i));
+            Bits.putDouble(bytes, i << 3, vector.values[i]);
+            if (i % 128 == 127) {
+                target.write(bytes);
+            }
         }
-        target.write(buffer.array());
+        target.write(bytes, 0, (len % 128) << 3);
     }
 
     @Override
@@ -105,19 +98,17 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
     private static void readDoubleArray(double[] dst, DataInputView source, int len)
             throws IOException {
 
-        if (len > 200) {
-            System.out.println(len);
+        int index = 0;
+        byte[] bytes = new byte[1024];
+        for (int i = 0; i < len / 128; i++) {
+            source.read(bytes, 0, 1024);
+            for (int j = 0; j < 128; j++) {
+                dst[index++] = Bits.getDouble(bytes, j * 8);
+            }
         }
-        //        byte[] bytes = new byte[1024];
-        //        for (int i = 0; i < len; i+=128) {
-        //            source.read(bytes, 0, );
-        //        }
-
-        byte[] bytes = new byte[len << 3];
-        source.read(bytes);
-        ByteBuffer buffer = ByteBuffer.wrap(bytes);
-        for (int i = 0; i < len; i++) {
-            dst[i] = buffer.getDouble();
+        source.read(bytes, 0, (len * 8) % 1024);
+        for (int j = 0; j < len % 128; j++) {
+            dst[index++] = Bits.getDouble(bytes, j * 8);
         }
     }
 
