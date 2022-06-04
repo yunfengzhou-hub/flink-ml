@@ -23,6 +23,8 @@ import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
 import org.apache.flink.runtime.memory.MemoryManager;
+import org.apache.flink.table.runtime.util.LazyMemorySegmentPool;
+import org.apache.flink.table.runtime.util.MemorySegmentPool;
 import org.apache.flink.util.OperatingSystem;
 import org.apache.flink.util.TestLogger;
 
@@ -49,7 +51,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-/** Tests the behavior of {@link DataCacheWriter}. */
+/** Tests the behavior of {@link DataCache}. */
 @RunWith(Parameterized.class)
 public class DataCacheWriteReadTest extends TestLogger {
 
@@ -100,87 +102,80 @@ public class DataCacheWriteReadTest extends TestLogger {
 
     @Test
     public void testWriteAndReadEmptyCache() throws IOException {
-        DataCacheWriter<Integer> writer =
-                new DataCacheWriter<>(
+        DataCache<Integer> dataCache =
+                new DataCache<>(
                         IntSerializer.INSTANCE,
                         fileSystem,
-                        () -> new Path(basePath, "test." + UUID.randomUUID()),
-                        null);
-        List<Segment> segments = writer.finish();
+                        () -> new Path(basePath, "test." + UUID.randomUUID()));
 
-        assertEquals(0, segments.size());
-
-        DataCacheReader<Integer> reader =
-                new DataCacheReader<>(IntSerializer.INSTANCE, null, segments);
-        assertFalse(reader.hasNext());
+        dataCache.finish();
+        assertFalse(dataCache.iterator().hasNext());
     }
 
     @Test
-    public void testWriteAndReadSingleSegment() throws IOException {
+    public void testWriteAndRead() throws IOException {
         final int numRecords = 10240;
 
-        DataCacheWriter<Integer> writer =
-                new DataCacheWriter<>(
+        DataCache<Integer> dataCache =
+                new DataCache<>(
                         IntSerializer.INSTANCE,
                         fileSystem,
-                        () -> new Path(basePath, "test_single." + UUID.randomUUID()),
-                        null);
+                        () -> new Path(basePath, "test_single." + UUID.randomUUID()));
         for (int i = 0; i < numRecords; ++i) {
-            writer.addRecord(i);
+            dataCache.addRecord(i);
         }
 
-        List<Segment> segments = writer.finish();
-
-        assertEquals(1, segments.size());
-        verifySegment(numRecords, segments.get(0));
-
-        DataCacheReader<Integer> reader =
-                new DataCacheReader<>(IntSerializer.INSTANCE, null, segments);
+        dataCache.finish();
         List<Integer> read = new ArrayList<>();
-        while (reader.hasNext()) {
-            read.add(reader.next());
-        }
+        dataCache.iterator().forEachRemaining(read::add);
 
         assertEquals(IntStream.range(0, numRecords).boxed().collect(Collectors.toList()), read);
     }
 
     @Test
-    public void testWriteAndReadMultipleSegments() throws IOException {
-        final int numRecordsPerSegment = 2560;
-        final int numSegments = 4;
+    public void testGetIteratorPosition() throws Exception {
+        final int numRecords = 10240;
 
-        DataCacheWriter<Integer> writer =
-                new DataCacheWriter<>(
+        DataCache<Integer> dataCache =
+                new DataCache<>(
                         IntSerializer.INSTANCE,
                         fileSystem,
-                        () -> new Path(basePath, "test_multi." + UUID.randomUUID()),
-                        null);
-        for (int i = 0; i < numSegments; ++i) {
-            for (int j = 0; j < numRecordsPerSegment; ++j) {
-                writer.addRecord(i * numRecordsPerSegment + j);
-            }
-
-            writer.finishCurrentSegmentIfAny();
-        }
-        List<Segment> segments = writer.finish();
-
-        assertEquals(4, segments.size());
-        for (Segment segment : segments) {
-            verifySegment(numRecordsPerSegment, segment);
+                        () -> new Path(basePath, "test_single." + UUID.randomUUID()));
+        for (int i = 0; i < numRecords; ++i) {
+            dataCache.addRecord(i);
         }
 
-        DataCacheReader<Integer> reader =
-                new DataCacheReader<>(IntSerializer.INSTANCE, null, segments);
+        dataCache.finish();
+        DataCacheIterator<Integer> iterator = dataCache.iterator();
+
+        for (int i = 0; i < 50; i++) {
+            iterator.next();
+        }
+
+        assertEquals(50, iterator.getPos());
+    }
+
+    @Test
+    public void testSetIteratorPosition() throws Exception {
+        final int numRecords = 10240;
+
+        DataCache<Integer> dataCache =
+                new DataCache<>(
+                        IntSerializer.INSTANCE,
+                        fileSystem,
+                        () -> new Path(basePath, "test_single." + UUID.randomUUID()));
+        for (int i = 0; i < numRecords; ++i) {
+            dataCache.addRecord(i);
+        }
+
+        dataCache.finish();
+        DataCacheIterator<Integer> iterator = dataCache.iterator();
+        iterator.setPos(50);
+
         List<Integer> read = new ArrayList<>();
-        while (reader.hasNext()) {
-            read.add(reader.next());
-        }
+        iterator.forEachRemaining(read::add);
 
-        assertEquals(
-                IntStream.range(0, numRecordsPerSegment * numSegments)
-                        .boxed()
-                        .collect(Collectors.toList()),
-                read);
+        assertEquals(IntStream.range(50, numRecords).boxed().collect(Collectors.toList()), read);
     }
 
     @Test
@@ -188,116 +183,64 @@ public class DataCacheWriteReadTest extends TestLogger {
         int numRecords = 10240;
         int pageSize = 4096;
         int pageNum = 64;
-        LimitedSizeMemoryManager memoryManager =
-                new LimitedSizeMemoryManager(
-                        MemoryManager.create(pageSize * pageNum, pageSize), 1.0);
 
-        DataCacheWriter<Integer> writer =
-                new DataCacheWriter<>(
+        MemorySegmentPool segmentPool =
+                new LazyMemorySegmentPool(
+                        this, MemoryManager.create(pageSize * pageNum, pageSize), pageNum);
+
+        DataCache<Integer> dataCache =
+                new DataCache<>(
                         IntSerializer.INSTANCE,
                         fileSystem,
-                        () -> new Path(basePath, "test_cache." + UUID.randomUUID()),
-                        memoryManager);
+                        () -> new Path(basePath, "test_single." + UUID.randomUUID()),
+                        segmentPool);
         for (int i = 0; i < numRecords; ++i) {
-            writer.addRecord(i);
+            dataCache.addRecord(i);
         }
 
-        List<Segment> segments = writer.finish();
-        assertTrue(memoryManager.availableMemory() < memoryManager.getMemorySize());
-        long availableMemory = memoryManager.availableMemory();
+        dataCache.finish();
+        assertTrue(segmentPool.freePages() < pageNum);
+        int freePages = segmentPool.freePages();
 
         for (int i = 0; i < 2; i++) {
-            DataCacheReader<Integer> reader =
-                    new DataCacheReader<>(IntSerializer.INSTANCE, memoryManager, segments);
             List<Integer> read = new ArrayList<>();
-            while (reader.hasNext()) {
-                read.add(reader.next());
-            }
+            dataCache.iterator().forEachRemaining(read::add);
 
             assertEquals(IntStream.range(0, numRecords).boxed().collect(Collectors.toList()), read);
-            assertEquals(availableMemory, memoryManager.availableMemory());
+            assertEquals(freePages, segmentPool.freePages());
         }
     }
 
     @Test
-    public void testInsufficientMemoryForWriter() throws IOException {
+    public void testInsufficientMemory() throws IOException {
         int numRecords = 10240;
         int pageSize = 4096;
         int pageNum = 4;
-        LimitedSizeMemoryManager memoryManager =
-                new LimitedSizeMemoryManager(
-                        MemoryManager.create(pageSize * pageNum, pageSize), 1.0);
+        MemorySegmentPool segmentPool =
+                new LazyMemorySegmentPool(
+                        this, MemoryManager.create(pageSize * pageNum, pageSize), pageNum);
 
-        DataCacheWriter<Integer> writer =
-                new DataCacheWriter<>(
+        DataCache<Integer> dataCache =
+                new DataCache<>(
                         IntSerializer.INSTANCE,
                         fileSystem,
-                        () -> new Path(basePath, "test_not_cache_writer." + UUID.randomUUID()),
-                        memoryManager);
+                        () -> new Path(basePath, "test_single." + UUID.randomUUID()),
+                        segmentPool);
         for (int i = 0; i < numRecords; ++i) {
-            writer.addRecord(i);
+            dataCache.addRecord(i);
         }
 
-        List<Segment> segments = writer.finish();
-        assertTrue(memoryManager.availableMemory() < memoryManager.getMemorySize());
-        long availableMemory = memoryManager.availableMemory();
+        dataCache.finish();
+        System.out.println(segmentPool.freePages());
+        assertTrue(segmentPool.freePages() < pageNum);
+        int freePages = segmentPool.freePages();
 
         for (int i = 0; i < 2; i++) {
-            DataCacheReader<Integer> reader =
-                    new DataCacheReader<>(IntSerializer.INSTANCE, memoryManager, segments);
             List<Integer> read = new ArrayList<>();
-            while (reader.hasNext()) {
-                read.add(reader.next());
-            }
+            dataCache.iterator().forEachRemaining(read::add);
 
             assertEquals(IntStream.range(0, numRecords).boxed().collect(Collectors.toList()), read);
-            assertEquals(availableMemory, memoryManager.availableMemory());
+            assertEquals(freePages, segmentPool.freePages());
         }
-    }
-
-    @Test
-    public void testInsufficientMemoryForReader() throws IOException {
-        int numRecords = 10240;
-        int pageSize = 4096;
-        int pageNum = 4;
-        LimitedSizeMemoryManager memoryManager =
-                new LimitedSizeMemoryManager(
-                        MemoryManager.create(pageSize * pageNum, pageSize), 1.0);
-
-        DataCacheWriter<Integer> writer =
-                new DataCacheWriter<>(
-                        IntSerializer.INSTANCE,
-                        fileSystem,
-                        () -> new Path(basePath, "test_not_cache_reader." + UUID.randomUUID()),
-                        null);
-        for (int i = 0; i < numRecords; ++i) {
-            writer.addRecord(i);
-        }
-
-        List<Segment> segments = writer.finish();
-        assertEquals(memoryManager.getMemorySize(), memoryManager.availableMemory());
-
-        long availableMemory = memoryManager.getMemorySize();
-        for (int i = 0; i < 3; i++) {
-            DataCacheReader<Integer> reader =
-                    new DataCacheReader<>(IntSerializer.INSTANCE, memoryManager, segments);
-            List<Integer> read = new ArrayList<>();
-            while (reader.hasNext()) {
-                read.add(reader.next());
-            }
-
-            assertEquals(IntStream.range(0, numRecords).boxed().collect(Collectors.toList()), read);
-            if (availableMemory == memoryManager.getMemorySize()) {
-                assertEquals(memoryManager.availableMemory(), memoryManager.getMemorySize());
-                availableMemory = memoryManager.availableMemory();
-            } else {
-                assertEquals(availableMemory, memoryManager.availableMemory());
-            }
-        }
-    }
-
-    private void verifySegment(int expectedCount, Segment segment) throws IOException {
-        assertEquals(expectedCount, segment.getCount());
-        assertEquals(fileSystem.getFileStatus(segment.getPath()).getLen(), segment.getFsSize());
     }
 }

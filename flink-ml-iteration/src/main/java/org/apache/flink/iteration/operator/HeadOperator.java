@@ -33,7 +33,7 @@ import org.apache.flink.iteration.broadcast.BroadcastOutput;
 import org.apache.flink.iteration.broadcast.BroadcastOutputFactory;
 import org.apache.flink.iteration.checkpoint.Checkpoints;
 import org.apache.flink.iteration.checkpoint.CheckpointsBroker;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheSnapshot;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
 import org.apache.flink.iteration.operator.event.CoordinatorCheckpointEvent;
 import org.apache.flink.iteration.operator.event.GloballyAlignedEvent;
 import org.apache.flink.iteration.operator.event.SubtaskAlignedEvent;
@@ -79,6 +79,7 @@ import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.OutputTag;
+import org.apache.flink.util.function.SupplierWithException;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -252,8 +253,23 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
                         checkpoints);
 
         try {
+            Path basePath =
+                    OperatorUtils.getDataCachePath(
+                            getContainingTask()
+                                    .getEnvironment()
+                                    .getTaskManagerInfo()
+                                    .getConfiguration(),
+                            getContainingTask()
+                                    .getEnvironment()
+                                    .getIOManager()
+                                    .getSpillingDirectoriesPaths());
+
+            SupplierWithException<Path, IOException> pathGenerator =
+                    OperatorUtils.createDataCacheFileGenerator(
+                            basePath, "head", config.getOperatorID());
+
             for (StatePartitionStreamProvider rawStateInput : context.getRawOperatorStateInputs()) {
-                DataCacheSnapshot.replay(
+                DataCache.replay(
                         rawStateInput.getStream(),
                         checkpoints.getTypeSerializer(),
                         (record) ->

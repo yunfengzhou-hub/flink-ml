@@ -32,7 +32,10 @@ import java.util.Optional;
 
 /** A class that writes cache data to file system. */
 @Internal
-public class FsSegmentWriter<T> implements SegmentWriter<T> {
+public class FileSegmentWriter<T> implements SegmentWriter<T> {
+
+    private static final long FILE_SIZE_LIMIT = 1L << 30; // 1GB
+
     private final FileSystem fileSystem;
 
     private final TypeSerializer<T> serializer;
@@ -47,7 +50,7 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
 
     private int count;
 
-    public FsSegmentWriter(TypeSerializer<T> serializer, Path path) throws IOException {
+    public FileSegmentWriter(TypeSerializer<T> serializer, Path path) throws IOException {
         this.serializer = serializer;
         this.path = path;
         this.fileSystem = path.getFileSystem();
@@ -57,14 +60,12 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
     }
 
     @Override
-    public boolean addRecord(T record) {
-        try {
-            serializer.serialize(record, outputView);
-            count++;
-            return true;
-        } catch (Exception e) {
-            return false;
+    public void addRecord(T record) throws IOException {
+        if (outputStream.getPos() >= FILE_SIZE_LIMIT) {
+            throw new SegmentNoVacancyException();
         }
+        serializer.serialize(record, outputView);
+        count++;
     }
 
     @Override
@@ -80,7 +81,7 @@ public class FsSegmentWriter<T> implements SegmentWriter<T> {
         this.outputStream.close();
 
         if (count > 0) {
-            Segment segment = new Segment(path, count, size);
+            Segment segment = new Segment(new FileSegment(path, count, size));
             return Optional.of(segment);
         } else {
             // If there are no records, we tend to directly delete this file

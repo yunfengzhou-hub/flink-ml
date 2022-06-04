@@ -18,23 +18,26 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
-import org.apache.flink.annotation.Internal;
-
 import java.io.IOException;
-import java.util.Optional;
 
-/** Writer for the data to be cached to a segment. */
-@Internal
-interface SegmentWriter<T> {
-    /** Adds a record to the writer. */
-    void addRecord(T record) throws IOException;
+/**
+ * An exception to be thrown when a segment does not have enough space to accept the next record.
+ */
+public class SegmentNoVacancyException extends IOException {
 
-    /** Gets the number of records added so far. */
-    int getCount();
+    public SegmentNoVacancyException() {
+        super();
+    }
 
-    /**
-     * Finishes the writer and returns a segment if any record has ever been added through {@link
-     * #addRecord(Object)}.
-     */
-    Optional<Segment> finish() throws IOException;
+    public SegmentNoVacancyException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public SegmentNoVacancyException(String message) {
+        super(message);
+    }
+
+    public SegmentNoVacancyException(Throwable cause) {
+        super(cause);
+    }
 }

@@ -30,7 +30,7 @@ import java.io.InputStream;
 
 /** A class that reads the cached data in a segment from file system. */
 @Internal
-class FsSegmentReader<T> implements SegmentReader<T> {
+class FileSegmentReader<T> implements SegmentReader<T> {
     private final TypeSerializer<T> serializer;
 
     private final int totalCount;
@@ -41,15 +41,16 @@ class FsSegmentReader<T> implements SegmentReader<T> {
 
     private int offset;
 
-    FsSegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
+    FileSegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
             throws IOException {
+        FileSegment fileSegment = segment.getFileSegment();
         this.serializer = serializer;
-        Path path = segment.getPath();
+        Path path = fileSegment.getPath();
         this.inputStream = path.getFileSystem().open(path);
         BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
         this.inputView = new DataInputViewStreamWrapper(bufferedInputStream);
         this.offset = 0;
-        this.totalCount = segment.getCount();
+        this.totalCount = fileSegment.getCount();
 
         for (int i = 0; i < startOffset; i++) {
             next();
@@ -71,10 +72,5 @@ class FsSegmentReader<T> implements SegmentReader<T> {
     @Override
     public void close() throws IOException {
         inputStream.close();
-    }
-
-    @Override
-    public int getOffset() {
-        return offset;
     }
 }

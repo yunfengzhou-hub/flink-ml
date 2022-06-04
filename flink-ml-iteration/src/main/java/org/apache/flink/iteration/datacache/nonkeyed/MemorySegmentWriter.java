@@ -20,12 +20,14 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.memory.MemoryAllocationException;
+import org.apache.flink.table.runtime.util.MemorySegmentPool;
 import org.apache.flink.util.Preconditions;
+
+import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -36,9 +38,7 @@ import java.util.Optional;
 /** A class that writes cache data to memory segments. */
 @Internal
 public class MemorySegmentWriter<T> implements SegmentWriter<T> {
-    private final LimitedSizeMemoryManager memoryManager;
-
-    private final Path path;
+    private final MemorySegmentPool segmentPool;
 
     private final TypeSerializer<T> serializer;
 
@@ -49,28 +49,19 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
     private int count;
 
     public MemorySegmentWriter(
-            Path path,
-            LimitedSizeMemoryManager memoryManager,
-            TypeSerializer<T> serializer,
-            long expectedSize)
-            throws MemoryAllocationException {
+            TypeSerializer<T> serializer, MemorySegmentPool segmentPool, long expectedSize)
+            throws SegmentNoVacancyException {
         this.serializer = serializer;
-        this.memoryManager = Preconditions.checkNotNull(memoryManager);
-        this.path = path;
-        this.outputStream = new ManagedMemoryOutputStream(memoryManager, expectedSize);
+        this.segmentPool = segmentPool;
+        this.outputStream = new ManagedMemoryOutputStream(segmentPool, expectedSize);
         this.outputView = new DataOutputViewStreamWrapper(outputStream);
         this.count = 0;
     }
 
     @Override
-    public boolean addRecord(T record) {
-        try {
-            serializer.serialize(record, outputView);
-            count++;
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
+    public void addRecord(T record) throws IOException {
+        serializer.serialize(record, outputView);
+        count++;
     }
 
     @Override
@@ -79,28 +70,22 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Optional<Segment> finish() throws IOException {
         if (count > 0) {
             return Optional.of(
                     new Segment(
-                            path,
-                            count,
-                            outputStream.getKey(),
-                            outputStream.getSegments(),
-                            (TypeSerializer<Object>) serializer));
+                            new org.apache.flink.iteration.datacache.nonkeyed.MemorySegment(
+                                    outputStream.getSegments(), count)));
         } else {
-            memoryManager.releaseAll(outputStream.getKey());
+            segmentPool.returnAll(outputStream.getSegments());
             return Optional.empty();
         }
     }
 
     private static class ManagedMemoryOutputStream extends OutputStream {
-        private final LimitedSizeMemoryManager memoryManager;
+        private final MemorySegmentPool segmentPool;
 
         private final int pageSize;
-
-        private final Object key = new Object();
 
         private final List<MemorySegment> segments = new ArrayList<>();
 
@@ -108,24 +93,17 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
         private int segmentOffset;
 
-        private int globalOffset;
+        private long globalOffset;
 
-        public ManagedMemoryOutputStream(LimitedSizeMemoryManager memoryManager, long expectedSize)
-                throws MemoryAllocationException {
-            this.memoryManager = memoryManager;
-            this.pageSize = memoryManager.getPageSize();
+        public ManagedMemoryOutputStream(MemorySegmentPool segmentPool, long expectedSize)
+                throws SegmentNoVacancyException {
+            this.segmentPool = segmentPool;
+            this.pageSize = segmentPool.pageSize();
             this.segmentIndex = 0;
             this.segmentOffset = 0;
 
             Preconditions.checkArgument(expectedSize >= 0);
-            if (expectedSize > 0) {
-                int numPages = (int) ((expectedSize + pageSize - 1) / pageSize);
-                segments.addAll(memoryManager.allocatePages(getKey(), numPages));
-            }
-        }
-
-        public Object getKey() {
-            return key;
+            ensureCapacity(Math.max(expectedSize, 1L));
         }
 
         public List<MemorySegment> getSegments() {
@@ -138,24 +116,34 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
         }
 
         @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            try {
-                ensureCapacity(globalOffset + len);
-            } catch (MemoryAllocationException e) {
-                throw new IOException(e);
-            }
+        public void write(@Nullable byte[] b, int off, int len) throws IOException {
+            ensureCapacity(globalOffset + len);
             writeRecursive(b, off, len);
         }
 
-        private void ensureCapacity(int capacity) throws MemoryAllocationException {
+        private void ensureCapacity(long capacity) throws SegmentNoVacancyException {
             Preconditions.checkArgument(capacity > 0);
-            int requiredSegmentNum = (capacity - 1) / pageSize + 2 - segments.size();
-            if (requiredSegmentNum > 0) {
-                segments.addAll(memoryManager.allocatePages(getKey(), requiredSegmentNum));
+            int required =
+                    (int) (capacity % pageSize == 0 ? capacity / pageSize : capacity / pageSize + 1)
+                            - segments.size();
+
+            List<MemorySegment> allocatedSegments = new ArrayList<>();
+            for (int i = 0; i < required; i++) {
+                MemorySegment memorySegment = segmentPool.nextSegment();
+                if (memorySegment == null) {
+                    segmentPool.returnAll(allocatedSegments);
+                    throw new SegmentNoVacancyException(new MemoryAllocationException());
+                }
+                allocatedSegments.add(memorySegment);
             }
+
+            segments.addAll(allocatedSegments);
         }
 
         private void writeRecursive(byte[] b, int off, int len) {
+            if (len == 0) {
+                return;
+            }
             int currentLen = Math.min(len, pageSize - segmentOffset);
             segments.get(segmentIndex).put(segmentOffset, b, off, currentLen);
             segmentOffset += currentLen;

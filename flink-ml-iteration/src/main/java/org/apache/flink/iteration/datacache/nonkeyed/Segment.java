@@ -19,14 +19,6 @@
 package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.core.fs.Path;
-import org.apache.flink.core.memory.MemorySegment;
-import org.apache.flink.util.Preconditions;
-
-import java.io.Serializable;
-import java.util.List;
-import java.util.Objects;
 
 /**
  * A segment contains the information about a cache unit.
@@ -39,114 +31,33 @@ import java.util.Objects;
  * serializer.
  */
 @Internal
-public class Segment implements Serializable {
+class Segment {
 
-    /** The pre-allocated path to persist records on disk. */
-    private final Path path;
+    private FileSegment fileSegment;
 
-    /** The number of records in the segment. */
-    private final int count;
+    private MemorySegment memorySegment;
 
-    /** The size of the file containing cached records. */
-    private long fsSize;
-
-    private transient Object cacheKey;
-
-    /** The cached records. */
-    private transient List<MemorySegment> cache;
-
-    private transient TypeSerializer<Object> serializer;
-
-    Segment(Path path, int count, long fsSize) {
-        Preconditions.checkNotNull(path);
-        Preconditions.checkArgument(count > 0);
-        Preconditions.checkArgument(fsSize > 0);
-        this.path = path;
-        this.count = count;
-        this.fsSize = fsSize;
+    Segment(FileSegment fileSegment) {
+        this.fileSegment = fileSegment;
     }
 
-    Segment(
-            Path path,
-            int count,
-            Object cacheKey,
-            List<MemorySegment> cache,
-            TypeSerializer<Object> serializer) {
-        Preconditions.checkNotNull(path);
-        Preconditions.checkArgument(count > 0);
-        Preconditions.checkNotNull(cache);
-        this.path = path;
-        this.count = count;
-        this.cacheKey = cacheKey;
-        this.cache = cache;
-        this.serializer = serializer;
-        this.fsSize = -1;
+    Segment(MemorySegment memorySegment) {
+        this.memorySegment = memorySegment;
     }
 
-    boolean isOnDisk() {
-        return fsSize > 0;
+    void setFileSegment(FileSegment fileSegment) {
+        this.fileSegment = fileSegment;
     }
 
-    void setDiskInfo(long fsSize) {
-        Preconditions.checkState(!isOnDisk());
-        Preconditions.checkArgument(fsSize > 0);
-        this.fsSize = fsSize;
+    FileSegment getFileSegment() {
+        return fileSegment;
     }
 
-    boolean isCached() {
-        return cache != null;
+    void setMemorySegment(MemorySegment memorySegment) {
+        this.memorySegment = memorySegment;
     }
 
-    void setCacheInfo(
-            Object cacheKey, List<MemorySegment> cache, TypeSerializer<Object> serializer) {
-        Preconditions.checkState(!isCached());
-        Preconditions.checkNotNull(cache);
-        this.cacheKey = cacheKey;
-        this.cache = cache;
-        this.serializer = serializer;
-    }
-
-    int getCount() {
-        return count;
-    }
-
-    Path getPath() {
-        return path;
-    }
-
-    long getFsSize() {
-        return fsSize;
-    }
-
-    Object getCacheKey() {
-        return cacheKey;
-    }
-
-    List<MemorySegment> getCache() {
-        return cache;
-    }
-
-    @SuppressWarnings("unchecked")
-    <T> TypeSerializer<T> getTypeSerializer() {
-        return (TypeSerializer<T>) serializer;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-
-        if (!(o instanceof Segment)) {
-            return false;
-        }
-
-        Segment segment = (Segment) o;
-        return count == segment.count && Objects.equals(path, segment.path);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(count, path);
+    MemorySegment getMemorySegment() {
+        return memorySegment;
     }
 }

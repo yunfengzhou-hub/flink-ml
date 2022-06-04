@@ -24,6 +24,8 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -39,12 +41,15 @@ public class MemorySegmentReader<T> implements SegmentReader<T> {
 
     private int count;
 
-    public MemorySegmentReader(Segment segment, int startOffset, TypeSerializer<T> serializer)
+    public MemorySegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
             throws IOException {
-        ManagedMemoryInputStream inputStream = new ManagedMemoryInputStream(segment.getCache());
+        org.apache.flink.iteration.datacache.nonkeyed.MemorySegment memorySegment =
+                segment.getMemorySegment();
+        ManagedMemoryInputStream inputStream =
+                new ManagedMemoryInputStream(memorySegment.getCache());
         this.inputView = new DataInputViewStreamWrapper(inputStream);
         this.serializer = serializer;
-        this.totalCount = segment.getCount();
+        this.totalCount = memorySegment.getCount();
         this.count = 0;
 
         for (int ignored = 0; ignored < startOffset; ignored++) {
@@ -66,11 +71,6 @@ public class MemorySegmentReader<T> implements SegmentReader<T> {
 
     @Override
     public void close() {}
-
-    @Override
-    public int getOffset() {
-        return count;
-    }
 
     private static class ManagedMemoryInputStream extends InputStream {
         private final List<MemorySegment> segments;
@@ -97,7 +97,11 @@ public class MemorySegmentReader<T> implements SegmentReader<T> {
         }
 
         @Override
-        public int read(byte[] b, int off, int len) throws IOException {
+        public int read(@Nullable byte[] b, int off, int len) throws IOException {
+            if (segments.size() == segmentIndex) {
+                return 0;
+            }
+
             int currentLen = Math.min(segments.get(segmentIndex).size() - segmentOffset, len);
             segments.get(segmentIndex).get(segmentOffset, b, off, currentLen);
             segmentOffset += currentLen;

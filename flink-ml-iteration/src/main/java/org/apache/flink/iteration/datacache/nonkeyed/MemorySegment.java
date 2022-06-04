@@ -18,23 +18,24 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
-import org.apache.flink.annotation.Internal;
+import java.util.List;
 
-import java.io.IOException;
-import java.util.Optional;
+/** A segment contains the information about a cache unit. */
+class MemorySegment {
+    private final List<org.apache.flink.core.memory.MemorySegment> cache;
 
-/** Writer for the data to be cached to a segment. */
-@Internal
-interface SegmentWriter<T> {
-    /** Adds a record to the writer. */
-    void addRecord(T record) throws IOException;
+    private final int count;
 
-    /** Gets the number of records added so far. */
-    int getCount();
+    MemorySegment(List<org.apache.flink.core.memory.MemorySegment> cache, int count) {
+        this.cache = cache;
+        this.count = count;
+    }
 
-    /**
-     * Finishes the writer and returns a segment if any record has ever been added through {@link
-     * #addRecord(Object)}.
-     */
-    Optional<Segment> finish() throws IOException;
+    List<org.apache.flink.core.memory.MemorySegment> getCache() {
+        return cache;
+    }
+
+    int getCount() {
+        return count;
+    }
 }

@@ -76,6 +76,16 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
 
         final int len = vector.values.length;
         target.writeInt(len);
+
+        //        byte[] bytes = new byte[1024];
+        //        for (int i = 0; i < len; i++) {
+        //            Bits.putDouble(bytes, i << 3, vector.values[i]);
+        //            if (i % 128 == 127) {
+        //                target.write(bytes);
+        //            }
+        //        }
+        //        target.write(bytes, (len % 128) << 3, 1024 - (len % 128) << 3);
+
         ByteBuffer buffer = ByteBuffer.allocate(len << 3);
         for (int i = 0; i < len; i++) {
             buffer.putDouble(vector.get(i));
@@ -94,6 +104,15 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
     // Reads `len` double values from `source` into `dst`.
     private static void readDoubleArray(double[] dst, DataInputView source, int len)
             throws IOException {
+
+        if (len > 200) {
+            System.out.println(len);
+        }
+        //        byte[] bytes = new byte[1024];
+        //        for (int i = 0; i < len; i+=128) {
+        //            source.read(bytes, 0, );
+        //        }
+
         byte[] bytes = new byte[len << 3];
         source.read(bytes);
         ByteBuffer buffer = ByteBuffer.wrap(bytes);

@@ -24,14 +24,10 @@ import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheReader;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheSnapshot;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCacheWriter;
-import org.apache.flink.iteration.datacache.nonkeyed.Segment;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.iteration.operator.OperatorUtils;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -121,23 +117,31 @@ public class DataStreamUtils {
     }
 
     /**
-     * Takes a randomly sampled subset of elements in a bounded data stream.
+     * Performs a uniform sampling over the elements in a bounded data stream.
      *
-     * <p>If the number of elements in the stream is smaller than expected number of samples, all
-     * elements will be included in the sample.
+     * <p>This method takes samples without replacement. If the number of elements in the stream is
+     * smaller than expected number of samples, all elements will be included in the sample.
      *
      * @param input The input data stream.
      * @param numSamples The number of elements to be sampled.
      * @param randomSeed The seed to randomly pick elements as sample.
      * @return A data stream containing a list of the sampled elements.
      */
-    public static <T> DataStream<List<T>> sample(
-            DataStream<T> input, int numSamples, long randomSeed) {
+    public static <T> DataStream<T> sample(DataStream<T> input, int numSamples, long randomSeed) {
+        int inputParallelism = input.getParallelism();
+
         return input.transform(
                         "samplingOperator",
-                        Types.LIST(input.getType()),
+                        input.getType(),
                         new SamplingOperator<>(numSamples, randomSeed))
-                .setParallelism(1);
+                .setParallelism(inputParallelism)
+                .transform(
+                        "samplingOperator",
+                        input.getType(),
+                        new SamplingOperator<>(numSamples, randomSeed))
+                .setParallelism(1)
+                .map(x -> x, input.getType())
+                .setParallelism(inputParallelism);
     }
 
     /**
@@ -156,7 +160,7 @@ public class DataStreamUtils {
 
         private StreamTask<?, ?> containingTask;
 
-        private DataCacheWriter<IN> dataCacheWriter;
+        private DataCache<IN> dataCache;
 
         public MapPartitionOperator(
                 MapPartitionFunction<IN, OUT> mapPartitionFunc, TypeInformation<IN> inputType) {
@@ -192,67 +196,34 @@ public class DataStreamUtils {
             Preconditions.checkState(
                     inputs.size() < 2, "The input from raw operator state should be one or zero.");
 
-            List<Segment> priorFinishedSegments = new ArrayList<>();
             if (inputs.size() > 0) {
-
                 InputStream inputStream = inputs.get(0).getStream();
-
-                DataCacheSnapshot dataCacheSnapshot =
-                        DataCacheSnapshot.recover(
+                dataCache =
+                        DataCache.recover(
                                 inputStream,
+                                inputType.createSerializer(containingTask.getExecutionConfig()),
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
                                         basePath, "cache", config.getOperatorID()));
-
-                priorFinishedSegments = dataCacheSnapshot.getSegments();
+            } else {
+                dataCache =
+                        new DataCache<>(
+                                inputType.createSerializer(containingTask.getExecutionConfig()),
+                                basePath.getFileSystem(),
+                                OperatorUtils.createDataCacheFileGenerator(
+                                        basePath, "cache", config.getOperatorID()));
             }
-
-            dataCacheWriter =
-                    new DataCacheWriter<>(
-                            inputType.createSerializer(containingTask.getExecutionConfig()),
-                            basePath.getFileSystem(),
-                            OperatorUtils.createDataCacheFileGenerator(
-                                    basePath, "cache", config.getOperatorID()),
-                            null,
-                            priorFinishedSegments);
         }
 
         @Override
         public void processElement(StreamRecord<IN> input) throws Exception {
-            dataCacheWriter.addRecord(input.getValue());
+            dataCache.addRecord(input.getValue());
         }
 
         @Override
         public void endInput() throws Exception {
-            dataCacheWriter.finishCurrentSegmentIfAny();
-            List<Segment> pendingSegments = dataCacheWriter.getFinishedSegments();
-            userFunction.mapPartition(
-                    new DataCacheReaderIterable<>(containingTask, pendingSegments, inputType),
-                    new TimestampedCollector<>(output));
-            dataCacheWriter.cleanup();
-        }
-
-        private static class DataCacheReaderIterable<T> implements Iterable<T> {
-            private final StreamTask<?, ?> containingTask;
-            private final List<Segment> pendingSegments;
-            private final TypeInformation<T> type;
-
-            private DataCacheReaderIterable(
-                    StreamTask<?, ?> containingTask,
-                    List<Segment> pendingSegments,
-                    TypeInformation<T> type) {
-                this.containingTask = containingTask;
-                this.pendingSegments = pendingSegments;
-                this.type = type;
-            }
-
-            @Override
-            public Iterator<T> iterator() {
-                return new DataCacheReader<>(
-                        type.createSerializer(containingTask.getExecutionConfig()),
-                        null,
-                        pendingSegments);
-            }
+            userFunction.mapPartition(dataCache, new TimestampedCollector<>(output));
+            dataCache.cleanup();
         }
     }
 
@@ -311,8 +282,8 @@ public class DataStreamUtils {
     /**
      * A stream operator that takes a randomly sampled subset of elements in a bounded data stream.
      */
-    private static class SamplingOperator<T> extends AbstractStreamOperator<List<T>>
-            implements OneInputStreamOperator<T, List<T>>, BoundedOneInput {
+    private static class SamplingOperator<T> extends AbstractStreamOperator<T>
+            implements OneInputStreamOperator<T, T>, BoundedOneInput {
         private final int numSamples;
 
         private final Random random;
@@ -340,7 +311,7 @@ public class DataStreamUtils {
                             getOperatorConfig()
                                     .getTypeSerializerIn(0, getClass().getClassLoader()));
             samplesState = context.getOperatorStateStore().getListState(samplesDescriptor);
-            samples = new ArrayList<>();
+            samples = new ArrayList<>(numSamples);
             samplesState.get().forEach(samples::add);
 
             ListStateDescriptor<Integer> countDescriptor =
@@ -366,7 +337,6 @@ public class DataStreamUtils {
             T sample = streamRecord.getValue();
             count++;
 
-            // Code below is inspired by the Reservoir Sampling algorithm.
             if (samples.size() < numSamples) {
                 samples.add(sample);
             } else {
@@ -379,7 +349,10 @@ public class DataStreamUtils {
         @Override
         public void endInput() throws Exception {
             Collections.shuffle(samples, random);
-            output.collect(new StreamRecord<>(samples));
+
+            for (T sample : samples) {
+                output.collect(new StreamRecord<>(sample));
+            }
         }
     }
 }

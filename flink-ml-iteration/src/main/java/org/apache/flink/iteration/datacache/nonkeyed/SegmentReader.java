@@ -19,7 +19,6 @@
 package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeutils.TypeSerializer;
 
 import java.io.IOException;
 
@@ -34,15 +33,4 @@ interface SegmentReader<T> {
 
     /** Closes resources used by the reader. */
     void close() throws IOException;
-
-    /** Gets the current offset in the segment. */
-    int getOffset();
-
-    static <T> SegmentReader<T> create(
-            TypeSerializer<T> serializer, Segment segment, int startOffset) throws IOException {
-        if (segment.isCached()) {
-            return new MemorySegmentReader<>(segment, startOffset, serializer);
-        }
-        return new FsSegmentReader<>(serializer, segment, startOffset);
-    }
 }
