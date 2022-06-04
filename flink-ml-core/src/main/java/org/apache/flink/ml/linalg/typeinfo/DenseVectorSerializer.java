@@ -36,7 +36,7 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
 
     private static final double[] EMPTY = new double[0];
 
-    public static final DenseVectorSerializer INSTANCE = new DenseVectorSerializer();
+    private final byte[] buf = new byte[1024];
 
     @Override
     public boolean isImmutableType() {
@@ -76,14 +76,13 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
         final int len = vector.values.length;
         target.writeInt(len);
 
-        byte[] bytes = new byte[1024];
         for (int i = 0; i < len; i++) {
-            Bits.putDouble(bytes, i << 3, vector.values[i]);
+            Bits.putDouble(buf, i << 3, vector.values[i]);
             if (i % 128 == 127) {
-                target.write(bytes);
+                target.write(buf);
             }
         }
-        target.write(bytes, 0, (len % 128) << 3);
+        target.write(buf, 0, (len % 128) << 3);
     }
 
     @Override
@@ -95,20 +94,18 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
     }
 
     // Reads `len` double values from `source` into `dst`.
-    private static void readDoubleArray(double[] dst, DataInputView source, int len)
-            throws IOException {
+    private void readDoubleArray(double[] dst, DataInputView source, int len) throws IOException {
 
         int index = 0;
-        byte[] bytes = new byte[1024];
         for (int i = 0; i < len / 128; i++) {
-            source.read(bytes, 0, 1024);
+            source.read(buf, 0, 1024);
             for (int j = 0; j < 128; j++) {
-                dst[index++] = Bits.getDouble(bytes, j * 8);
+                dst[index++] = Bits.getDouble(buf, j * 8);
             }
         }
-        source.read(bytes, 0, (len * 8) % 1024);
+        source.read(buf, 0, (len * 8) % 1024);
         for (int j = 0; j < len % 128; j++) {
-            dst[index++] = Bits.getDouble(bytes, j * 8);
+            dst[index++] = Bits.getDouble(buf, j * 8);
         }
     }
 
@@ -145,7 +142,7 @@ public final class DenseVectorSerializer extends TypeSerializerSingleton<DenseVe
             extends SimpleTypeSerializerSnapshot<DenseVector> {
 
         public DenseVectorSerializerSnapshot() {
-            super(() -> INSTANCE);
+            super(DenseVectorSerializer::new);
         }
     }
 }

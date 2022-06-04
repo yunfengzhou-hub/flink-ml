@@ -267,6 +267,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                             DenseVector, DenseVector[], Tuple2<Integer, DenseVector>>,
                     IterationListener<Tuple2<Integer, DenseVector>> {
         private final DistanceMeasure distanceMeasure;
+        private final DenseVectorSerializer serializer = new DenseVectorSerializer();
         private ListState<DenseVector[]> centroidsState;
         private DenseVector[] centroids;
 
@@ -338,7 +339,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                 dataCache =
                         DataCache.recover(
                                 inputStream,
-                                DenseVectorSerializer.INSTANCE,
+                                serializer,
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
                                         basePath, "cache", config.getOperatorID()),
@@ -346,7 +347,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             } else {
                 dataCache =
                         new DataCache<>(
-                                DenseVectorSerializer.INSTANCE,
+                                serializer,
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
                                         basePath, "cache", config.getOperatorID()),
