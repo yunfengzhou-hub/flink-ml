@@ -32,16 +32,17 @@ import java.util.List;
 
 /** A class that reads data cached in memory. */
 @Internal
-public class MemorySegmentReader<T> implements SegmentReader<T> {
-    private final DataInputView inputView;
+class MemorySegmentReader<T> implements SegmentReader<T> {
 
     private final TypeSerializer<T> serializer;
+
+    private final DataInputView inputView;
 
     private final int totalCount;
 
     private int count;
 
-    public MemorySegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
+    MemorySegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
             throws IOException {
         org.apache.flink.iteration.datacache.nonkeyed.MemorySegment memorySegment =
                 segment.getMemorySegment();

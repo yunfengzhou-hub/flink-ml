@@ -32,15 +32,15 @@ import java.util.Optional;
 
 /** A class that writes cache data to file system. */
 @Internal
-public class FileSegmentWriter<T> implements SegmentWriter<T> {
+class FileSegmentWriter<T> implements SegmentWriter<T> {
 
     private static final long FILE_SIZE_LIMIT = 1L << 30; // 1GB
-
-    private final FileSystem fileSystem;
 
     private final TypeSerializer<T> serializer;
 
     private final Path path;
+
+    private final FileSystem fileSystem;
 
     private final FSDataOutputStream outputStream;
 
@@ -50,7 +50,7 @@ public class FileSegmentWriter<T> implements SegmentWriter<T> {
 
     private int count;
 
-    public FileSegmentWriter(TypeSerializer<T> serializer, Path path) throws IOException {
+    FileSegmentWriter(TypeSerializer<T> serializer, Path path) throws IOException {
         this.serializer = serializer;
         this.path = path;
         this.fileSystem = path.getFileSystem();

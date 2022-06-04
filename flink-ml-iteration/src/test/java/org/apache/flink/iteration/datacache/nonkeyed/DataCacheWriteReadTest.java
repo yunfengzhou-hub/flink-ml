@@ -231,7 +231,6 @@ public class DataCacheWriteReadTest extends TestLogger {
         }
 
         dataCache.finish();
-        System.out.println(segmentPool.freePages());
         assertTrue(segmentPool.freePages() < pageNum);
         int freePages = segmentPool.freePages();
 

@@ -18,12 +18,15 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
+import org.apache.flink.annotation.Internal;
+
 import java.io.IOException;
 
 /**
  * An exception to be thrown when a segment does not have enough space to accept the next record.
  */
-public class SegmentNoVacancyException extends IOException {
+@Internal
+class SegmentNoVacancyException extends IOException {
 
     public SegmentNoVacancyException() {
         super();

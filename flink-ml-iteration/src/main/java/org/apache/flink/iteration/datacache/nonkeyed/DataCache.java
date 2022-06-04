@@ -18,6 +18,7 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FSDataOutputStream;
@@ -44,18 +45,19 @@ import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
-/** Records the data received and replayed them on required. */
+/** Records the data received and replays them on required. */
+@Internal
 public class DataCache<T> implements Iterable<T> {
 
     private static final int CURRENT_VERSION = 1;
+
+    private final TypeSerializer<T> serializer;
 
     private final FileSystem fileSystem;
 
     private final SupplierWithException<Path, IOException> pathGenerator;
 
     private final MemorySegmentPool segmentPool;
-
-    private final TypeSerializer<T> serializer;
 
     private final List<Segment> finishedSegments;
 
@@ -78,7 +80,7 @@ public class DataCache<T> implements Iterable<T> {
         this(serializer, fileSystem, pathGenerator, segmentPool, Collections.emptyList());
     }
 
-    DataCache(
+    public DataCache(
             TypeSerializer<T> serializer,
             FileSystem fileSystem,
             SupplierWithException<Path, IOException> pathGenerator,
@@ -107,6 +109,7 @@ public class DataCache<T> implements Iterable<T> {
         }
     }
 
+    /** Finishes adding records and closes resources occupied for adding records. */
     public void finish() throws IOException {
         if (currentWriter == null) {
             return;
@@ -116,15 +119,7 @@ public class DataCache<T> implements Iterable<T> {
         currentWriter = null;
     }
 
-    private void finishCurrentSegmentIfAny() throws IOException {
-        if (currentWriter == null || currentWriter.getCount() == 0) {
-            return;
-        }
-
-        currentWriter.finish().ifPresent(finishedSegments::add);
-        currentWriter = createSegmentWriter();
-    }
-
+    /** Cleans up all previously added records. */
     public void cleanup() throws IOException {
         finishCurrentSegmentIfAny();
         for (Segment segment : finishedSegments) {
@@ -138,6 +133,15 @@ public class DataCache<T> implements Iterable<T> {
         finishedSegments.clear();
     }
 
+    private void finishCurrentSegmentIfAny() throws IOException {
+        if (currentWriter == null || currentWriter.getCount() == 0) {
+            return;
+        }
+
+        currentWriter.finish().ifPresent(finishedSegments::add);
+        currentWriter = createSegmentWriter();
+    }
+
     @Override
     public DataCacheIterator<T> iterator() {
         try {
@@ -148,10 +152,11 @@ public class DataCache<T> implements Iterable<T> {
         return new DataCacheIterator<>(serializer, finishedSegments);
     }
 
-    public void writeTo(OutputStream checkpointOutputStream) throws IOException {
+    /** Writes the information about this data cache to an output stream. */
+    public void writeTo(OutputStream outputStream) throws IOException {
         finishCurrentSegmentIfAny();
         try (DataOutputStream dos =
-                new DataOutputStream(new NonClosingOutputStreamDecorator(checkpointOutputStream))) {
+                new DataOutputStream(new NonClosingOutputStreamDecorator(outputStream))) {
             dos.writeInt(CURRENT_VERSION);
 
             dos.writeBoolean(fileSystem.isDistributedFS());
@@ -170,20 +175,23 @@ public class DataCache<T> implements Iterable<T> {
                     dos.writeInt(fileSegment.getCount());
                     dos.writeLong(fileSegment.getSize());
                     try (FSDataInputStream inputStream = fileSystem.open(fileSegment.getPath())) {
-                        IOUtils.copyBytes(inputStream, checkpointOutputStream, false);
+                        IOUtils.copyBytes(inputStream, outputStream, false);
                     }
                 }
             }
         }
     }
 
+    /**
+     * Replays cached records in the data cache from input stream into the target feedback consumer.
+     */
     public static <T> void replay(
-            InputStream checkpointInputStream,
+            InputStream inputStream,
             TypeSerializer<T> serializer,
             FeedbackConsumer<T> feedbackConsumer)
             throws Exception {
         try (DataInputStream dis =
-                new DataInputStream(new NonClosingInputStreamDecorator(checkpointInputStream))) {
+                new DataInputStream(new NonClosingInputStreamDecorator(inputStream))) {
             int version = dis.readInt();
             checkState(
                     version == CURRENT_VERSION,
@@ -214,24 +222,25 @@ public class DataCache<T> implements Iterable<T> {
         }
     }
 
+    /** Recovers a data cache instance from the input stream. */
     public static <T> DataCache<T> recover(
-            InputStream checkpointInputStream,
+            InputStream inputStream,
             TypeSerializer<T> serializer,
             FileSystem fileSystem,
             SupplierWithException<Path, IOException> pathGenerator)
             throws IOException {
-        return recover(checkpointInputStream, serializer, fileSystem, pathGenerator, null);
+        return recover(inputStream, serializer, fileSystem, pathGenerator, null);
     }
 
     public static <T> DataCache<T> recover(
-            InputStream checkpointInputStream,
+            InputStream inputStream,
             TypeSerializer<T> serializer,
             FileSystem fileSystem,
             SupplierWithException<Path, IOException> pathGenerator,
             MemorySegmentPool memoryManager)
             throws IOException {
         try (DataInputStream dis =
-                new DataInputStream(new NonClosingInputStreamDecorator(checkpointInputStream))) {
+                new DataInputStream(new NonClosingInputStreamDecorator(inputStream))) {
             int version = dis.readInt();
             checkState(
                     version == CURRENT_VERSION,
@@ -256,11 +265,11 @@ public class DataCache<T> implements Iterable<T> {
                     try (FSDataOutputStream outputStream =
                             fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE)) {
 
-                        BoundedInputStream inputStream =
-                                new BoundedInputStream(checkpointInputStream, fsSize);
-                        inputStream.setPropagateClose(false);
-                        IOUtils.copyBytes(inputStream, outputStream, false);
-                        inputStream.close();
+                        BoundedInputStream boundedInputStream =
+                                new BoundedInputStream(inputStream, fsSize);
+                        boundedInputStream.setPropagateClose(false);
+                        IOUtils.copyBytes(boundedInputStream, outputStream, false);
+                        boundedInputStream.close();
                     }
                     segments.add(new Segment(new FileSegment(path, count, fsSize)));
                 }

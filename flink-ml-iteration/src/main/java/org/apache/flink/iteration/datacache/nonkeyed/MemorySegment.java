@@ -20,8 +20,9 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import java.util.List;
 
-/** A segment contains the information about a cache unit. */
+/** A segment with information about memory segments containing the cached records. */
 class MemorySegment {
+
     private final List<org.apache.flink.core.memory.MemorySegment> cache;
 
     private final int count;

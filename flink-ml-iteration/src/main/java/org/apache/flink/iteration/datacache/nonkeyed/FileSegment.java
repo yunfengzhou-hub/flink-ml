@@ -18,13 +18,16 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.fs.Path;
 
 import java.util.Objects;
 
-/** A segment contains the information about a cache unit. */
+/** A segment with the information about a file containing cached records. */
+@Internal
 class FileSegment {
 
+    /** The path to the file containing cached records. */
     private final Path path;
 
     /** The count of the records in the file. */

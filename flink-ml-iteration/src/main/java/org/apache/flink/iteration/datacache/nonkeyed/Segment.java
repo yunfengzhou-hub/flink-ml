@@ -20,16 +20,7 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 
-/**
- * A segment contains the information about a cache unit.
- *
- * <p>If the unit is persisted in a file on disk, this class provides the number of records in the
- * unit, the path to the file, and the size of the file.
- *
- * <p>If the unit is cached in memory, this class provides the number of records, the cached
- * objects, and information to persist them on disk, including the pre-allocated path, and the type
- * serializer.
- */
+/** A segment contains the information about a cache unit. */
 @Internal
 class Segment {
 

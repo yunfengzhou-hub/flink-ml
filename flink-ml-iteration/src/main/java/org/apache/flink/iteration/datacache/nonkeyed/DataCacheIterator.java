@@ -18,6 +18,7 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.util.Preconditions;
@@ -26,12 +27,13 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 
-/** Reads the cached data from a list of paths. */
+/** Reads the cached data from a list of segments. */
+@Internal
 public class DataCacheIterator<T> implements Iterator<T> {
 
-    private final List<Segment> segments;
-
     private final TypeSerializer<T> serializer;
+
+    private final List<Segment> segments;
 
     private SegmentReader<T> currentReader;
 
@@ -39,7 +41,7 @@ public class DataCacheIterator<T> implements Iterator<T> {
 
     private int pos;
 
-    public DataCacheIterator(TypeSerializer<T> serializer, List<Segment> segments) {
+    DataCacheIterator(TypeSerializer<T> serializer, List<Segment> segments) {
         this.segments = segments;
         this.serializer = serializer;
         createSegmentReader(0, 0);

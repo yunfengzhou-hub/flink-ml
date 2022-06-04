@@ -37,10 +37,11 @@ import java.util.Optional;
 
 /** A class that writes cache data to memory segments. */
 @Internal
-public class MemorySegmentWriter<T> implements SegmentWriter<T> {
-    private final MemorySegmentPool segmentPool;
+class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
     private final TypeSerializer<T> serializer;
+
+    private final MemorySegmentPool segmentPool;
 
     private final ManagedMemoryOutputStream outputStream;
 
@@ -48,7 +49,7 @@ public class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
     private int count;
 
-    public MemorySegmentWriter(
+    MemorySegmentWriter(
             TypeSerializer<T> serializer, MemorySegmentPool segmentPool, long expectedSize)
             throws SegmentNoVacancyException {
         this.serializer = serializer;

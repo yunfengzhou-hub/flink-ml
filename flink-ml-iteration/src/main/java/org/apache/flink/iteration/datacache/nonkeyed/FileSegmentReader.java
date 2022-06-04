@@ -33,11 +33,11 @@ import java.io.InputStream;
 class FileSegmentReader<T> implements SegmentReader<T> {
     private final TypeSerializer<T> serializer;
 
-    private final int totalCount;
-
     private final InputStream inputStream;
 
     private final DataInputView inputView;
+
+    private final int totalCount;
 
     private int offset;
 
@@ -49,8 +49,8 @@ class FileSegmentReader<T> implements SegmentReader<T> {
         this.inputStream = path.getFileSystem().open(path);
         BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
         this.inputView = new DataInputViewStreamWrapper(bufferedInputStream);
-        this.offset = 0;
         this.totalCount = fileSegment.getCount();
+        this.offset = 0;
 
         for (int i = 0; i < startOffset; i++) {
             next();
