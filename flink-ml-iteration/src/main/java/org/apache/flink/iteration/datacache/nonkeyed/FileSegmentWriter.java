@@ -30,29 +30,32 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.util.Optional;
 
-/** A class that writes cache data to file system. */
+/** A class that writes cache data to a target file in given file system. */
 @Internal
 class FileSegmentWriter<T> implements SegmentWriter<T> {
 
+    /** The tool to serialize received records into bytes. */
     private final TypeSerializer<T> serializer;
 
+    /** The path to the target file. */
     private final Path path;
 
-    private final FileSystem fileSystem;
-
+    /** The output stream that writes to the target file. */
     private final FSDataOutputStream outputStream;
 
+    /** A buffer that wraps the output stream to optimize performance. */
     private final BufferedOutputStream bufferedOutputStream;
 
+    /** The wrapper view of output stream to be used with TypeSerializer API. */
     private final DataOutputView outputView;
 
+    /** The number of records added so far. */
     private int count;
 
     FileSegmentWriter(TypeSerializer<T> serializer, Path path) throws IOException {
         this.serializer = serializer;
         this.path = path;
-        this.fileSystem = path.getFileSystem();
-        this.outputStream = fileSystem.create(path, FileSystem.WriteMode.NO_OVERWRITE);
+        this.outputStream = path.getFileSystem().create(path, FileSystem.WriteMode.NO_OVERWRITE);
         this.bufferedOutputStream = new BufferedOutputStream(outputStream);
         this.outputView = new DataOutputViewStreamWrapper(bufferedOutputStream);
     }
@@ -84,7 +87,7 @@ class FileSegmentWriter<T> implements SegmentWriter<T> {
             return Optional.of(segment);
         } else {
             // If there are no records, we tend to directly delete this file
-            fileSystem.delete(path, false);
+            path.getFileSystem().delete(path, false);
             return Optional.empty();
         }
     }

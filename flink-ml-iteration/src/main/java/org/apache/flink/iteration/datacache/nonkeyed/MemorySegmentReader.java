@@ -24,8 +24,6 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
 
-import javax.annotation.Nullable;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -34,12 +32,16 @@ import java.util.List;
 @Internal
 class MemorySegmentReader<T> implements SegmentReader<T> {
 
+    /** The tool to deserialize bytes into records. */
     private final TypeSerializer<T> serializer;
 
+    /** The wrapper view of the input stream of memory segments to be used in TypeSerializer API. */
     private final DataInputView inputView;
 
+    /** The total number of records contained in the segments. */
     private final int totalCount;
 
+    /** The number of records that have been read so far. */
     private int count;
 
     MemorySegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
@@ -95,7 +97,7 @@ class MemorySegmentReader<T> implements SegmentReader<T> {
         }
 
         @Override
-        public int read(@Nullable byte[] b, int off, int len) throws IOException {
+        public int read(byte[] b, int off, int len) throws IOException {
             if (segments.size() == segmentIndex) {
                 return 0;
             }

@@ -20,26 +20,32 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 
 /** A class that reads the cached data in a segment from file system. */
 @Internal
 class FileSegmentReader<T> implements SegmentReader<T> {
+
+    /** The tool to deserialize bytes into records. */
     private final TypeSerializer<T> serializer;
 
-    private final InputStream inputStream;
+    /** The input stream to read serialized records from. */
+    private final FSDataInputStream inputStream;
 
+    /** The wrapper view of input stream to be used with TypeSerializer API. */
     private final DataInputView inputView;
 
+    /** The total number of records contained in the segments. */
     private final int totalCount;
 
-    private int offset;
+    /** The number of records that have been read so far. */
+    private int count;
 
     FileSegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
             throws IOException {
@@ -49,7 +55,7 @@ class FileSegmentReader<T> implements SegmentReader<T> {
         BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
         this.inputView = new DataInputViewStreamWrapper(bufferedInputStream);
         this.totalCount = segment.getCount();
-        this.offset = 0;
+        this.count = 0;
 
         for (int i = 0; i < startOffset; i++) {
             next();
@@ -58,13 +64,13 @@ class FileSegmentReader<T> implements SegmentReader<T> {
 
     @Override
     public boolean hasNext() {
-        return offset < totalCount;
+        return count < totalCount;
     }
 
     @Override
     public T next() throws IOException {
         T value = serializer.deserialize(inputView);
-        offset++;
+        count++;
         return value;
     }
 

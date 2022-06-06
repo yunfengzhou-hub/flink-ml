@@ -32,12 +32,17 @@ import static org.apache.flink.util.Preconditions.checkState;
 /** A segment contains the information about a cache unit. */
 @Internal
 public class Segment {
+
+    /** The path to the file containing cached records. */
     private final Path path;
 
+    /** The count of the records in the segment. */
     private final int count;
 
+    /** The total length of file containing cached records. */
     private long fsSize = -1L;
 
+    /** The memory segments containing cached records. */
     private List<MemorySegment> cache;
 
     Segment(Path path, int count, long fsSize) {

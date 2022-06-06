@@ -40,16 +40,22 @@ import java.util.Optional;
 @Internal
 class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
+    /** The tool to serialize received records into bytes. */
     private final TypeSerializer<T> serializer;
 
+    /** The pre-allocated path to hold cached records into file system. */
     private final Path path;
 
+    /** The pool to allocate memory segments from. */
     private final MemorySegmentPool segmentPool;
 
+    /** The output stream to write serialized content to memory segments. */
     private final ManagedMemoryOutputStream outputStream;
 
+    /** The wrapper view of output stream to be used with TypeSerializer API. */
     private final DataOutputView outputView;
 
+    /** The number of records added so far. */
     private int count;
 
     MemorySegmentWriter(

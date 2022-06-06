@@ -28,14 +28,19 @@ import java.util.List;
 /** Reads the cached data from a list of segments. */
 public class DataCacheReader<T> implements Iterator<T> {
 
+    /** The tool to deserialize bytes into records. */
     private final TypeSerializer<T> serializer;
 
+    /** The segments where to read the records from. */
     private final List<Segment> segments;
 
+    /** The current reader for next records. */
     private SegmentReader<T> currentReader;
 
+    /** The index of the segment that current reader reads from. */
     private int segmentIndex;
 
+    /** The number of records that have been read through current reader so far. */
     private int segmentCount;
 
     public DataCacheReader(TypeSerializer<T> serializer, List<Segment> segments) {
@@ -77,24 +82,6 @@ public class DataCacheReader<T> implements Iterator<T> {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private Tuple2<Integer, Integer> getReaderPosition(int pos) throws Exception {
-        int segmentIndex = 0;
-        do {
-            int segmentCount = segments.get(segmentIndex).getCount();
-            if (segmentCount <= pos) {
-                pos -= segmentCount;
-                segmentIndex++;
-            } else {
-                return Tuple2.of(segmentIndex, pos);
-            }
-        } while (segmentIndex < segments.size());
-
-        throw new Exception(
-                "Failed to get reader position from pos "
-                        + pos
-                        + ": value larger than total number of records in data cache.");
     }
 
     public Tuple2<Integer, Integer> getPosition() {

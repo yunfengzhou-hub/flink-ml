@@ -50,12 +50,19 @@ import static org.apache.flink.util.Preconditions.checkState;
 /** The snapshot of a data cache. It could be written out or read from an external stream.O */
 public class DataCacheSnapshot {
 
+    /** The version of DataCacheSnapshot format. */
     private static final int CURRENT_VERSION = 1;
 
+    /** The file system that contains the cache files. */
     private final FileSystem fileSystem;
 
+    /**
+     * An optional position of DataCacheReader. If not set, recovered readers would read the
+     * segments from beginning.
+     */
     @Nullable private final Tuple2<Integer, Integer> readerPosition;
 
+    /** The segments to be snapshot or recovered from. */
     private final List<Segment> segments;
 
     public DataCacheSnapshot(

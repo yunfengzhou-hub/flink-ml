@@ -34,18 +34,25 @@ import java.util.List;
 /** Records the data received and replayed them on required. */
 public class DataCacheWriter<T> {
 
+    /** A soft limit on the max allowed size of a single segment. */
     static final long MAX_SEGMENT_SIZE = 1L << 30; // 1GB
 
+    /** The tool to serialize received records into bytes. */
     private final TypeSerializer<T> serializer;
 
+    /** The file system that contains the cache files. */
     private final FileSystem fileSystem;
 
+    /** A generator to generate paths of cache files. */
     private final SupplierWithException<Path, IOException> pathGenerator;
 
+    /** An optional pool that provide memory segments to hold cached records in memory. */
     @Nullable private final MemorySegmentPool segmentPool;
 
+    /** The segments that contain previously added records. */
     private final List<Segment> finishedSegments;
 
+    /** The current writer for new records. */
     private SegmentWriter<T> currentWriter;
 
     public DataCacheWriter(
