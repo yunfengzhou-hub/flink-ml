@@ -30,7 +30,10 @@ import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheReader;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheSnapshot;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheWriter;
+import org.apache.flink.iteration.datacache.nonkeyed.Segment;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.iteration.operator.OperatorUtils;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -167,7 +170,7 @@ public class DataStreamUtils {
 
         private StreamTask<?, ?> containingTask;
 
-        private DataCache<IN> dataCache;
+        private DataCacheWriter<IN> dataCacheWriter;
 
         public MapPartitionOperator(
                 MapPartitionFunction<IN, OUT> mapPartitionFunc, TypeInformation<IN> inputType) {
@@ -189,7 +192,6 @@ public class DataStreamUtils {
                                     .getEnvironment()
                                     .getIOManager()
                                     .getSpillingDirectoriesPaths());
-
             this.config = config;
             this.containingTask = containingTask;
         }
@@ -203,34 +205,78 @@ public class DataStreamUtils {
             Preconditions.checkState(
                     inputs.size() < 2, "The input from raw operator state should be one or zero.");
 
+            List<Segment> priorFinishedSegments = new ArrayList<>();
             if (inputs.size() > 0) {
+
                 InputStream inputStream = inputs.get(0).getStream();
-                dataCache =
-                        DataCache.recover(
+
+                DataCacheSnapshot dataCacheSnapshot =
+                        DataCacheSnapshot.recover(
                                 inputStream,
-                                inputType.createSerializer(containingTask.getExecutionConfig()),
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
                                         basePath, "cache", config.getOperatorID()));
-            } else {
-                dataCache =
-                        new DataCache<>(
-                                inputType.createSerializer(containingTask.getExecutionConfig()),
-                                basePath.getFileSystem(),
-                                OperatorUtils.createDataCacheFileGenerator(
-                                        basePath, "cache", config.getOperatorID()));
+
+                priorFinishedSegments = dataCacheSnapshot.getSegments();
             }
+
+            dataCacheWriter =
+                    new DataCacheWriter<>(
+                            inputType.createSerializer(containingTask.getExecutionConfig()),
+                            basePath.getFileSystem(),
+                            OperatorUtils.createDataCacheFileGenerator(
+                                    basePath, "cache", config.getOperatorID()),
+                            priorFinishedSegments);
+        }
+
+        @Override
+        public void snapshotState(StateSnapshotContext context) throws Exception {
+            super.snapshotState(context);
+
+            dataCacheWriter.finishCurrentSegmentIfAny();
+            dataCacheWriter.persistToDisk();
+            DataCacheSnapshot dataCacheSnapshot =
+                    new DataCacheSnapshot(
+                            basePath.getFileSystem(), null, dataCacheWriter.getFinishedSegments());
+            context.getRawOperatorStateOutput().startNewPartition();
+            dataCacheSnapshot.writeTo(context.getRawOperatorStateOutput());
         }
 
         @Override
         public void processElement(StreamRecord<IN> input) throws Exception {
-            dataCache.addRecord(input.getValue());
+            dataCacheWriter.addRecord(input.getValue());
         }
 
         @Override
         public void endInput() throws Exception {
-            userFunction.mapPartition(dataCache, new TimestampedCollector<>(output));
-            dataCache.cleanup();
+            dataCacheWriter.finishCurrentSegmentIfAny();
+            List<Segment> pendingSegments = dataCacheWriter.getFinishedSegments();
+            userFunction.mapPartition(
+                    new DataCacheReaderIterable<>(containingTask, pendingSegments, inputType),
+                    new TimestampedCollector<>(output));
+            dataCacheWriter.cleanup();
+        }
+
+        private static class DataCacheReaderIterable<T> implements Iterable<T> {
+            private final StreamTask<?, ?> containingTask;
+            private final List<Segment> pendingSegments;
+            private final TypeInformation<T> type;
+
+            private DataCacheReaderIterable(
+                    StreamTask<?, ?> containingTask,
+                    List<Segment> pendingSegments,
+                    TypeInformation<T> type) {
+                this.containingTask = containingTask;
+                this.pendingSegments = pendingSegments;
+                this.type = type;
+            }
+
+            @Override
+            public Iterator<T> iterator() {
+                return new DataCacheReader<>(
+                        type.createSerializer(containingTask.getExecutionConfig()),
+                        pendingSegments);
+            }
         }
     }
 

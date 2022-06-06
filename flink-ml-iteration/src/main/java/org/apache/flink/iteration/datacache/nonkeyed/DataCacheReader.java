@@ -18,18 +18,15 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.util.Preconditions;
 
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 
 /** Reads the cached data from a list of segments. */
-@Internal
-public class DataCacheIterator<T> implements Iterator<T> {
+public class DataCacheReader<T> implements Iterator<T> {
 
     private final TypeSerializer<T> serializer;
 
@@ -39,26 +36,22 @@ public class DataCacheIterator<T> implements Iterator<T> {
 
     private int segmentIndex;
 
-    private int pos;
+    private int segmentCount;
 
-    DataCacheIterator(TypeSerializer<T> serializer, List<Segment> segments) {
-        this.segments = segments;
+    public DataCacheReader(TypeSerializer<T> serializer, List<Segment> segments) {
+        this(serializer, segments, Tuple2.of(0, 0));
+    }
+
+    public DataCacheReader(
+            TypeSerializer<T> serializer,
+            List<Segment> segments,
+            Tuple2<Integer, Integer> readerPosition) {
         this.serializer = serializer;
-        createSegmentReader(0, 0);
-    }
-
-    /** Changes the read position to the given value. */
-    public void setPos(int pos) throws Exception {
-        Preconditions.checkArgument(pos >= 0);
-        Tuple2<Integer, Integer> readerPosition = getReaderPosition(pos);
-        createSegmentReader(readerPosition.f0, readerPosition.f1);
+        this.segments = segments;
         this.segmentIndex = readerPosition.f0;
-        this.pos = pos;
-    }
+        this.segmentCount = readerPosition.f1;
 
-    /** Gets the number of records that have been read so far. */
-    public int getPos() {
-        return pos;
+        createSegmentReader(readerPosition.f0, readerPosition.f1);
     }
 
     @Override
@@ -74,10 +67,11 @@ public class DataCacheIterator<T> implements Iterator<T> {
             if (!currentReader.hasNext()) {
                 currentReader.close();
                 segmentIndex++;
-                createSegmentReader(segmentIndex, 0);
+                segmentCount = 0;
+                createSegmentReader(segmentIndex, segmentCount);
             }
 
-            pos++;
+            segmentCount++;
 
             return record;
         } catch (IOException e) {
@@ -101,6 +95,10 @@ public class DataCacheIterator<T> implements Iterator<T> {
                 "Failed to get reader position from pos "
                         + pos
                         + ": value larger than total number of records in data cache.");
+    }
+
+    public Tuple2<Integer, Integer> getPosition() {
+        return new Tuple2<>(segmentIndex, segmentCount);
     }
 
     private void createSegmentReader(int index, int startOffset) {

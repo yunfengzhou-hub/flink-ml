@@ -18,8 +18,8 @@
 
 package org.apache.flink.iteration.datacache.nonkeyed;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.FileSystem;
@@ -30,6 +30,7 @@ import org.apache.flink.runtime.util.NonClosingOutputStreamDecorator;
 import org.apache.flink.statefun.flink.core.feedback.FeedbackConsumer;
 import org.apache.flink.table.runtime.util.MemorySegmentPool;
 import org.apache.flink.util.IOUtils;
+import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.SupplierWithException;
 
 import org.apache.commons.io.input.BoundedInputStream;
@@ -42,136 +43,65 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
-/** Records the data received and replays them on required. */
-@Internal
-public class DataCache<T> implements Iterable<T> {
-
-    static final long MAX_SEGMENT_SIZE = 1L << 30; // 1GB
+/** The snapshot of a data cache. It could be written out or read from an external stream.O */
+public class DataCacheSnapshot {
 
     private static final int CURRENT_VERSION = 1;
 
-    private final TypeSerializer<T> serializer;
-
     private final FileSystem fileSystem;
 
-    private final SupplierWithException<Path, IOException> pathGenerator;
+    @Nullable private final Tuple2<Integer, Integer> readerPosition;
 
-    @Nullable private final MemorySegmentPool segmentPool;
+    private final List<Segment> segments;
 
-    private final List<Segment> finishedSegments;
-
-    private SegmentWriter<T> currentWriter;
-
-    public DataCache(
-            TypeSerializer<T> serializer,
+    public DataCacheSnapshot(
             FileSystem fileSystem,
-            SupplierWithException<Path, IOException> pathGenerator)
-            throws IOException {
-        this(serializer, fileSystem, pathGenerator, null, Collections.emptyList());
-    }
-
-    public DataCache(
-            TypeSerializer<T> serializer,
-            FileSystem fileSystem,
-            SupplierWithException<Path, IOException> pathGenerator,
-            MemorySegmentPool segmentPool)
-            throws IOException {
-        this(serializer, fileSystem, pathGenerator, segmentPool, Collections.emptyList());
-    }
-
-    public DataCache(
-            TypeSerializer<T> serializer,
-            FileSystem fileSystem,
-            SupplierWithException<Path, IOException> pathGenerator,
-            @Nullable MemorySegmentPool segmentPool,
-            List<Segment> finishedSegments)
-            throws IOException {
+            @Nullable Tuple2<Integer, Integer> readerPosition,
+            List<Segment> segments) {
         this.fileSystem = fileSystem;
-        this.pathGenerator = pathGenerator;
-        this.segmentPool = segmentPool;
-        this.serializer = serializer;
-        this.finishedSegments = new ArrayList<>();
-        this.finishedSegments.addAll(finishedSegments);
-        for (Segment segment : finishedSegments) {
-            tryCacheSegmentToMemory(segment);
+        this.readerPosition = readerPosition;
+        for (Segment segment : segments) {
+            Preconditions.checkArgument(segment.isOnDisk());
         }
-        this.currentWriter = createSegmentWriter();
+        this.segments = segments;
     }
 
-    public void addRecord(T record) throws IOException {
-        if (!currentWriter.addRecord(record)) {
-            currentWriter.finish().ifPresent(finishedSegments::add);
-            currentWriter = new FileSegmentWriter<>(serializer, pathGenerator.get());
-            currentWriter.addRecord(record);
-        }
+    public FileSystem getFileSystem() {
+        return fileSystem;
     }
 
-    /** Finishes adding records and closes resources occupied for adding records. */
-    private void finish() throws IOException {
-        if (currentWriter == null) {
-            return;
-        }
-
-        currentWriter.finish().ifPresent(finishedSegments::add);
-        currentWriter = null;
+    @Nullable
+    public Tuple2<Integer, Integer> getReaderPosition() {
+        return readerPosition;
     }
 
-    /** Cleans up all previously added records. */
-    public void cleanup() throws IOException {
-        finishCurrentSegmentIfAny();
-        for (Segment segment : finishedSegments) {
-            if (segment.isOnDisk()) {
-                fileSystem.delete(segment.getPath(), false);
-            }
-            if (segment.isCached()) {
-                segmentPool.returnAll(segment.getCache());
-            }
-        }
-        finishedSegments.clear();
-    }
-
-    private void finishCurrentSegmentIfAny() throws IOException {
-        if (currentWriter == null || currentWriter.getCount() == 0) {
-            return;
-        }
-
-        currentWriter.finish().ifPresent(finishedSegments::add);
-        currentWriter = createSegmentWriter();
-    }
-
-    @Override
-    public DataCacheIterator<T> iterator() {
-        try {
-            finish();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        return new DataCacheIterator<>(serializer, finishedSegments);
+    public List<Segment> getSegments() {
+        return segments;
     }
 
     /** Writes the information about this data cache to an output stream. */
     public void writeTo(OutputStream outputStream) throws IOException {
-        finishCurrentSegmentIfAny();
         try (DataOutputStream dos =
                 new DataOutputStream(new NonClosingOutputStreamDecorator(outputStream))) {
             dos.writeInt(CURRENT_VERSION);
+            dos.writeBoolean(readerPosition != null);
+            if (readerPosition != null) {
+                dos.writeInt(readerPosition.f0);
+                dos.writeInt(readerPosition.f1);
+            }
 
             dos.writeBoolean(fileSystem.isDistributedFS());
-            for (Segment segment : finishedSegments) {
-                persistSegmentToDisk(segment);
-            }
             if (fileSystem.isDistributedFS()) {
                 // We only need to record the segments itself
-                serializeSegments(finishedSegments, dos);
+                serializeSegments(segments, dos);
             } else {
                 // We have to copy the whole streams.
-                dos.writeInt(finishedSegments.size());
-                for (Segment segment : finishedSegments) {
+                dos.writeInt(segments.size());
+                for (Segment segment : segments) {
                     dos.writeInt(segment.getCount());
                     dos.writeLong(segment.getFsSize());
                     try (FSDataInputStream inputStream = fileSystem.open(segment.getPath())) {
@@ -196,16 +126,16 @@ public class DataCache<T> implements Iterable<T> {
             checkState(
                     version == CURRENT_VERSION,
                     "Currently only support version " + CURRENT_VERSION);
+            parseReaderPosition(dis);
 
             boolean isDistributedFS = dis.readBoolean();
             if (isDistributedFS) {
                 List<Segment> segments = deserializeSegments(dis);
 
-                DataCacheIterator<T> dataCacheIterator =
-                        new DataCacheIterator<>(serializer, segments);
+                DataCacheReader<T> dataCacheReader = new DataCacheReader<>(serializer, segments);
 
-                while (dataCacheIterator.hasNext()) {
-                    T t = dataCacheIterator.next();
+                while (dataCacheReader.hasNext()) {
+                    T t = dataCacheReader.next();
                     feedbackConsumer.processFeedback(t);
                 }
             } else {
@@ -223,21 +153,10 @@ public class DataCache<T> implements Iterable<T> {
     }
 
     /** Recovers a data cache instance from the input stream. */
-    public static <T> DataCache<T> recover(
+    public static DataCacheSnapshot recover(
             InputStream inputStream,
-            TypeSerializer<T> serializer,
             FileSystem fileSystem,
             SupplierWithException<Path, IOException> pathGenerator)
-            throws IOException {
-        return recover(inputStream, serializer, fileSystem, pathGenerator, null);
-    }
-
-    public static <T> DataCache<T> recover(
-            InputStream inputStream,
-            TypeSerializer<T> serializer,
-            FileSystem fileSystem,
-            SupplierWithException<Path, IOException> pathGenerator,
-            MemorySegmentPool memoryManager)
             throws IOException {
         try (DataInputStream dis =
                 new DataInputStream(new NonClosingInputStreamDecorator(inputStream))) {
@@ -245,6 +164,7 @@ public class DataCache<T> implements Iterable<T> {
             checkState(
                     version == CURRENT_VERSION,
                     "Currently only support version " + CURRENT_VERSION);
+            Tuple2<Integer, Integer> readerPosition = parseReaderPosition(dis);
 
             boolean isDistributedFS = dis.readBoolean();
             checkState(
@@ -275,19 +195,43 @@ public class DataCache<T> implements Iterable<T> {
                 }
             }
 
-            return new DataCache<>(serializer, fileSystem, pathGenerator, memoryManager, segments);
+            return new DataCacheSnapshot(fileSystem, readerPosition, segments);
         }
     }
 
-    private SegmentWriter<T> createSegmentWriter() throws IOException {
-        if (segmentPool != null) {
+    public <T> void tryCacheToMemory(TypeSerializer<T> serializer, MemorySegmentPool segmentPool)
+            throws IOException {
+        Preconditions.checkNotNull(segmentPool);
+        for (Segment segment : segments) {
+            if (segment.isCached()) {
+                continue;
+            }
+
+            SegmentReader<T> reader = new FileSegmentReader<>(serializer, segment, 0);
+            SegmentWriter<T> writer;
             try {
-                return new MemorySegmentWriter<>(serializer, pathGenerator.get(), segmentPool, 0L);
+                writer =
+                        new MemorySegmentWriter<>(
+                                serializer, segment.getPath(), segmentPool, segment.getFsSize());
+                while (reader.hasNext()) {
+                    writer.addRecord(reader.next());
+                }
+                writer.finish().ifPresent(x -> segment.setCache(x.getCache()));
             } catch (IOException ignored) {
-                // ignore MemoryAllocationException.
+                // Ignore exception if there is no enough memory space for cache.
             }
         }
-        return new FileSegmentWriter<>(serializer, pathGenerator.get());
+    }
+
+    private static Tuple2<Integer, Integer> parseReaderPosition(DataInputStream dataInputStream)
+            throws IOException {
+        Tuple2<Integer, Integer> readerPosition = null;
+        boolean hasReaderPosition = dataInputStream.readBoolean();
+        if (hasReaderPosition) {
+            readerPosition = new Tuple2<>(dataInputStream.readInt(), dataInputStream.readInt());
+        }
+
+        return readerPosition;
     }
 
     private static void serializeSegments(List<Segment> segments, DataOutputStream dataOutputStream)
@@ -312,38 +256,5 @@ public class DataCache<T> implements Iterable<T> {
                             dataInputStream.readLong()));
         }
         return segments;
-    }
-
-    private void persistSegmentToDisk(Segment segment) throws IOException {
-        if (segment.isOnDisk()) {
-            return;
-        }
-
-        SegmentReader<T> reader = new MemorySegmentReader<>(serializer, segment, 0);
-        SegmentWriter<T> writer = new FileSegmentWriter<>(serializer, pathGenerator.get());
-        while (reader.hasNext()) {
-            writer.addRecord(reader.next());
-        }
-        writer.finish().ifPresent(x -> segment.setDiskInfo(x.getFsSize()));
-    }
-
-    private void tryCacheSegmentToMemory(Segment segment) throws IOException {
-        if (segment.isCached() || segmentPool == null) {
-            return;
-        }
-
-        SegmentReader<T> reader = new FileSegmentReader<>(serializer, segment, 0);
-        SegmentWriter<T> writer;
-        try {
-            writer =
-                    new MemorySegmentWriter<>(
-                            serializer, pathGenerator.get(), segmentPool, segment.getFsSize());
-            while (reader.hasNext()) {
-                writer.addRecord(reader.next());
-            }
-            writer.finish().ifPresent(x -> segment.setCache(x.getCache()));
-        } catch (IOException ignored) {
-            // Ignore exception if there is no enough memory space for cache.
-        }
     }
 }

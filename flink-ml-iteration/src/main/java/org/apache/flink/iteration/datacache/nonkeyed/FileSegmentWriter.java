@@ -59,7 +59,7 @@ class FileSegmentWriter<T> implements SegmentWriter<T> {
 
     @Override
     public boolean addRecord(T record) throws IOException {
-        if (outputStream.getPos() >= DataCache.MAX_SEGMENT_SIZE) {
+        if (outputStream.getPos() >= DataCacheWriter.MAX_SEGMENT_SIZE) {
             return false;
         }
         serializer.serialize(record, outputView);

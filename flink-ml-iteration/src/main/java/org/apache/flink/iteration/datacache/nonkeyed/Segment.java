@@ -23,6 +23,7 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.MemorySegment;
 
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -86,5 +87,31 @@ public class Segment {
 
     List<MemorySegment> getCache() {
         return checkNotNull(cache);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+
+        if (!(o instanceof Segment)) {
+            return false;
+        }
+
+        Segment segment = (Segment) o;
+        return count == segment.count
+                && fsSize == segment.fsSize
+                && Objects.equals(path, segment.path);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(path, count, fsSize);
+    }
+
+    @Override
+    public String toString() {
+        return "Segment{" + "path=" + path + ", count=" + count + ", fsSize=" + fsSize + '}';
     }
 }

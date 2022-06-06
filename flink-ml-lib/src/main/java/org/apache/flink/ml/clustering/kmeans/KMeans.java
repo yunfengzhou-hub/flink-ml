@@ -38,7 +38,10 @@ import org.apache.flink.iteration.IterationConfig;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.Iterations;
 import org.apache.flink.iteration.ReplayableDataStreamList;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheReader;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheSnapshot;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheWriter;
+import org.apache.flink.iteration.datacache.nonkeyed.Segment;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.iteration.operator.OperatorUtils;
 import org.apache.flink.ml.api.Estimator;
@@ -57,6 +60,7 @@ import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StatePartitionStreamProvider;
+import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.functions.windowing.AllWindowFunction;
 import org.apache.flink.streaming.api.graph.StreamConfig;
@@ -267,14 +271,13 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                             DenseVector, DenseVector[], Tuple2<Integer, DenseVector>>,
                     IterationListener<Tuple2<Integer, DenseVector>> {
         private final DistanceMeasure distanceMeasure;
-        private final DenseVectorSerializer serializer = new DenseVectorSerializer();
         private ListState<DenseVector[]> centroidsState;
         private DenseVector[] centroids;
 
         private Path basePath;
         private StreamConfig config;
         private MemorySegmentPool segmentPool;
-        private DataCache<DenseVector> dataCache;
+        private DataCacheWriter<DenseVector> dataCacheWriter;
 
         public SelectNearestCentroidOperator(DistanceMeasure distanceMeasure) {
             super();
@@ -288,6 +291,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                 Output<StreamRecord<Tuple2<Integer, DenseVector>>> output) {
             super.setup(containingTask, config, output);
 
+            MemoryManager memoryManager = getContainingTask().getEnvironment().getMemoryManager();
             double fraction =
                     getContainingTask()
                             .getConfiguration()
@@ -297,9 +301,6 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
                                             .getTaskManagerRuntimeInfo()
                                             .getConfiguration(),
                                     getRuntimeContext().getUserCodeClassLoader());
-
-            MemoryManager memoryManager = getContainingTask().getEnvironment().getMemoryManager();
-
             segmentPool =
                     new LazyMemorySegmentPool(
                             getContainingTask(),
@@ -334,30 +335,48 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             Preconditions.checkState(
                     inputs.size() < 2, "The input from raw operator state should be one or zero.");
 
+            List<Segment> priorFinishedSegments = new ArrayList<>();
             if (inputs.size() > 0) {
                 InputStream inputStream = inputs.get(0).getStream();
-                dataCache =
-                        DataCache.recover(
+
+                DataCacheSnapshot dataCacheSnapshot =
+                        DataCacheSnapshot.recover(
                                 inputStream,
-                                serializer,
                                 basePath.getFileSystem(),
                                 OperatorUtils.createDataCacheFileGenerator(
-                                        basePath, "cache", config.getOperatorID()),
-                                segmentPool);
-            } else {
-                dataCache =
-                        new DataCache<>(
-                                serializer,
-                                basePath.getFileSystem(),
-                                OperatorUtils.createDataCacheFileGenerator(
-                                        basePath, "cache", config.getOperatorID()),
-                                segmentPool);
+                                        basePath, "cache", config.getOperatorID()));
+
+                dataCacheSnapshot.tryCacheToMemory(new DenseVectorSerializer(), segmentPool);
+
+                priorFinishedSegments = dataCacheSnapshot.getSegments();
             }
+
+            dataCacheWriter =
+                    new DataCacheWriter<>(
+                            new DenseVectorSerializer(),
+                            basePath.getFileSystem(),
+                            OperatorUtils.createDataCacheFileGenerator(
+                                    basePath, "cache", config.getOperatorID()),
+                            segmentPool,
+                            priorFinishedSegments);
+        }
+
+        @Override
+        public void snapshotState(StateSnapshotContext context) throws Exception {
+            super.snapshotState(context);
+
+            dataCacheWriter.finishCurrentSegmentIfAny();
+            dataCacheWriter.persistToDisk();
+            DataCacheSnapshot dataCacheSnapshot =
+                    new DataCacheSnapshot(
+                            basePath.getFileSystem(), null, dataCacheWriter.getFinishedSegments());
+            context.getRawOperatorStateOutput().startNewPartition();
+            dataCacheSnapshot.writeTo(context.getRawOperatorStateOutput());
         }
 
         @Override
         public void processElement1(StreamRecord<DenseVector> streamRecord) throws Exception {
-            dataCache.addRecord(streamRecord.getValue());
+            dataCacheWriter.addRecord(streamRecord.getValue());
         }
 
         @Override
@@ -369,8 +388,20 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
 
         @Override
         public void onEpochWatermarkIncremented(
-                int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out) {
-            for (DenseVector point : dataCache) {
+                int epochWatermark, Context context, Collector<Tuple2<Integer, DenseVector>> out)
+                throws IOException {
+            dataCacheWriter.finishCurrentSegmentIfAny();
+            List<Segment> pendingSegments = dataCacheWriter.getFinishedSegments();
+            if (pendingSegments.size() == 0) {
+                centroids = null;
+                centroidsState.clear();
+                return;
+            }
+            DataCacheReader<DenseVector> dataCacheReader =
+                    new DataCacheReader<>(new DenseVectorSerializer(), pendingSegments);
+
+            while (dataCacheReader.hasNext()) {
+                DenseVector point = dataCacheReader.next();
                 int closestCentroidId = findClosestCentroidId(centroids, point, distanceMeasure);
                 output.collect(new StreamRecord<>(Tuple2.of(closestCentroidId, point)));
             }
@@ -383,7 +414,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         public void onIterationTerminated(
                 Context context, Collector<Tuple2<Integer, DenseVector>> collector)
                 throws IOException {
-            dataCache.cleanup();
+            dataCacheWriter.cleanup();
             centroids = null;
             centroidsState.clear();
         }

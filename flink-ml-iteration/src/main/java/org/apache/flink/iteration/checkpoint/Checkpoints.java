@@ -22,7 +22,8 @@ import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.iteration.datacache.nonkeyed.DataCache;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheSnapshot;
+import org.apache.flink.iteration.datacache.nonkeyed.DataCacheWriter;
 import org.apache.flink.runtime.state.OperatorStateCheckpointOutputStream;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.ResourceGuard;
@@ -99,12 +100,13 @@ public class Checkpoints<T> implements AutoCloseable {
                         checkpointId,
                         ignored -> {
                             try {
-                                DataCache<T> dataCache =
-                                        new DataCache<>(typeSerializer, fileSystem, pathSupplier);
+                                DataCacheWriter<T> dataCacheWriter =
+                                        new DataCacheWriter<>(
+                                                typeSerializer, fileSystem, pathSupplier);
                                 ResourceGuard.Lease snapshotLease = outputStream.acquireLease();
                                 return new Tuple2<>(
                                         new PendingCheckpoint(
-                                                dataCache, outputStream, snapshotLease),
+                                                dataCacheWriter, outputStream, snapshotLease),
                                         false);
                             } catch (IOException e) {
                                 throw new FlinkRuntimeException(e);
@@ -134,7 +136,7 @@ public class Checkpoints<T> implements AutoCloseable {
 
     public void append(T element) throws IOException {
         for (PendingCheckpoint pendingCheckpoint : sortedUncompletedCheckpoints.values()) {
-            pendingCheckpoint.dataCache.addRecord(element);
+            pendingCheckpoint.dataCacheWriter.addRecord(element);
         }
     }
 
@@ -150,13 +152,20 @@ public class Checkpoints<T> implements AutoCloseable {
                 .forEach(
                         pendingCheckpoint -> {
                             try {
+                                pendingCheckpoint.dataCacheWriter.finish();
+                                pendingCheckpoint.dataCacheWriter.persistToDisk();
+                                DataCacheSnapshot snapshot =
+                                        new DataCacheSnapshot(
+                                                fileSystem,
+                                                null,
+                                                pendingCheckpoint.dataCacheWriter
+                                                        .getFinishedSegments());
                                 pendingCheckpoint.checkpointOutputStream.startNewPartition();
-                                pendingCheckpoint.dataCache.writeTo(
-                                        pendingCheckpoint.checkpointOutputStream);
+                                snapshot.writeTo(pendingCheckpoint.checkpointOutputStream);
 
                                 // Directly cleanup all the files since we are using the local fs.
                                 // TODO: support of the remote fs.
-                                pendingCheckpoint.dataCache.cleanup();
+                                pendingCheckpoint.dataCacheWriter.cleanup();
                             } catch (Exception e) {
                                 LOG.error("Failed to commit checkpoint until " + checkpointId, e);
                                 throw new FlinkRuntimeException(e);
@@ -174,7 +183,7 @@ public class Checkpoints<T> implements AutoCloseable {
                 (checkpointId, pendingCheckpoint) -> {
                     pendingCheckpoint.snapshotLease.close();
                     try {
-                        pendingCheckpoint.dataCache.cleanup();
+                        pendingCheckpoint.dataCacheWriter.cleanup();
                     } catch (IOException e) {
                         LOG.error("Failed to cleanup " + checkpointId, e);
                     }
@@ -185,17 +194,17 @@ public class Checkpoints<T> implements AutoCloseable {
 
     private class PendingCheckpoint {
 
-        final DataCache<T> dataCache;
+        final DataCacheWriter<T> dataCacheWriter;
 
         final OperatorStateCheckpointOutputStream checkpointOutputStream;
 
         final ResourceGuard.Lease snapshotLease;
 
         public PendingCheckpoint(
-                DataCache<T> dataCache,
+                DataCacheWriter<T> dataCacheWriter,
                 OperatorStateCheckpointOutputStream checkpointOutputStream,
                 ResourceGuard.Lease snapshotLease) {
-            this.dataCache = dataCache;
+            this.dataCacheWriter = dataCacheWriter;
             this.checkpointOutputStream = checkpointOutputStream;
             this.snapshotLease = snapshotLease;
         }

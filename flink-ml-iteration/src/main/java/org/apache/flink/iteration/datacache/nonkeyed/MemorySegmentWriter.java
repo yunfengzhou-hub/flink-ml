@@ -68,7 +68,7 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
     @Override
     public boolean addRecord(T record) throws IOException {
-        if (outputStream.getPos() >= DataCache.MAX_SEGMENT_SIZE) {
+        if (outputStream.getPos() >= DataCacheWriter.MAX_SEGMENT_SIZE) {
             return false;
         }
         try {
