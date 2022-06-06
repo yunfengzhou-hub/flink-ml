@@ -19,36 +19,72 @@
 package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.core.memory.MemorySegment;
+
+import java.util.List;
+
+import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /** A segment contains the information about a cache unit. */
 @Internal
-class Segment {
+public class Segment {
+    private final Path path;
 
-    private FileSegment fileSegment;
+    private final int count;
 
-    private MemorySegment memorySegment;
+    private long fsSize = -1L;
 
-    Segment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
+    private List<MemorySegment> cache;
+
+    Segment(Path path, int count, long fsSize) {
+        this.path = checkNotNull(path);
+        checkArgument(count > 0);
+        this.count = count;
+        checkArgument(fsSize > 0);
+        this.fsSize = fsSize;
     }
 
-    Segment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
+    Segment(Path path, int count, List<MemorySegment> cache) {
+        this.path = checkNotNull(path);
+        checkArgument(count > 0);
+        this.count = count;
+        this.cache = checkNotNull(cache);
     }
 
-    void setFileSegment(FileSegment fileSegment) {
-        this.fileSegment = fileSegment;
+    void setCache(List<MemorySegment> cache) {
+        this.cache = checkNotNull(cache);
     }
 
-    FileSegment getFileSegment() {
-        return fileSegment;
+    void setDiskInfo(long fsSize) {
+        checkArgument(fsSize > 0);
+        this.fsSize = fsSize;
     }
 
-    void setMemorySegment(MemorySegment memorySegment) {
-        this.memorySegment = memorySegment;
+    boolean isOnDisk() {
+        return fsSize > 0;
     }
 
-    MemorySegment getMemorySegment() {
-        return memorySegment;
+    boolean isCached() {
+        return cache != null;
+    }
+
+    Path getPath() {
+        return path;
+    }
+
+    int getCount() {
+        return count;
+    }
+
+    long getFsSize() {
+        checkState(fsSize > 0);
+        return fsSize;
+    }
+
+    List<MemorySegment> getCache() {
+        return checkNotNull(cache);
     }
 }

@@ -88,7 +88,7 @@ public class DataCacheIterator<T> implements Iterator<T> {
     private Tuple2<Integer, Integer> getReaderPosition(int pos) throws Exception {
         int segmentIndex = 0;
         do {
-            int segmentCount = getSegmentCount(segments.get(segmentIndex));
+            int segmentCount = segments.get(segmentIndex).getCount();
             if (segmentCount <= pos) {
                 pos -= segmentCount;
                 segmentIndex++;
@@ -103,14 +103,6 @@ public class DataCacheIterator<T> implements Iterator<T> {
                         + ": value larger than total number of records in data cache.");
     }
 
-    private static int getSegmentCount(Segment segment) {
-        if (segment.getMemorySegment() != null) {
-            return segment.getMemorySegment().getCount();
-        } else {
-            return segment.getFileSegment().getCount();
-        }
-    }
-
     private void createSegmentReader(int index, int startOffset) {
         try {
             if (index >= segments.size()) {
@@ -119,7 +111,7 @@ public class DataCacheIterator<T> implements Iterator<T> {
             }
 
             Segment segment = segments.get(segmentIndex);
-            if (segment.getMemorySegment() != null) {
+            if (segment.isCached()) {
                 currentReader = new MemorySegmentReader<>(serializer, segment, startOffset);
             } else {
                 currentReader = new FileSegmentReader<>(serializer, segment, startOffset);

@@ -34,6 +34,8 @@ import org.apache.flink.util.function.SupplierWithException;
 
 import org.apache.commons.io.input.BoundedInputStream;
 
+import javax.annotation.Nullable;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -49,6 +51,8 @@ import static org.apache.flink.util.Preconditions.checkState;
 @Internal
 public class DataCache<T> implements Iterable<T> {
 
+    static final long MAX_SEGMENT_SIZE = 1L << 30; // 1GB
+
     private static final int CURRENT_VERSION = 1;
 
     private final TypeSerializer<T> serializer;
@@ -57,7 +61,7 @@ public class DataCache<T> implements Iterable<T> {
 
     private final SupplierWithException<Path, IOException> pathGenerator;
 
-    private final MemorySegmentPool segmentPool;
+    @Nullable private final MemorySegmentPool segmentPool;
 
     private final List<Segment> finishedSegments;
 
@@ -84,7 +88,7 @@ public class DataCache<T> implements Iterable<T> {
             TypeSerializer<T> serializer,
             FileSystem fileSystem,
             SupplierWithException<Path, IOException> pathGenerator,
-            MemorySegmentPool segmentPool,
+            @Nullable MemorySegmentPool segmentPool,
             List<Segment> finishedSegments)
             throws IOException {
         this.fileSystem = fileSystem;
@@ -100,9 +104,7 @@ public class DataCache<T> implements Iterable<T> {
     }
 
     public void addRecord(T record) throws IOException {
-        try {
-            currentWriter.addRecord(record);
-        } catch (SegmentNoVacancyException e) {
+        if (!currentWriter.addRecord(record)) {
             currentWriter.finish().ifPresent(finishedSegments::add);
             currentWriter = new FileSegmentWriter<>(serializer, pathGenerator.get());
             currentWriter.addRecord(record);
@@ -110,7 +112,7 @@ public class DataCache<T> implements Iterable<T> {
     }
 
     /** Finishes adding records and closes resources occupied for adding records. */
-    public void finish() throws IOException {
+    private void finish() throws IOException {
         if (currentWriter == null) {
             return;
         }
@@ -123,11 +125,11 @@ public class DataCache<T> implements Iterable<T> {
     public void cleanup() throws IOException {
         finishCurrentSegmentIfAny();
         for (Segment segment : finishedSegments) {
-            if (segment.getFileSegment() != null) {
-                fileSystem.delete(segment.getFileSegment().getPath(), false);
+            if (segment.isOnDisk()) {
+                fileSystem.delete(segment.getPath(), false);
             }
-            if (segment.getMemorySegment() != null) {
-                segmentPool.returnAll(segment.getMemorySegment().getCache());
+            if (segment.isCached()) {
+                segmentPool.returnAll(segment.getCache());
             }
         }
         finishedSegments.clear();
@@ -145,7 +147,7 @@ public class DataCache<T> implements Iterable<T> {
     @Override
     public DataCacheIterator<T> iterator() {
         try {
-            finishCurrentSegmentIfAny();
+            finish();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -170,11 +172,9 @@ public class DataCache<T> implements Iterable<T> {
                 // We have to copy the whole streams.
                 dos.writeInt(finishedSegments.size());
                 for (Segment segment : finishedSegments) {
-                    FileSegment fileSegment = segment.getFileSegment();
-
-                    dos.writeInt(fileSegment.getCount());
-                    dos.writeLong(fileSegment.getSize());
-                    try (FSDataInputStream inputStream = fileSystem.open(fileSegment.getPath())) {
+                    dos.writeInt(segment.getCount());
+                    dos.writeLong(segment.getFsSize());
+                    try (FSDataInputStream inputStream = fileSystem.open(segment.getPath())) {
                         IOUtils.copyBytes(inputStream, outputStream, false);
                     }
                 }
@@ -271,7 +271,7 @@ public class DataCache<T> implements Iterable<T> {
                         IOUtils.copyBytes(boundedInputStream, outputStream, false);
                         boundedInputStream.close();
                     }
-                    segments.add(new Segment(new FileSegment(path, count, fsSize)));
+                    segments.add(new Segment(path, count, fsSize));
                 }
             }
 
@@ -282,8 +282,8 @@ public class DataCache<T> implements Iterable<T> {
     private SegmentWriter<T> createSegmentWriter() throws IOException {
         if (segmentPool != null) {
             try {
-                return new MemorySegmentWriter<>(serializer, segmentPool, 0L);
-            } catch (SegmentNoVacancyException e) {
+                return new MemorySegmentWriter<>(serializer, pathGenerator.get(), segmentPool, 0L);
+            } catch (IOException ignored) {
                 // ignore MemoryAllocationException.
             }
         }
@@ -294,10 +294,9 @@ public class DataCache<T> implements Iterable<T> {
             throws IOException {
         dataOutputStream.writeInt(segments.size());
         for (Segment segment : segments) {
-            FileSegment fileSegment = segment.getFileSegment();
-            dataOutputStream.writeUTF(fileSegment.getPath().toString());
-            dataOutputStream.writeInt(fileSegment.getCount());
-            dataOutputStream.writeLong(fileSegment.getSize());
+            dataOutputStream.writeUTF(segment.getPath().toString());
+            dataOutputStream.writeInt(segment.getCount());
+            dataOutputStream.writeLong(segment.getFsSize());
         }
     }
 
@@ -308,16 +307,15 @@ public class DataCache<T> implements Iterable<T> {
         for (int i = 0; i < numberOfSegments; ++i) {
             segments.add(
                     new Segment(
-                            new FileSegment(
-                                    new Path(dataInputStream.readUTF()),
-                                    dataInputStream.readInt(),
-                                    dataInputStream.readLong())));
+                            new Path(dataInputStream.readUTF()),
+                            dataInputStream.readInt(),
+                            dataInputStream.readLong()));
         }
         return segments;
     }
 
     private void persistSegmentToDisk(Segment segment) throws IOException {
-        if (segment.getFileSegment() != null) {
+        if (segment.isOnDisk()) {
             return;
         }
 
@@ -326,11 +324,11 @@ public class DataCache<T> implements Iterable<T> {
         while (reader.hasNext()) {
             writer.addRecord(reader.next());
         }
-        writer.finish().ifPresent(x -> segment.setFileSegment(x.getFileSegment()));
+        writer.finish().ifPresent(x -> segment.setDiskInfo(x.getFsSize()));
     }
 
     private void tryCacheSegmentToMemory(Segment segment) throws IOException {
-        if (segment.getMemorySegment() != null || segmentPool == null) {
+        if (segment.isCached() || segmentPool == null) {
             return;
         }
 
@@ -339,12 +337,12 @@ public class DataCache<T> implements Iterable<T> {
         try {
             writer =
                     new MemorySegmentWriter<>(
-                            serializer, segmentPool, segment.getFileSegment().getSize());
+                            serializer, pathGenerator.get(), segmentPool, segment.getFsSize());
             while (reader.hasNext()) {
                 writer.addRecord(reader.next());
             }
-            writer.finish().ifPresent(x -> segment.setFileSegment(x.getFileSegment()));
-        } catch (SegmentNoVacancyException ignored) {
+            writer.finish().ifPresent(x -> segment.setCache(x.getCache()));
+        } catch (IOException ignored) {
             // Ignore exception if there is no enough memory space for cache.
         }
     }

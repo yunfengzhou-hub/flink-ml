@@ -20,6 +20,7 @@ package org.apache.flink.iteration.datacache.nonkeyed;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
@@ -41,6 +42,8 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
     private final TypeSerializer<T> serializer;
 
+    private final Path path;
+
     private final MemorySegmentPool segmentPool;
 
     private final ManagedMemoryOutputStream outputStream;
@@ -50,9 +53,13 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
     private int count;
 
     MemorySegmentWriter(
-            TypeSerializer<T> serializer, MemorySegmentPool segmentPool, long expectedSize)
-            throws SegmentNoVacancyException {
+            TypeSerializer<T> serializer,
+            Path path,
+            MemorySegmentPool segmentPool,
+            long expectedSize)
+            throws IOException {
         this.serializer = serializer;
+        this.path = path;
         this.segmentPool = segmentPool;
         this.outputStream = new ManagedMemoryOutputStream(segmentPool, expectedSize);
         this.outputView = new DataOutputViewStreamWrapper(outputStream);
@@ -60,9 +67,20 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
     }
 
     @Override
-    public void addRecord(T record) throws IOException {
-        serializer.serialize(record, outputView);
-        count++;
+    public boolean addRecord(T record) throws IOException {
+        if (outputStream.getPos() >= DataCache.MAX_SEGMENT_SIZE) {
+            return false;
+        }
+        try {
+            serializer.serialize(record, outputView);
+            count++;
+            return true;
+        } catch (IOException e) {
+            if (e.getCause() instanceof MemoryAllocationException) {
+                return false;
+            }
+            throw e;
+        }
     }
 
     @Override
@@ -73,10 +91,7 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
     @Override
     public Optional<Segment> finish() throws IOException {
         if (count > 0) {
-            return Optional.of(
-                    new Segment(
-                            new org.apache.flink.iteration.datacache.nonkeyed.MemorySegment(
-                                    outputStream.getSegments(), count)));
+            return Optional.of(new Segment(path, count, outputStream.getSegments()));
         } else {
             segmentPool.returnAll(outputStream.getSegments());
             return Optional.empty();
@@ -97,7 +112,7 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
         private long globalOffset;
 
         public ManagedMemoryOutputStream(MemorySegmentPool segmentPool, long expectedSize)
-                throws SegmentNoVacancyException {
+                throws IOException {
             this.segmentPool = segmentPool;
             this.pageSize = segmentPool.pageSize();
             this.segmentIndex = 0;
@@ -105,6 +120,10 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
 
             Preconditions.checkArgument(expectedSize >= 0);
             ensureCapacity(Math.max(expectedSize, 1L));
+        }
+
+        public long getPos() {
+            return globalOffset;
         }
 
         public List<MemorySegment> getSegments() {
@@ -122,7 +141,7 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
             writeRecursive(b, off, len);
         }
 
-        private void ensureCapacity(long capacity) throws SegmentNoVacancyException {
+        private void ensureCapacity(long capacity) throws IOException {
             Preconditions.checkArgument(capacity > 0);
             int required =
                     (int) (capacity % pageSize == 0 ? capacity / pageSize : capacity / pageSize + 1)
@@ -133,7 +152,7 @@ class MemorySegmentWriter<T> implements SegmentWriter<T> {
                 MemorySegment memorySegment = segmentPool.nextSegment();
                 if (memorySegment == null) {
                     segmentPool.returnAll(allocatedSegments);
-                    throw new SegmentNoVacancyException(new MemoryAllocationException());
+                    throw new IOException(new MemoryAllocationException());
                 }
                 allocatedSegments.add(memorySegment);
             }

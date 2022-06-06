@@ -43,13 +43,12 @@ class FileSegmentReader<T> implements SegmentReader<T> {
 
     FileSegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
             throws IOException {
-        FileSegment fileSegment = segment.getFileSegment();
         this.serializer = serializer;
-        Path path = fileSegment.getPath();
+        Path path = segment.getPath();
         this.inputStream = path.getFileSystem().open(path);
         BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream);
         this.inputView = new DataInputViewStreamWrapper(bufferedInputStream);
-        this.totalCount = fileSegment.getCount();
+        this.totalCount = segment.getCount();
         this.offset = 0;
 
         for (int i = 0; i < startOffset; i++) {

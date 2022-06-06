@@ -34,8 +34,6 @@ import java.util.Optional;
 @Internal
 class FileSegmentWriter<T> implements SegmentWriter<T> {
 
-    private static final long FILE_SIZE_LIMIT = 1L << 30; // 1GB
-
     private final TypeSerializer<T> serializer;
 
     private final Path path;
@@ -60,12 +58,13 @@ class FileSegmentWriter<T> implements SegmentWriter<T> {
     }
 
     @Override
-    public void addRecord(T record) throws IOException {
-        if (outputStream.getPos() >= FILE_SIZE_LIMIT) {
-            throw new SegmentNoVacancyException();
+    public boolean addRecord(T record) throws IOException {
+        if (outputStream.getPos() >= DataCache.MAX_SEGMENT_SIZE) {
+            return false;
         }
         serializer.serialize(record, outputView);
         count++;
+        return true;
     }
 
     @Override
@@ -81,7 +80,7 @@ class FileSegmentWriter<T> implements SegmentWriter<T> {
         this.outputStream.close();
 
         if (count > 0) {
-            Segment segment = new Segment(new FileSegment(path, count, size));
+            Segment segment = new Segment(path, count, size);
             return Optional.of(segment);
         } else {
             // If there are no records, we tend to directly delete this file

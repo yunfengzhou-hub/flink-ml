@@ -124,7 +124,6 @@ public class DataCacheSnapshotTest extends TestLogger {
         for (int i = 0; i < numRecords; ++i) {
             dataCache.addRecord(nextNumber++);
         }
-        dataCache.finish();
         return dataCache;
     }
 

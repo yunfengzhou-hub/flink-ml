@@ -108,7 +108,6 @@ public class DataCacheWriteReadTest extends TestLogger {
                         fileSystem,
                         () -> new Path(basePath, "test." + UUID.randomUUID()));
 
-        dataCache.finish();
         assertFalse(dataCache.iterator().hasNext());
     }
 
@@ -125,7 +124,6 @@ public class DataCacheWriteReadTest extends TestLogger {
             dataCache.addRecord(i);
         }
 
-        dataCache.finish();
         List<Integer> read = new ArrayList<>();
         dataCache.iterator().forEachRemaining(read::add);
 
@@ -145,7 +143,6 @@ public class DataCacheWriteReadTest extends TestLogger {
             dataCache.addRecord(i);
         }
 
-        dataCache.finish();
         DataCacheIterator<Integer> iterator = dataCache.iterator();
 
         for (int i = 0; i < 50; i++) {
@@ -168,7 +165,6 @@ public class DataCacheWriteReadTest extends TestLogger {
             dataCache.addRecord(i);
         }
 
-        dataCache.finish();
         DataCacheIterator<Integer> iterator = dataCache.iterator();
         iterator.setPos(50);
 
@@ -198,7 +194,6 @@ public class DataCacheWriteReadTest extends TestLogger {
             dataCache.addRecord(i);
         }
 
-        dataCache.finish();
         assertTrue(segmentPool.freePages() < pageNum);
         int freePages = segmentPool.freePages();
 
@@ -230,7 +225,6 @@ public class DataCacheWriteReadTest extends TestLogger {
             dataCache.addRecord(i);
         }
 
-        dataCache.finish();
         assertTrue(segmentPool.freePages() < pageNum);
         int freePages = segmentPool.freePages();
 

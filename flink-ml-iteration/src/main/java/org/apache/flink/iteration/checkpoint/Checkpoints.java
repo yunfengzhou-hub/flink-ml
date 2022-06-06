@@ -150,7 +150,6 @@ public class Checkpoints<T> implements AutoCloseable {
                 .forEach(
                         pendingCheckpoint -> {
                             try {
-                                pendingCheckpoint.dataCache.finish();
                                 pendingCheckpoint.checkpointOutputStream.startNewPartition();
                                 pendingCheckpoint.dataCache.writeTo(
                                         pendingCheckpoint.checkpointOutputStream);

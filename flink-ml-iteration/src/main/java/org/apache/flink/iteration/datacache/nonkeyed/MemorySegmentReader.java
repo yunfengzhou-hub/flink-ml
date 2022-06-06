@@ -44,13 +44,10 @@ class MemorySegmentReader<T> implements SegmentReader<T> {
 
     MemorySegmentReader(TypeSerializer<T> serializer, Segment segment, int startOffset)
             throws IOException {
-        org.apache.flink.iteration.datacache.nonkeyed.MemorySegment memorySegment =
-                segment.getMemorySegment();
-        ManagedMemoryInputStream inputStream =
-                new ManagedMemoryInputStream(memorySegment.getCache());
+        ManagedMemoryInputStream inputStream = new ManagedMemoryInputStream(segment.getCache());
         this.inputView = new DataInputViewStreamWrapper(inputStream);
         this.serializer = serializer;
-        this.totalCount = memorySegment.getCount();
+        this.totalCount = segment.getCount();
         this.count = 0;
 
         for (int ignored = 0; ignored < startOffset; ignored++) {

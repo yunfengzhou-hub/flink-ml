@@ -264,7 +264,6 @@ public class ReplayOperator<T> extends AbstractStreamOperator<IterationRecord<T>
             // No need to replay for the round 0, it is output directly.
             // TODO: free cached records when they will no longer be replayed, and enable caching
             // data in memory.
-            dataCache.finish();
             emitEpochWatermark(epochWatermark);
             return;
         } else if (epochWatermark == Integer.MAX_VALUE) {

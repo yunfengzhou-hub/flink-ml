@@ -27,7 +27,7 @@ import java.util.Optional;
 @Internal
 interface SegmentWriter<T> {
     /** Adds a record to the writer. */
-    void addRecord(T record) throws IOException;
+    boolean addRecord(T record) throws IOException;
 
     /** Gets the number of records added so far. */
     int getCount();
