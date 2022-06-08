@@ -20,6 +20,8 @@ package org.apache.flink.ml.clustering;
 
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.iteration.config.DataCacheStrategy;
+import org.apache.flink.iteration.config.IterationOptions;
 import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
@@ -37,7 +39,6 @@ import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
 
 import org.apache.commons.collections.CollectionUtils;
@@ -62,7 +63,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /** Tests {@link KMeans} and {@link KMeansModel}. */
-public class KMeansTest extends AbstractTestBase {
+public class KMeansTest {
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
     private static final List<DenseVector> DATA =
@@ -93,8 +94,10 @@ public class KMeansTest extends AbstractTestBase {
     public void before() {
         Configuration config = new Configuration();
         config.set(ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
+        config.set(IterationOptions.DATA_CACHE_STRATEGY, DataCacheStrategy.ON_HEAP_AND_DISK);
+        config.set(IterationOptions.DATA_CACHE_HEAP_MEMORY_FRACTION, 0.1);
         env = StreamExecutionEnvironment.getExecutionEnvironment(config);
-        env.setParallelism(4);
+        env.setParallelism(1);
         env.enableCheckpointing(100);
         env.setRestartStrategy(RestartStrategies.noRestart());
         tEnv = StreamTableEnvironment.create(env);

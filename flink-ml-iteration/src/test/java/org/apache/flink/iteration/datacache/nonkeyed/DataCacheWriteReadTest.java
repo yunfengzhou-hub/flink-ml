@@ -143,7 +143,75 @@ public class DataCacheWriteReadTest extends TestLogger {
     }
 
     @Test
-    public void testCacheInMemory() throws IOException {
+    public void testCacheInOnHeapMemory() throws IOException {
+        int numRecords = 10240;
+        long poolSize = numRecords * 5;
+
+        OnHeapMemoryPool onHeapMemoryPool = new OnHeapMemoryPool(poolSize);
+
+        DataCacheWriter<Integer> writer =
+                new DataCacheWriter<>(
+                        IntSerializer.INSTANCE,
+                        fileSystem,
+                        () -> new Path(basePath, "test_cache." + UUID.randomUUID()),
+                        onHeapMemoryPool);
+        for (int i = 0; i < numRecords; ++i) {
+            writer.addRecord(i);
+        }
+
+        List<Segment> segments = writer.finish();
+        assertTrue(onHeapMemoryPool.getMemoryUsed() < poolSize);
+        long memoryUsed = onHeapMemoryPool.getMemoryUsed();
+
+        for (int i = 0; i < 2; i++) {
+            DataCacheReader<Integer> reader =
+                    new DataCacheReader<>(IntSerializer.INSTANCE, segments);
+            List<Integer> read = new ArrayList<>();
+            while (reader.hasNext()) {
+                read.add(reader.next());
+            }
+
+            assertEquals(IntStream.range(0, numRecords).boxed().collect(Collectors.toList()), read);
+            assertEquals(memoryUsed, onHeapMemoryPool.getMemoryUsed());
+        }
+    }
+
+    @Test
+    public void testInsufficientOnHeapMemory() throws IOException {
+        int numRecords = 10240;
+        long poolSize = numRecords * 2;
+
+        OnHeapMemoryPool onHeapMemoryPool = new OnHeapMemoryPool(poolSize);
+
+        DataCacheWriter<Integer> writer =
+                new DataCacheWriter<>(
+                        IntSerializer.INSTANCE,
+                        fileSystem,
+                        () -> new Path(basePath, "test_cache." + UUID.randomUUID()),
+                        onHeapMemoryPool);
+        for (int i = 0; i < numRecords; ++i) {
+            writer.addRecord(i);
+        }
+
+        List<Segment> segments = writer.finish();
+        assertTrue(onHeapMemoryPool.getMemoryUsed() < poolSize);
+        long memoryUsed = onHeapMemoryPool.getMemoryUsed();
+
+        for (int i = 0; i < 2; i++) {
+            DataCacheReader<Integer> reader =
+                    new DataCacheReader<>(IntSerializer.INSTANCE, segments);
+            List<Integer> read = new ArrayList<>();
+            while (reader.hasNext()) {
+                read.add(reader.next());
+            }
+
+            assertEquals(IntStream.range(0, numRecords).boxed().collect(Collectors.toList()), read);
+            assertEquals(memoryUsed, onHeapMemoryPool.getMemoryUsed());
+        }
+    }
+
+    @Test
+    public void testCacheInOffHeapMemory() throws IOException {
         int numRecords = 10240;
         int pageSize = 4096;
         int pageNum = 64;
@@ -181,7 +249,7 @@ public class DataCacheWriteReadTest extends TestLogger {
     }
 
     @Test
-    public void testInsufficientMemoryForWriter() throws IOException {
+    public void testInsufficientOffHeapMemoryForWriter() throws IOException {
         int numRecords = 10240;
         int pageSize = 4096;
         int pageNum = 4;
@@ -219,7 +287,7 @@ public class DataCacheWriteReadTest extends TestLogger {
     }
 
     @Test
-    public void testInsufficientMemoryForReader() throws IOException {
+    public void testInsufficientOffHeapMemoryForReader() throws IOException {
         int numRecords = 10240;
         int pageSize = 4096;
         int pageNum = 4;
