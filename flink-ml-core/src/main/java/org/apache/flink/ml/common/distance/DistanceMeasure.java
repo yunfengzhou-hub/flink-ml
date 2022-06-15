@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.distance;
 
 import org.apache.flink.ml.linalg.Vector;
+import org.apache.flink.ml.linalg.VectorWithNorm;
 
 import java.io.Serializable;
 
@@ -41,4 +42,7 @@ public interface DistanceMeasure extends Serializable {
      * <p>Required: The two vectors should have the same dimension.
      */
     double distance(Vector v1, Vector v2);
+
+    /** Finds the index of the closest center to the given point. */
+    int findClosest(VectorWithNorm[] centroids, VectorWithNorm point);
 }

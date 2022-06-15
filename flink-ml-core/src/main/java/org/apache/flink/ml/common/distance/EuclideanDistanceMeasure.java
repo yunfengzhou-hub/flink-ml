@@ -18,7 +18,9 @@
 
 package org.apache.flink.ml.common.distance;
 
+import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.Vector;
+import org.apache.flink.ml.linalg.VectorWithNorm;
 import org.apache.flink.util.Preconditions;
 
 /** Interface for measuring the Euclidean distance between two vectors. */
@@ -44,5 +46,31 @@ public class EuclideanDistanceMeasure implements DistanceMeasure {
             squaredDistance += diff * diff;
         }
         return Math.sqrt(squaredDistance);
+    }
+
+    @Override
+    public int findClosest(VectorWithNorm[] centroids, VectorWithNorm point) {
+        double bestL2DistanceSquare = Double.POSITIVE_INFINITY;
+        int bestIndex = 0;
+        for (int i = 0; i < centroids.length; i++) {
+            VectorWithNorm centroid = centroids[i];
+
+            double lowerBoundSqrt = point.getL2Norm() - centroid.getL2Norm();
+            double lowerBound = lowerBoundSqrt * lowerBoundSqrt;
+            if (lowerBound >= bestL2DistanceSquare) {
+                continue;
+            }
+
+            double l2DistanceSquare =
+                    point.getL2Norm() * point.getL2Norm()
+                            + centroid.getL2Norm() * centroid.getL2Norm()
+                            - 2.0 * BLAS.dot(point, centroid);
+            if (l2DistanceSquare < bestL2DistanceSquare) {
+                bestL2DistanceSquare = l2DistanceSquare;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
     }
 }

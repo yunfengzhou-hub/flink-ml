@@ -27,6 +27,7 @@ import org.apache.flink.ml.common.broadcast.BroadcastUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
+import org.apache.flink.ml.linalg.DenseVectorWithNorm;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
@@ -111,7 +112,7 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
 
         private final int k;
 
-        private DenseVector[] centroids;
+        private DenseVectorWithNorm[] centroids;
 
         public PredictLabelFunction(
                 String broadcastModelKey,
@@ -131,10 +132,14 @@ public class KMeansModel implements Model<KMeansModel>, KMeansModelParams<KMeans
                         (KMeansModelData)
                                 getRuntimeContext().getBroadcastVariable(broadcastModelKey).get(0);
                 Preconditions.checkArgument(modelData.centroids.length <= k);
-                centroids = modelData.centroids;
+                centroids = new DenseVectorWithNorm[modelData.centroids.length];
+                for (int i = 0; i < modelData.centroids.length; i++) {
+                    centroids[i] = new DenseVectorWithNorm(modelData.centroids[i]);
+                }
             }
             DenseVector point = ((Vector) dataPoint.getField(featuresCol)).toDense();
-            int closestCentroidId = KMeans.findClosestCentroidId(centroids, point, distanceMeasure);
+            int closestCentroidId =
+                    distanceMeasure.findClosest(centroids, new DenseVectorWithNorm(point));
             return Row.join(dataPoint, Row.of(closestCentroidId));
         }
     }
