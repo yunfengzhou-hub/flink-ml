@@ -152,7 +152,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
             DataStream<Tuple2<Integer[], DenseVector[]>> centroidIdAndPoints =
                     points.connect(centroids.broadcast())
                             .transform(
-                                    "SelectNearestCentroid",
+                                    "CentroidsUpdateAccumulator",
                                     new TupleTypeInfo<>(
                                             BasicArrayTypeInfo.INT_ARRAY_TYPE_INFO,
                                             ObjectArrayTypeInfo.getInfoFor(
@@ -161,23 +161,12 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
 
             DataStreamUtils.setManagedMemoryWeight(centroidIdAndPoints.getTransformation(), 100);
 
-            PerRoundSubBody perRoundSubBody =
-                    new PerRoundSubBody() {
-                        @Override
-                        public DataStreamList process(DataStreamList inputs) {
-                            DataStream<Tuple2<Integer[], DenseVector[]>> centroidIdAndPoints =
-                                    inputs.get(0);
-                            DataStream<KMeansModelData> modelDataStream =
-                                    DataStreamUtils.reduce(
-                                                    centroidIdAndPoints, new CentroidsUpdateReduceFunction())
-                                            .map(new ModelDataGenerator());
-                            return DataStreamList.of(modelDataStream);
-                        }
-                    };
+            int parallelism = centroidIdAndPoints.getParallelism();
             DataStream<KMeansModelData> newModelData =
-                    IterationBody.forEachRound(
-                                    DataStreamList.of(centroidIdAndPoints), perRoundSubBody)
-                            .get(0);
+                    centroidIdAndPoints
+                            .countWindowAll(parallelism)
+                            .reduce(new CentroidsUpdateReducer())
+                            .map(new ModelDataGenerator());
 
             DataStream<DenseVector[]> newCentroids =
                     newModelData.map(x -> x.centroids).setParallelism(1);
@@ -192,7 +181,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         }
     }
 
-    private static class CentroidsUpdateReduceFunction
+    private static class CentroidsUpdateReducer
             implements ReduceFunction<Tuple2<Integer[], DenseVector[]>> {
         @Override
         public Tuple2<Integer[], DenseVector[]> reduce(
@@ -261,7 +250,7 @@ public class KMeans implements Estimator<KMeans, KMeansModel>, KMeansParams<KMea
         @Override
         public void snapshotState(StateSnapshotContext context) throws Exception {
             super.snapshotState(context);
-                        points.snapshotState(context);
+            points.snapshotState(context);
         }
 
         @Override
