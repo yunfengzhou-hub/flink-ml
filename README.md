@@ -1,40 +1,28 @@
-Flink ML is a library which provides machine learning (ML) APIs and
-infrastructures that simplify the building of ML pipelines. Users can implement
-ML algorithms with the standard ML APIs and further use these infrastructures to
-build ML pipelines for both training and inference jobs.
+This branch provides example codes to illustrate the performance of
+flink-ml-iteration.
 
-Flink ML is developed under the umbrella of [Apache
-Flink](https://flink.apache.org/).
+In order to run a performance benchmark of flink-ml-iteration, follow the
+instructions below.
 
-## <a name="build"></a>Building the Project
+1. prerequisites
+   1. you have installed flink 1.15.0 in your environment and configured
+      $FLINK_HOME.
+   2. you have installed maven in your environment.
+2. under the root directory of this repository, execute the following commands
+   in order
+```shell
+mvn clean install -DskipTests
+cd ./flink-ml-dist/target/flink-ml-*-bin/flink-ml*/
+cp ./lib/*.jar $FLINK_HOME/lib/
+$FLINK_HOME/bin/start-cluster.sh
+$FLINK_HOME/bin/flink run -c org.apache.flink.ml.benchmark.IterationBenchmark $FLINK_HOME/lib/flink-ml-uber*.jar --iteration=10 --repeat=10
+```
 
-Run the `mvn clean package` command.
+The last command above would submit a flink job which contains an iteration body
+and light stream operators whose computation overhead can be ignored, measures
+its execution time, and repeats this operation several times to eliminate the
+influence of the warmup process. The parameters are as follows.
 
-Then you will find a JAR file that contains your application, plus any libraries
-that you may have added as dependencies to the application:
-`target/<artifact-id>-<version>.jar`.
-
-## <a name="benchmark"></a>Benchmark
-
-Flink ML provides functionalities to benchmark its machine learning algorithms.
-For detailed information, please check the [Benchmark
-Getting Started](./flink-ml-benchmark/README.md).
-
-## <a name="documentation"></a>Documentation
-
-The documentation of Flink ML is located on the website:
-https://nightlies.apache.org/flink/flink-ml-docs-master/ or in the docs/
-directory of the source code.
-
-## <a name="contributing"></a>Contributing
-
-You can learn more about how to contribute in the [Apache Flink
-website](https://flink.apache.org/contributing/how-to-contribute.html). For code
-contributions, please read carefully the [Contributing
-Code](https://flink.apache.org/contributing/contribute-code.html) section for an
-overview of ongoing community work.
-
-## <a name="license"></a>License
-
-The code in this repository is licensed under the [Apache Software License
-2](LICENSE).
+- `iteration`: number of iterations to be executed in the flink job.
+- `repeat`: number of times to repeat submitting and executing the flink job.
+- 
