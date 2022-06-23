@@ -60,32 +60,37 @@ Below are parameters required by `NaiveBayesModel`.
 
 ## Examples
 
-{{< tabs naivebayes >}}
+{{< tabs examples >}}
 
 {{< tab "Java">}}
 ```java
 import org.apache.flink.ml.classification.naivebayes.NaiveBayes;
 import org.apache.flink.ml.classification.naivebayes.NaiveBayesModel;
+import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.types.Row;
+import org.apache.flink.util.CloseableIterator;
 
-List<Row> trainData =
-  Arrays.asList(
+// Generates input training and prediction data.
+DataStream<Row> trainStream =
+  env.fromElements(
   Row.of(Vectors.dense(0, 0.), 11),
   Row.of(Vectors.dense(1, 0), 10),
   Row.of(Vectors.dense(1, 1.), 10));
+Table trainTable = tEnv.fromDataStream(trainStream).as("features", "label");
 
-Table trainTable = tEnv.fromDataStream(env.fromCollection(trainData)).as("features", "label");
-
-List<Row> predictData =
-  Arrays.asList(
+DataStream<Row> predictStream =
+  env.fromElements(
   Row.of(Vectors.dense(0, 1.)),
   Row.of(Vectors.dense(0, 0.)),
   Row.of(Vectors.dense(1, 0)),
   Row.of(Vectors.dense(1, 1.)));
+Table predictTable = tEnv.fromDataStream(predictStream).as("features");
 
-Table predictTable = tEnv.fromDataStream(env.fromCollection(predictData)).as("features");
-
-NaiveBayes estimator =
+// Creates a NaiveBayes object and initializes its parameters.
+NaiveBayes naiveBayes =
   new NaiveBayes()
   .setSmoothing(1.0)
   .setFeaturesCol("features")
@@ -93,10 +98,19 @@ NaiveBayes estimator =
   .setPredictionCol("prediction")
   .setModelType("multinomial");
 
-NaiveBayesModel model = estimator.fit(trainTable);
-Table outputTable = model.transform(predictTable)[0];
+// Trains the NaiveBayes Model.
+NaiveBayesModel naiveBayesModel = naiveBayes.fit(trainTable);
 
-outputTable.execute().print();
+// Uses the NaiveBayes Model for predictions.
+Table outputTable = naiveBayesModel.transform(predictTable)[0];
+
+// Extracts and displays the results.
+for (CloseableIterator<Row> it = outputTable.execute().collect(); it.hasNext(); ) {
+  Row row = it.next();
+  DenseVector features = (DenseVector) row.getField(naiveBayes.getFeaturesCol());
+  double predictionResult = (Double) row.getField(naiveBayes.getPredictionCol());
+  System.out.printf("Features: %s \tPrediction Result: %s\n", features, predictionResult);
+}
 ```
 {{< /tab>}}
 

@@ -42,13 +42,14 @@ into a predefined number of clusters.
 
 ## Parameters
 
-Below are parameters required by `KMeansModel`.
+Below are the parameters required by `KMeansModel`.
 
-| Key             | Default                         | Type   | Required | Description                                                  |
-| --------------- | ------------------------------- | ------ | -------- | ------------------------------------------------------------ |
-| distanceMeasure | `EuclideanDistanceMeasure.NAME` | String | no       | Distance measure. Supported values: `EuclideanDistanceMeasure.NAME` |
-| featuresCol     | `"features"`                    | String | no       | Features column name.                                        |
-| predictionCol   | `"prediction"`                  | String | no       | Prediction column name.                                      |
+| Key             | Default                         | Type    | Required | Description                                                  |
+| --------------- | ------------------------------- | ------- | -------- | ------------------------------------------------------------ |
+| distanceMeasure | `EuclideanDistanceMeasure.NAME` | String  | no       | Distance measure. Supported values: `EuclideanDistanceMeasure.NAME` |
+| featuresCol     | `"features"`                    | String  | no       | Features column name.                                        |
+| predictionCol   | `"prediction"`                  | String  | no       | Prediction column name.                                      |
+| k               | `2`                             | Integer | no       | The max number of clusters to create.                        |
 
 `KMeans` needs parameters above and also below.
 
@@ -60,7 +61,7 @@ Below are parameters required by `KMeansModel`.
 
 ## Examples
 
-{{< tabs kmeans >}}
+{{< tabs examples >}}
 
 {{< tab "Java">}}
 ```java
@@ -68,36 +69,39 @@ import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.types.Row;
+import org.apache.flink.util.CloseableIterator;
 
-// Generates train data and predict data.
-DataStream<DenseVector> inputStream = env.fromElements(
+// Generates input data.
+DataStream<DenseVector> inputStream =
+  env.fromElements(
   Vectors.dense(0.0, 0.0),
   Vectors.dense(0.0, 0.3),
   Vectors.dense(0.3, 0.0),
   Vectors.dense(9.0, 0.0),
   Vectors.dense(9.0, 0.6),
-  Vectors.dense(9.6, 0.0)
-);
-Table input = tEnv.fromDataStream(inputStream).as("features");
+  Vectors.dense(9.6, 0.0));
+Table inputTable = tEnv.fromDataStream(inputStream).as("features");
 
-// Creates a K-means object and initialize its parameters.
-KMeans kmeans = new KMeans()
-  .setK(2)
-  .setSeed(1L);
+// Creates a K-means object and initializes its parameters.
+KMeans kmeans = new KMeans().setK(2).setSeed(1L);
 
 // Trains the K-means Model.
-KMeansModel model = kmeans.fit(input);
+KMeansModel kmeansModel = kmeans.fit(inputTable);
 
-// Uses the K-means Model to do predictions.
-Table output = model.transform(input)[0];
+// Uses the K-means Model for predictions.
+Table outputTable = kmeansModel.transform(inputTable)[0];
 
-// Extracts and displays prediction result.
-for (CloseableIterator<Row> it = output.execute().collect(); it.hasNext(); ) {
+// Extracts and displays the results.
+for (CloseableIterator<Row> it = outputTable.execute().collect(); it.hasNext(); ) {
   Row row = it.next();
-  DenseVector vector = (DenseVector) row.getField("features");
-  int clusterId = (Integer) row.getField("prediction");
-  System.out.println("Vector: " + vector + "\tCluster ID: " + clusterId);
+  DenseVector features = (DenseVector) row.getField(kmeans.getFeaturesCol());
+  int clusterId = (Integer) row.getField(kmeans.getPredictionCol());
+  System.out.printf("Features: %s \tCluster ID: %s\n", features, clusterId);
 }
+
 ```
 {{< /tab>}}
 

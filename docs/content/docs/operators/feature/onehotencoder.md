@@ -29,10 +29,10 @@ under the License.
 One-hot encoding maps a categorical feature, represented as a label index, to a
 binary vector with at most a single one-value indicating the presence of a
 specific feature value from among the set of all feature values. This encoding
-allows algorithms which expect continuous features, such as Logistic Regression,
+allows algorithms that expect continuous features, such as Logistic Regression,
 to use categorical features.
 
-OneHotEncoder can transform multiple columns, returning an one-hot-encoded
+OneHotEncoder can transform multiple columns, returning a one-hot-encoded
 output vector column for each input column.
 
 ## Input Columns
@@ -58,24 +58,44 @@ output vector column for each input column.
 
 ## Examples
 
-{{< tabs onehotencoder >}}
+{{< tabs examples >}}
 
 {{< tab "Java">}}
 ```java
 import org.apache.flink.ml.feature.onehotencoder.OneHotEncoder;
 import org.apache.flink.ml.feature.onehotencoder.OneHotEncoderModel;
+import org.apache.flink.ml.linalg.SparseVector;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.types.Row;
+import org.apache.flink.util.CloseableIterator;
 
-List<Row> trainData = Arrays.asList(Row.of(0.0), Row.of(1.0), Row.of(2.0), Row.of(0.0));
-Table trainTable = tEnv.fromDataStream(env.fromCollection(trainData)).as("input");
+// Generates input training and prediction data.
+DataStream<Row> trainStream =
+  env.fromElements(Row.of(0.0), Row.of(1.0), Row.of(2.0), Row.of(0.0));
+Table trainTable = tEnv.fromDataStream(trainStream).as("input");
 
-List<Row> predictData = Arrays.asList(Row.of(0.0), Row.of(1.0), Row.of(2.0));
-Table predictTable = tEnv.fromDataStream(env.fromCollection(predictData)).as("input");
+DataStream<Row> predictStream = env.fromElements(Row.of(0.0), Row.of(1.0), Row.of(2.0));
+Table predictTable = tEnv.fromDataStream(predictStream).as("input");
 
-OneHotEncoder estimator = new OneHotEncoder().setInputCols("input").setOutputCols("output");
-OneHotEncoderModel model = estimator.fit(trainTable);
+// Creates a OneHotEncoder object and initializes its parameters.
+OneHotEncoder oneHotEncoder =
+  new OneHotEncoder().setInputCols("input").setOutputCols("output");
+
+// Trains the OneHotEncoder Model.
+OneHotEncoderModel model = oneHotEncoder.fit(trainTable);
+
+// Uses the OneHotEncoder Model for predictions.
 Table outputTable = model.transform(predictTable)[0];
 
-outputTable.execute().print();
+// Extracts and displays the results.
+for (CloseableIterator<Row> it = outputTable.execute().collect(); it.hasNext(); ) {
+  Row row = it.next();
+  Double inputValue = (Double) row.getField(oneHotEncoder.getInputCols()[0]);
+  SparseVector outputValue =
+    (SparseVector) row.getField(oneHotEncoder.getOutputCols()[0]);
+  System.out.printf("Input Value: %s\tOutput Value: %s\n", inputValue, outputValue);
+}
 ```
 {{< /tab>}}
 

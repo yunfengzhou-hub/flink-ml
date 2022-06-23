@@ -25,7 +25,7 @@ under the License.
 
 # Logistic Regression
 
-Logistic regression is a special case of Generalized Linear Model. It is widely
+Logistic regression is a special case of the Generalized Linear Model. It is widely
 used to predict a binary response. 
 
 ## Input Columns
@@ -45,7 +45,7 @@ used to predict a binary response.
 
 ## Parameters
 
-Below are parameters required by `LogisticRegressionModel`.
+Below are the parameters required by `LogisticRegressionModel`.
 
 | Key              | Default           | Type   | Required | Description                 |
 | ---------------- | ----------------- | ------ | -------- | --------------------------- |
@@ -61,22 +61,29 @@ Below are parameters required by `LogisticRegressionModel`.
 | weightCol       | `null`    | String  | no       | Weight column name.                                          |
 | maxIter         | `20`      | Integer | no       | Maximum number of iterations.                                |
 | reg             | `0.`      | Double  | no       | Regularization parameter.                                    |
+| elasticNet      | `0.`      | Double  | no       | ElasticNet parameter.                                        |
 | learningRate    | `0.1`     | Double  | no       | Learning rate of optimization method.                        |
 | globalBatchSize | `32`      | Integer | no       | Global batch size of training algorithms.                    |
 | tol             | `1e-6`    | Double  | no       | Convergence tolerance for iterative algorithms.              |
 | multiClass      | `"auto"`  | String  | no       | Classification type. Supported values: "auto", "binomial", "multinomial" |
 
 ## Examples
-{{< tabs logisticregression >}}
+{{< tabs examples >}}
 
 {{< tab "Java">}}
 ```java
 import org.apache.flink.ml.classification.logisticregression.LogisticRegression;
+import org.apache.flink.ml.classification.logisticregression.LogisticRegressionModel;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.types.Row;
+import org.apache.flink.util.CloseableIterator;
 
-List<Row> binomialTrainData =
-  Arrays.asList(
+// Generates input data.
+DataStream<Row> inputStream =
+  env.fromElements(
   Row.of(Vectors.dense(1, 2, 3, 4), 0., 1.),
   Row.of(Vectors.dense(2, 2, 3, 4), 0., 2.),
   Row.of(Vectors.dense(3, 2, 3, 4), 0., 3.),
@@ -87,25 +94,28 @@ List<Row> binomialTrainData =
   Row.of(Vectors.dense(13, 2, 3, 4), 1., 3.),
   Row.of(Vectors.dense(14, 2, 3, 4), 1., 4.),
   Row.of(Vectors.dense(15, 2, 3, 4), 1., 5.));
-Collections.shuffle(binomialTrainData);
+Table inputTable = tEnv.fromDataStream(inputStream).as("features", "label", "weight");
 
-Table binomialDataTable =
-  tEnv.fromDataStream(
-  env.fromCollection(
-    binomialTrainData,
-    new RowTypeInfo(
-      new TypeInformation[] {
-        TypeInformation.of(DenseVector.class),
-        Types.DOUBLE,
-        Types.DOUBLE
-      },
-      new String[] {"features", "label", "weight"})));
+// Creates a LogisticRegression object and initializes its parameters.
+LogisticRegression lr = new LogisticRegression().setWeightCol("weight");
 
-LogisticRegression logisticRegression = new LogisticRegression().setWeightCol("weight");
-LogisticRegressionModel model = logisticRegression.fit(binomialDataTable);
-Table output = model.transform(binomialDataTable)[0];
+// Trains the LogisticRegression Model.
+LogisticRegressionModel lrModel = lr.fit(inputTable);
 
-output.execute().print();
+// Uses the LogisticRegression Model for predictions.
+Table outputTable = lrModel.transform(inputTable)[0];
+
+// Extracts and displays the results.
+for (CloseableIterator<Row> it = outputTable.execute().collect(); it.hasNext(); ) {
+  Row row = it.next();
+  DenseVector features = (DenseVector) row.getField(lr.getFeaturesCol());
+  double expectedResult = (Double) row.getField(lr.getLabelCol());
+  double predictionResult = (Double) row.getField(lr.getPredictionCol());
+  DenseVector rawPredictionResult = (DenseVector) row.getField(lr.getRawPredictionCol());
+  System.out.printf(
+    "Features: %-25s \tExpected Result: %s \tPrediction Result: %s \tRaw Prediction Result: %s\n",
+    features, expectedResult, predictionResult, rawPredictionResult);
+}
 ```
 {{< /tab>}}
 
