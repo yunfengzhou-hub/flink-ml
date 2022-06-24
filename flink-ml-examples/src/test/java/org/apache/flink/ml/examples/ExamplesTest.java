@@ -30,12 +30,18 @@ import org.junit.runners.Parameterized;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /** Extracts all example classes in this package and tests their main methods. */
 @RunWith(Parameterized.class)
@@ -74,18 +80,24 @@ public class ExamplesTest extends AbstractTestBase {
     }
 
     private static List<Class<?>> listClasses(String packageName, File rootFile)
-            throws ClassNotFoundException, IOException {
+            throws ClassNotFoundException {
         List<Class<?>> files = new ArrayList<>();
         for (File file : Objects.requireNonNull(rootFile.listFiles())) {
             if (file.isDirectory()) {
                 files.addAll(listClasses(packageName + "." + file.getName(), file));
             } else if (file.getName().endsWith(".class")) {
-                String fullName = file.getCanonicalPath().replace("/", ".");
+                String fullName = file.getAbsolutePath().replace("/", ".");
                 String className =
                         fullName.substring(
                                 fullName.indexOf(packageName),
                                 fullName.length() - ".class".length());
-                files.add(Class.forName(className));
+                Class<?> clazz = Class.forName(className);
+                try {
+                    clazz.getMethod("main", String[].class);
+                } catch (NoSuchMethodException e) {
+                    continue;
+                }
+                files.add(clazz);
             }
         }
         return files;
@@ -96,7 +108,22 @@ public class ExamplesTest extends AbstractTestBase {
     }
 
     @Test
-    public void test() throws InvocationTargetException, IllegalAccessException {
-        mainMethod.invoke(null, (Object) null);
+    public void test() throws ExecutionException, InterruptedException {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<String> handler =
+                executor.submit(
+                        new Callable() {
+                            @Override
+                            public String call() throws Exception {
+                                mainMethod.invoke(null, (Object) null);
+                                return null;
+                            }
+                        });
+
+        try {
+            handler.get(5, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            handler.cancel(true);
+        }
     }
 }
