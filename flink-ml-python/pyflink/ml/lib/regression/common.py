@@ -17,32 +17,58 @@
 ################################################################################
 from abc import ABC, abstractmethod
 
-from pyflink.ml.core.wrapper import JavaAlgoOperator
+from pyflink.ml.core.wrapper import JavaModel, JavaEstimator
 
-JAVA_EVALUATION_PACKAGE_NAME = "org.apache.flink.ml.evaluation"
+JAVA_REGRESSION_PACKAGE_NAME = "org.apache.flink.ml.regression"
 
 
-class JavaEvaluationAlgoOperator(JavaAlgoOperator, ABC):
+class JavaRegressionModel(JavaModel, ABC):
     """
-    Wrapper class for a Java Evaluation AlgoOperator.
+    Wrapper class for a Java Regression Model.
     """
 
-    def __init__(self, java_algo_operator):
-        super(JavaEvaluationAlgoOperator, self).__init__(java_algo_operator)
+    def __init__(self, java_model):
+        super(JavaRegressionModel, self).__init__(java_model)
 
     @classmethod
     def _java_stage_path(cls) -> str:
         return ".".join(
-            [JAVA_EVALUATION_PACKAGE_NAME,
-             cls._java_algo_operator_package_name(),
-             cls._java_algo_operator_class_name()])
+            [JAVA_REGRESSION_PACKAGE_NAME,
+             cls._java_model_package_name(),
+             cls._java_model_class_name()])
 
     @classmethod
     @abstractmethod
-    def _java_algo_operator_package_name(cls) -> str:
+    def _java_model_package_name(cls) -> str:
         pass
 
     @classmethod
     @abstractmethod
-    def _java_algo_operator_class_name(cls) -> str:
+    def _java_model_class_name(cls) -> str:
+        pass
+
+
+class JavaRegressionEstimator(JavaEstimator, ABC):
+    """
+    Wrapper class for a Java Regression Estimator.
+    """
+
+    def __init__(self):
+        super(JavaRegressionEstimator, self).__init__()
+
+    @classmethod
+    def _java_stage_path(cls):
+        return ".".join(
+            [JAVA_REGRESSION_PACKAGE_NAME,
+             cls._java_estimator_package_name(),
+             cls._java_estimator_class_name()])
+
+    @classmethod
+    @abstractmethod
+    def _java_estimator_package_name(cls) -> str:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def _java_estimator_class_name(cls) -> str:
         pass

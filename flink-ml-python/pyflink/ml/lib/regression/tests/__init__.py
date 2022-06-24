@@ -15,34 +15,16 @@
 #  See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
-from abc import ABC, abstractmethod
+import os
+import sys
+from pathlib import Path
 
-from pyflink.ml.core.wrapper import JavaAlgoOperator
+# Because the project and the dependent `pyflink` project have the same directory structure,
+# we need to manually add `flink-ml-python` path to `sys.path` in the test of this project to change
+# the order of package search.
+flink_ml_python_dir = Path(__file__).parents[5]
+sys.path.append(str(flink_ml_python_dir))
 
-JAVA_EVALUATION_PACKAGE_NAME = "org.apache.flink.ml.evaluation"
+import pyflink
 
-
-class JavaEvaluationAlgoOperator(JavaAlgoOperator, ABC):
-    """
-    Wrapper class for a Java Evaluation AlgoOperator.
-    """
-
-    def __init__(self, java_algo_operator):
-        super(JavaEvaluationAlgoOperator, self).__init__(java_algo_operator)
-
-    @classmethod
-    def _java_stage_path(cls) -> str:
-        return ".".join(
-            [JAVA_EVALUATION_PACKAGE_NAME,
-             cls._java_algo_operator_package_name(),
-             cls._java_algo_operator_class_name()])
-
-    @classmethod
-    @abstractmethod
-    def _java_algo_operator_package_name(cls) -> str:
-        pass
-
-    @classmethod
-    @abstractmethod
-    def _java_algo_operator_class_name(cls) -> str:
-        pass
+pyflink.__path__.insert(0, os.path.join(flink_ml_python_dir, 'pyflink'))

@@ -15,34 +15,3 @@
 #  See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
-from abc import ABC, abstractmethod
-
-from pyflink.ml.core.wrapper import JavaAlgoOperator
-
-JAVA_EVALUATION_PACKAGE_NAME = "org.apache.flink.ml.evaluation"
-
-
-class JavaEvaluationAlgoOperator(JavaAlgoOperator, ABC):
-    """
-    Wrapper class for a Java Evaluation AlgoOperator.
-    """
-
-    def __init__(self, java_algo_operator):
-        super(JavaEvaluationAlgoOperator, self).__init__(java_algo_operator)
-
-    @classmethod
-    def _java_stage_path(cls) -> str:
-        return ".".join(
-            [JAVA_EVALUATION_PACKAGE_NAME,
-             cls._java_algo_operator_package_name(),
-             cls._java_algo_operator_class_name()])
-
-    @classmethod
-    @abstractmethod
-    def _java_algo_operator_package_name(cls) -> str:
-        pass
-
-    @classmethod
-    @abstractmethod
-    def _java_algo_operator_class_name(cls) -> str:
-        pass
