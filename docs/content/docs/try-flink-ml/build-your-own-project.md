@@ -1,9 +1,9 @@
 ---
-title: "Quick Start"
-weight: 1
+title: "Building your own Flink ML project"
+weight: 2
 type: docs
 aliases:
-- /try-flink-ml/quick-start.html
+- /try-flink-ml/building-your-own-project.html
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -24,7 +24,7 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-# Quick Start
+# Building your own Flink ML project
 
 This document provides a quick introduction to using Flink ML. Readers of this
 document will be guided to create a simple Flink job that trains a Machine
@@ -236,4 +236,3 @@ Vector: [0.0, 0.3]	Cluster ID: 1
 Vector: [9.0, 0.0]	Cluster ID: 0
 ```
 
-<!-- TODO: Add sections like "Next Steps` with guidance to other pages of this document. -->
