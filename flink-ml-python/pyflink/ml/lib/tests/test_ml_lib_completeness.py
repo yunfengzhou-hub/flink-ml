@@ -120,16 +120,6 @@ class FeatureCompletenessTest(CompletenessTest, MLLibTest):
         return feature
 
 
-class RegressionCompletenessTest(CompletenessTest, MLLibTest):
-
-    def module_name(self):
-        return "regression"
-
-    def module(self):
-        from pyflink.ml.lib import regression
-        return regression
-
-
 if __name__ == "__main__":
     try:
         import xmlrunner
