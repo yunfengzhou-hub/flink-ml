@@ -24,7 +24,7 @@ JAVA_EVALUATION_PACKAGE_NAME = "org.apache.flink.ml.evaluation"
 
 class JavaEvaluationAlgoOperator(JavaAlgoOperator, ABC):
     """
-    Wrapper class for a Java Evaluation AlgoOperator.
+    Wrapper class for a Java Feature Transformer.
     """
 
     def __init__(self, java_algo_operator):
