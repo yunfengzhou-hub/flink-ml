@@ -103,7 +103,7 @@ class LogisticRegressionTest(PyFlinkMLTestCase):
             output.get_schema().get_field_names())
 
     def test_fit_and_predict(self):
-        regression = LogisticRegression().set_weight_col('weight')
+        regression = LogisticRegression().set_max_iter(2).set_weight_col('weight')
         output = regression.fit(self.binomial_data_table).transform(self.binomial_data_table)[0]
         field_names = output.get_schema().get_field_names()
         self.verify_predict_result(
@@ -113,7 +113,7 @@ class LogisticRegressionTest(PyFlinkMLTestCase):
             field_names.index(regression.get_raw_prediction_col()))
 
     def test_save_load_and_predict(self):
-        regression = LogisticRegression().set_weight_col('weight')
+        regression = LogisticRegression().set_max_iter(2).set_weight_col('weight')
         path = os.path.join(self.temp_dir, 'test_save_load_and_predict_logistic_regression')
         regression.save(path)
         regression = LogisticRegression.load(self.t_env, path)  # type: LogisticRegression
@@ -130,19 +130,19 @@ class LogisticRegressionTest(PyFlinkMLTestCase):
             field_names.index(regression.get_raw_prediction_col()))
 
     def test_get_model_data(self):
-        regression = LogisticRegression().set_weight_col('weight')
+        regression = LogisticRegression().set_max_iter(2).set_weight_col('weight')
         model = regression.fit(self.binomial_data_table)
         model_data = self.t_env.to_data_stream(
             model.get_model_data()[0]).execute_and_collect().next()
         self.assertIsNotNone(model_data[0])
         data = model_data[0].values.tolist()
-        expected = [0.528, -0.286, -0.429, -0.572]
+        expected = [0.137, -0.067, -0.101, -0.135]
         self.assertEqual(len(data), len(expected))
         for a, b in zip(data, expected):
             self.assertAlmostEqual(a, b, delta=0.1)
 
     def test_set_model_data(self):
-        regression = LogisticRegression().set_weight_col('weight')
+        regression = LogisticRegression().set_max_iter(2).set_weight_col('weight')
         model = regression.fit(self.binomial_data_table)
 
         new_model = LogisticRegressionModel()

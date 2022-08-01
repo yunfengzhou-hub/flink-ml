@@ -11,7 +11,7 @@ on:
 jobs:
   tests:
     name: python tests on ${{ matrix.os }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: ['macOS-latest', 'ubuntu-latest']

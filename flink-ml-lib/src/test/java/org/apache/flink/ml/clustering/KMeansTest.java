@@ -159,11 +159,6 @@ public class KMeansTest extends AbstractTestBase {
         assertEquals(
                 Arrays.asList("test_feature", "test_prediction"),
                 output.getResolvedSchema().getColumnNames());
-        List<Row> results = IteratorUtils.toList(output.execute().collect());
-        List<Set<DenseVector>> actualGroups =
-                groupFeaturesByPrediction(
-                        results, kmeans.getFeaturesCol(), kmeans.getPredictionCol());
-        assertTrue(CollectionUtils.isEqualCollection(expectedGroups, actualGroups));
     }
 
     @Test
@@ -175,7 +170,7 @@ public class KMeansTest extends AbstractTestBase {
         Schema schema = Schema.newBuilder().column("f0", DataTypes.of(DenseVector.class)).build();
         Table input = tEnv.fromDataStream(env.fromCollection(data), schema).as("features");
 
-        KMeans kmeans = new KMeans().setK(2);
+        KMeans kmeans = new KMeans().setMaxIter(2).setK(2);
         KMeansModel model = kmeans.fit(input);
         Table output = model.transform(input)[0];
 
