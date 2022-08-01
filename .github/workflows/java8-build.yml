@@ -3,9 +3,12 @@ name: Java 8 Build
 on: [push, pull_request]
 
 jobs:
-  build:
+  java-tests:
     runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        modules: ['lib', 'non-lib']
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -13,6 +16,23 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 1.8
+      - name: Cache Maven packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
       - name: Build
-        run: mvn clean install --no-transfer-progress
-
+        run: mvn clean install --no-transfer-progress -DskipTests
+      - name: Test
+        run: |
+          if [[ "${{ matrix.modules }}" == "lib" ]]
+          then
+            mvn surefire:test -pl flink-ml-lib --no-transfer-progress
+          else
+            non_lib_modules=('flink-ml-benchmark' 'flink-ml-core' \
+            'flink-ml-dist' 'flink-ml-examples' 'flink-ml-iteration' \
+            'flink-ml-tests' 'flink-ml-uber' )
+            non_lib_modules=$(printf ",%s" "${non_lib_modules[@]}")
+            mvn surefire:test -pl $non_lib_modules --no-transfer-progress
+          fi

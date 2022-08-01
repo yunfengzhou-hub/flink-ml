@@ -37,6 +37,7 @@ import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
 
 import org.apache.commons.collections.IteratorUtils;
@@ -58,7 +59,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Tests {@link LogisticRegression} and {@link LogisticRegressionModel}. */
-public class LogisticRegressionTest {
+public class LogisticRegressionTest extends AbstractTestBase {
 
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
@@ -93,7 +94,7 @@ public class LogisticRegressionTest {
                     Row.of(Vectors.dense(15, 2, 3, 4), 1., 5.));
 
     private static final double[] expectedCoefficient =
-            new double[] {0.525, -0.283, -0.425, -0.567};
+            new double[] {0.137, -0.067, -0.101, -0.135};
 
     private static final double TOLERANCE = 1e-7;
 
@@ -216,7 +217,8 @@ public class LogisticRegressionTest {
 
     @Test
     public void testFitAndPredict() throws Exception {
-        LogisticRegression logisticRegression = new LogisticRegression().setWeightCol("weight");
+        LogisticRegression logisticRegression =
+                new LogisticRegression().setMaxIter(2).setWeightCol("weight");
         Table output = logisticRegression.fit(binomialDataTable).transform(binomialDataTable)[0];
         verifyPredictionResult(
                 output,
@@ -232,7 +234,8 @@ public class LogisticRegressionTest {
                 new Class<?>[] {SparseVector.class, Integer.class, Integer.class},
                 TestUtils.getColumnDataTypes(binomialDataTable));
 
-        LogisticRegression logisticRegression = new LogisticRegression().setWeightCol("weight");
+        LogisticRegression logisticRegression =
+                new LogisticRegression().setMaxIter(2).setWeightCol("weight");
         Table output = logisticRegression.fit(binomialDataTable).transform(binomialDataTable)[0];
         verifyPredictionResult(
                 output,
@@ -243,7 +246,8 @@ public class LogisticRegressionTest {
 
     @Test
     public void testSaveLoadAndPredict() throws Exception {
-        LogisticRegression logisticRegression = new LogisticRegression().setWeightCol("weight");
+        LogisticRegression logisticRegression =
+                new LogisticRegression().setMaxIter(2).setWeightCol("weight");
         logisticRegression =
                 TestUtils.saveAndReload(
                         tEnv, logisticRegression, tempFolder.newFolder().getAbsolutePath());
@@ -263,7 +267,8 @@ public class LogisticRegressionTest {
     @Test
     @SuppressWarnings("unchecked")
     public void testGetModelData() throws Exception {
-        LogisticRegression logisticRegression = new LogisticRegression().setWeightCol("weight");
+        LogisticRegression logisticRegression =
+                new LogisticRegression().setMaxIter(2).setWeightCol("weight");
         LogisticRegressionModel model = logisticRegression.fit(binomialDataTable);
         List<LogisticRegressionModelData> modelData =
                 IteratorUtils.toList(
@@ -275,7 +280,8 @@ public class LogisticRegressionTest {
 
     @Test
     public void testSetModelData() throws Exception {
-        LogisticRegression logisticRegression = new LogisticRegression().setWeightCol("weight");
+        LogisticRegression logisticRegression =
+                new LogisticRegression().setMaxIter(2).setWeightCol("weight");
         LogisticRegressionModel model = logisticRegression.fit(binomialDataTable);
 
         LogisticRegressionModel newModel = new LogisticRegressionModel();
@@ -292,7 +298,7 @@ public class LogisticRegressionTest {
     @Test
     public void testMultinomialFit() {
         try {
-            new LogisticRegression().fit(multinomialDataTable);
+            new LogisticRegression().setMaxIter(2).fit(multinomialDataTable);
             env.execute();
             fail();
         } catch (Throwable e) {
@@ -304,9 +310,26 @@ public class LogisticRegressionTest {
 
     @Test
     public void testMoreSubtaskThanData() throws Exception {
-        env.setParallelism(12);
+        List<Row> binomialTrainData =
+                Arrays.asList(
+                        Row.of(Vectors.dense(1, 2, 3, 4), 0., 1.),
+                        Row.of(Vectors.dense(11, 2, 3, 4), 1., 1.));
+
+        Table binomialDataTable =
+                tEnv.fromDataStream(
+                        env.fromCollection(
+                                binomialTrainData,
+                                new RowTypeInfo(
+                                        new TypeInformation[] {
+                                            DenseVectorTypeInfo.INSTANCE, Types.DOUBLE, Types.DOUBLE
+                                        },
+                                        new String[] {"features", "label", "weight"})));
+
         LogisticRegression logisticRegression =
-                new LogisticRegression().setWeightCol("weight").setGlobalBatchSize(128);
+                new LogisticRegression()
+                        .setMaxIter(2)
+                        .setWeightCol("weight")
+                        .setGlobalBatchSize(128);
         Table output = logisticRegression.fit(binomialDataTable).transform(binomialDataTable)[0];
         verifyPredictionResult(
                 output,
@@ -318,9 +341,9 @@ public class LogisticRegressionTest {
     @Test
     public void testRegularization() throws Exception {
         checkRegularization(0, RandomUtils.nextDouble(0, 1), expectedCoefficient);
-        checkRegularization(0.1, 0, new double[] {0.484, -0.258, -0.388, -0.517});
-        checkRegularization(0.1, 1, new double[] {0.417, -0.145, -0.312, -0.480});
-        checkRegularization(0.1, 0.5, new double[] {0.451, -0.203, -0.351, -0.498});
+        checkRegularization(0.1, 0, new double[] {0.134, -0.066, -0.1, -0.133});
+        checkRegularization(0.1, 1, new double[] {0.122, -0.056, -0.089, -0.123});
+        checkRegularization(0.1, 0.5, new double[] {0.128, -0.061, -0.095, -0.128});
     }
 
     @SuppressWarnings("unchecked")
@@ -328,6 +351,7 @@ public class LogisticRegressionTest {
             throws Exception {
         LogisticRegressionModel model =
                 new LogisticRegression()
+                        .setMaxIter(2)
                         .setWeightCol("weight")
                         .setReg(reg)
                         .setElasticNet(elasticNet)

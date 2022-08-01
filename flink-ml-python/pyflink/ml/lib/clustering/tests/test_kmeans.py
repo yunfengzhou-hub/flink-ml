@@ -92,17 +92,6 @@ class KMeansTest(PyFlinkMLTestCase):
         self.assertEqual(['test_feature', 'test_prediction'],
                          field_names)
 
-        results = [result for result in self.t_env.to_data_stream(output).execute_and_collect()]
-        actual_groups = group_features_by_prediction(
-            results,
-            field_names.index(kmeans.features_col),
-            field_names.index(kmeans.prediction_col))
-
-        self.assertTrue(actual_groups[0] == self.expected_groups[0]
-                        and actual_groups[1] == self.expected_groups[1] or
-                        actual_groups[0] == self.expected_groups[1]
-                        and actual_groups[1] == self.expected_groups[0])
-
     def test_fewer_distinct_points_than_cluster(self):
         input = self.t_env.from_data_stream(
             self.env.from_collection([
@@ -114,7 +103,7 @@ class KMeansTest(PyFlinkMLTestCase):
                     ['features'],
                     [DenseVectorTypeInfo()])))
 
-        kmeans = KMeans().set_k(2)
+        kmeans = KMeans().set_max_iter(2).set_k(2)
         model = kmeans.fit(input)
         output = model.transform(input)[0]
         results = [result for result in self.t_env.to_data_stream(output).execute_and_collect()]

@@ -35,6 +35,7 @@ import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
 
 import org.apache.commons.collections.IteratorUtils;
@@ -55,7 +56,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /** Tests {@link LinearRegression} and {@link LinearRegressionModel}. */
-public class LinearRegressionTest {
+public class LinearRegressionTest extends AbstractTestBase {
 
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
@@ -68,13 +69,13 @@ public class LinearRegressionTest {
                     Row.of(Vectors.dense(2, 1), 4.0, 1.0),
                     Row.of(Vectors.dense(3, 2), 7.0, 1.0),
                     Row.of(Vectors.dense(4, 3), 10.0, 1.0),
-                    Row.of(Vectors.dense(2, 4), 10.0, 1.0),
+                    Row.of(Vectors.dense(2, 4), 9.0, 1.0),
                     Row.of(Vectors.dense(2, 2), 6.0, 1.0),
                     Row.of(Vectors.dense(4, 3), 10.0, 1.0),
-                    Row.of(Vectors.dense(1, 2), 5.0, 1.0),
+                    Row.of(Vectors.dense(1, 2), 4.0, 1.0),
                     Row.of(Vectors.dense(5, 3), 11.0, 1.0));
 
-    private static final double[] expectedCoefficient = new double[] {1.141, 1.829};
+    private static final double[] expectedCoefficient = new double[] {1.503, 1.297};
 
     private static final double TOLERANCE = 1e-7;
 
@@ -170,7 +171,8 @@ public class LinearRegressionTest {
 
     @Test
     public void testFitAndPredict() throws Exception {
-        LinearRegression linearRegression = new LinearRegression().setWeightCol("weight");
+        LinearRegression linearRegression =
+                new LinearRegression().setMaxIter(3).setLearningRate(0.05).setWeightCol("weight");
         Table output = linearRegression.fit(trainDataTable).transform(trainDataTable)[0];
         verifyPredictionResult(
                 output, linearRegression.getLabelCol(), linearRegression.getPredictionCol());
@@ -183,7 +185,8 @@ public class LinearRegressionTest {
                 new Class<?>[] {SparseVector.class, Integer.class, Integer.class},
                 TestUtils.getColumnDataTypes(trainDataTable));
 
-        LinearRegression linearRegression = new LinearRegression().setWeightCol("weight");
+        LinearRegression linearRegression =
+                new LinearRegression().setMaxIter(3).setLearningRate(0.05).setWeightCol("weight");
         Table output = linearRegression.fit(trainDataTable).transform(trainDataTable)[0];
         verifyPredictionResult(
                 output, linearRegression.getLabelCol(), linearRegression.getPredictionCol());
@@ -191,7 +194,8 @@ public class LinearRegressionTest {
 
     @Test
     public void testSaveLoadAndPredict() throws Exception {
-        LinearRegression linearRegression = new LinearRegression().setWeightCol("weight");
+        LinearRegression linearRegression =
+                new LinearRegression().setMaxIter(3).setLearningRate(0.05).setWeightCol("weight");
         linearRegression =
                 TestUtils.saveAndReload(
                         tEnv, linearRegression, tempFolder.newFolder().getAbsolutePath());
@@ -207,7 +211,8 @@ public class LinearRegressionTest {
 
     @Test
     public void testGetModelData() throws Exception {
-        LinearRegression linearRegression = new LinearRegression().setWeightCol("weight");
+        LinearRegression linearRegression =
+                new LinearRegression().setMaxIter(3).setLearningRate(0.05).setWeightCol("weight");
         LinearRegressionModel model = linearRegression.fit(trainDataTable);
         List<LinearRegressionModelData> modelData =
                 IteratorUtils.toList(
@@ -221,7 +226,8 @@ public class LinearRegressionTest {
 
     @Test
     public void testSetModelData() throws Exception {
-        LinearRegression linearRegression = new LinearRegression().setWeightCol("weight");
+        LinearRegression linearRegression =
+                new LinearRegression().setMaxIter(3).setLearningRate(0.05).setWeightCol("weight");
         LinearRegressionModel model = linearRegression.fit(trainDataTable);
 
         LinearRegressionModel newModel = new LinearRegressionModel();
@@ -234,9 +240,23 @@ public class LinearRegressionTest {
 
     @Test
     public void testMoreSubtaskThanData() throws Exception {
-        env.setParallelism(12);
+        List<Row> trainData =
+                Arrays.asList(
+                        Row.of(Vectors.dense(2, 1), 4.0, 1.0),
+                        Row.of(Vectors.dense(3, 2), 7.0, 1.0));
+
+        Table trainDataTable =
+                tEnv.fromDataStream(
+                        env.fromCollection(
+                                trainData,
+                                new RowTypeInfo(
+                                        new TypeInformation[] {
+                                            DenseVectorTypeInfo.INSTANCE, Types.DOUBLE, Types.DOUBLE
+                                        },
+                                        new String[] {"features", "label", "weight"})));
+
         LinearRegression linearRegression =
-                new LinearRegression().setWeightCol("weight").setGlobalBatchSize(128);
+                new LinearRegression().setMaxIter(3).setWeightCol("weight").setGlobalBatchSize(128);
         Table output = linearRegression.fit(trainDataTable).transform(trainDataTable)[0];
         verifyPredictionResult(
                 output, linearRegression.getLabelCol(), linearRegression.getPredictionCol());
@@ -245,9 +265,9 @@ public class LinearRegressionTest {
     @Test
     public void testRegularization() throws Exception {
         checkRegularization(0, RandomUtils.nextDouble(0, 1), expectedCoefficient);
-        checkRegularization(0.1, 0, new double[] {1.165, 1.780});
-        checkRegularization(0.1, 1, new double[] {1.143, 1.812});
-        checkRegularization(0.1, 0.5, new double[] {1.154, 1.796});
+        checkRegularization(0.1, 0, new double[] {1.494, 1.289});
+        checkRegularization(0.1, 1, new double[] {1.497, 1.290});
+        checkRegularization(0.1, 0.5, new double[] {1.496, 1.290});
     }
 
     @SuppressWarnings("unchecked")
@@ -255,6 +275,8 @@ public class LinearRegressionTest {
             throws Exception {
         LinearRegressionModel model =
                 new LinearRegression()
+                        .setMaxIter(3)
+                        .setLearningRate(0.05)
                         .setWeightCol("weight")
                         .setReg(reg)
                         .setElasticNet(elasticNet)
