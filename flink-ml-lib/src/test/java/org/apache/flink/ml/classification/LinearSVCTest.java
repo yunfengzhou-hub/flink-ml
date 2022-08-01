@@ -37,6 +37,7 @@ import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
 
 import org.apache.commons.collections.IteratorUtils;
@@ -56,7 +57,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /** Tests {@link LinearSVC} and {@link LinearSVCModel}. */
-public class LinearSVCTest {
+public class LinearSVCTest extends AbstractTestBase {
 
     @Rule public final TemporaryFolder tempFolder = new TemporaryFolder();
 
@@ -77,8 +78,7 @@ public class LinearSVCTest {
                     Row.of(Vectors.dense(14, 2, 3, 4), 1., 4.),
                     Row.of(Vectors.dense(15, 2, 3, 4), 1., 5.));
 
-    private static final double[] expectedCoefficient =
-            new double[] {0.470, -0.273, -0.410, -0.546};
+    private static final double[] expectedCoefficient = new double[] {2.333, -1.333, -2.0, -2.666};
 
     private static final double TOLERANCE = 1e-7;
 
@@ -172,6 +172,8 @@ public class LinearSVCTest {
         Table tempTable = trainDataTable.as("test_features", "test_label", "test_weight");
         LinearSVC linearSVC =
                 new LinearSVC()
+                        .setMaxIter(3)
+                        .setLearningRate(1.0)
                         .setFeaturesCol("test_features")
                         .setLabelCol("test_label")
                         .setWeightCol("test_weight")
@@ -190,7 +192,8 @@ public class LinearSVCTest {
 
     @Test
     public void testFitAndPredict() throws Exception {
-        LinearSVC linearSVC = new LinearSVC().setWeightCol("weight");
+        LinearSVC linearSVC =
+                new LinearSVC().setMaxIter(3).setLearningRate(1.0).setWeightCol("weight");
         Table output = linearSVC.fit(trainDataTable).transform(trainDataTable)[0];
         verifyPredictionResult(
                 output,
@@ -206,7 +209,8 @@ public class LinearSVCTest {
                 new Class<?>[] {SparseVector.class, Integer.class, Integer.class},
                 TestUtils.getColumnDataTypes(trainDataTable));
 
-        LinearSVC linearSVC = new LinearSVC().setWeightCol("weight");
+        LinearSVC linearSVC =
+                new LinearSVC().setMaxIter(3).setLearningRate(1.0).setWeightCol("weight");
         Table output = linearSVC.fit(trainDataTable).transform(trainDataTable)[0];
         verifyPredictionResult(
                 output,
@@ -217,7 +221,8 @@ public class LinearSVCTest {
 
     @Test
     public void testSaveLoadAndPredict() throws Exception {
-        LinearSVC linearSVC = new LinearSVC().setWeightCol("weight");
+        LinearSVC linearSVC =
+                new LinearSVC().setMaxIter(3).setLearningRate(1.0).setWeightCol("weight");
         linearSVC =
                 TestUtils.saveAndReload(tEnv, linearSVC, tempFolder.newFolder().getAbsolutePath());
         LinearSVCModel model = linearSVC.fit(trainDataTable);
@@ -236,7 +241,8 @@ public class LinearSVCTest {
     @Test
     @SuppressWarnings("unchecked")
     public void testGetModelData() throws Exception {
-        LinearSVC linearSVC = new LinearSVC().setWeightCol("weight");
+        LinearSVC linearSVC =
+                new LinearSVC().setMaxIter(3).setLearningRate(1.0).setWeightCol("weight");
         LinearSVCModel model = linearSVC.fit(trainDataTable);
         List<LinearSVCModelData> modelData =
                 IteratorUtils.toList(
@@ -248,7 +254,8 @@ public class LinearSVCTest {
 
     @Test
     public void testSetModelData() throws Exception {
-        LinearSVC linearSVC = new LinearSVC().setWeightCol("weight");
+        LinearSVC linearSVC =
+                new LinearSVC().setMaxIter(3).setLearningRate(1.0).setWeightCol("weight");
         LinearSVCModel model = linearSVC.fit(trainDataTable);
 
         LinearSVCModel newModel = new LinearSVCModel();
@@ -264,8 +271,27 @@ public class LinearSVCTest {
 
     @Test
     public void testMoreSubtaskThanData() throws Exception {
-        env.setParallelism(12);
-        LinearSVC linearSVC = new LinearSVC().setWeightCol("weight").setGlobalBatchSize(128);
+        List<Row> trainData =
+                Arrays.asList(
+                        Row.of(Vectors.dense(1, 2, 3, 4), 0., 1.),
+                        Row.of(Vectors.dense(11, 2, 3, 4), 1., 1.));
+
+        Table trainDataTable =
+                tEnv.fromDataStream(
+                        env.fromCollection(
+                                trainData,
+                                new RowTypeInfo(
+                                        new TypeInformation[] {
+                                            DenseVectorTypeInfo.INSTANCE, Types.DOUBLE, Types.DOUBLE
+                                        },
+                                        new String[] {"features", "label", "weight"})));
+
+        LinearSVC linearSVC =
+                new LinearSVC()
+                        .setMaxIter(3)
+                        .setLearningRate(1.0)
+                        .setWeightCol("weight")
+                        .setGlobalBatchSize(128);
         Table output = linearSVC.fit(trainDataTable).transform(trainDataTable)[0];
         verifyPredictionResult(
                 output,
@@ -277,9 +303,9 @@ public class LinearSVCTest {
     @Test
     public void testRegularization() throws Exception {
         checkRegularization(0, RandomUtils.nextDouble(0, 1), expectedCoefficient);
-        checkRegularization(0.1, 0, new double[] {0.437, -0.262, -0.393, -0.524});
-        checkRegularization(0.1, 1, new double[] {0.426, -0.197, -0.329, -0.463});
-        checkRegularization(0.1, 0.5, new double[] {0.419, -0.238, -0.372, -0.505});
+        checkRegularization(0.1, 0, new double[] {2.16, -0.81, -1.215, -1.62});
+        checkRegularization(0.1, 1, new double[] {2.033, -1.133, -1.799, -2.466});
+        checkRegularization(0.1, 0.5, new double[] {1.698, -1.122, -1.731, -2.341});
     }
 
     @Test
@@ -293,6 +319,8 @@ public class LinearSVCTest {
             throws Exception {
         LinearSVCModel model =
                 new LinearSVC()
+                        .setMaxIter(3)
+                        .setLearningRate(1.0)
                         .setWeightCol("weight")
                         .setReg(reg)
                         .setElasticNet(elasticNet)
@@ -307,7 +335,8 @@ public class LinearSVCTest {
 
     @SuppressWarnings("unchecked")
     private void checkThreshold(double threshold, double target) throws Exception {
-        LinearSVC linearSVC = new LinearSVC().setWeightCol("weight");
+        LinearSVC linearSVC =
+                new LinearSVC().setMaxIter(3).setLearningRate(1.0).setWeightCol("weight");
 
         Table predictions =
                 linearSVC.setThreshold(threshold).fit(trainDataTable).transform(trainDataTable)[0];

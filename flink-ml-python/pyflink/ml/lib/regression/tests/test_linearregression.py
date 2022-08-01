@@ -18,12 +18,11 @@
 import os
 
 from pyflink.common import Types
-from pyflink.table import Table
-
 from pyflink.ml.core.linalg import Vectors, DenseVectorTypeInfo
 from pyflink.ml.lib.regression.linearregression import LinearRegression, \
     LinearRegressionModel
 from pyflink.ml.tests.test_utils import PyFlinkMLTestCase
+from pyflink.table import Table
 
 
 class LinearRegressionTest(PyFlinkMLTestCase):
@@ -34,10 +33,10 @@ class LinearRegressionTest(PyFlinkMLTestCase):
                 (Vectors.dense(2, 1), 4., 1.),
                 (Vectors.dense(3, 2), 7., 1.),
                 (Vectors.dense(4, 3), 10., 1.),
-                (Vectors.dense(2, 4), 10., 1.),
+                (Vectors.dense(2, 4), 9., 1.),
                 (Vectors.dense(2, 2), 6., 1.),
                 (Vectors.dense(4, 3), 10., 1.),
-                (Vectors.dense(1, 2), 5., 1.),
+                (Vectors.dense(1, 2), 4., 1.),
                 (Vectors.dense(5, 3), 11., 1.),
             ],
                 type_info=Types.ROW_NAMED(
@@ -65,7 +64,7 @@ class LinearRegressionTest(PyFlinkMLTestCase):
             .set_learning_rate(0.5) \
             .set_global_batch_size(1000) \
             .set_reg(0.1) \
-            .set_prediction_col("test_prediction_col") \
+            .set_prediction_col("test_prediction_col")
 
         self.assertEqual(regression.features_col, 'test_features')
         self.assertEqual(regression.label_col, 'test_label')
@@ -93,7 +92,10 @@ class LinearRegressionTest(PyFlinkMLTestCase):
             output.get_schema().get_field_names())
 
     def test_fit_and_predict(self):
-        regression = LinearRegression().set_weight_col('weight')
+        regression = LinearRegression() \
+            .set_max_iter(3) \
+            .set_learning_rate(0.05) \
+            .set_weight_col('weight')
         output = regression.fit(self.input_data_table).transform(self.input_data_table)[0]
         field_names = output.get_schema().get_field_names()
         self.verify_predict_result(
@@ -102,7 +104,10 @@ class LinearRegressionTest(PyFlinkMLTestCase):
             field_names.index(regression.get_prediction_col()))
 
     def test_save_load_and_predict(self):
-        regression = LinearRegression().set_weight_col('weight')
+        regression = LinearRegression() \
+            .set_max_iter(3) \
+            .set_learning_rate(0.05) \
+            .set_weight_col('weight')
         path = os.path.join(self.temp_dir, 'test_save_load_and_predict_linear_regression')
         regression.save(path)
         regression = LinearRegression.load(self.t_env, path)  # type: LinearRegression
@@ -118,19 +123,25 @@ class LinearRegressionTest(PyFlinkMLTestCase):
             field_names.index(regression.get_prediction_col()))
 
     def test_get_model_data(self):
-        regression = LinearRegression().set_weight_col('weight')
+        regression = LinearRegression() \
+            .set_max_iter(3) \
+            .set_learning_rate(0.05) \
+            .set_weight_col('weight')
         model = regression.fit(self.input_data_table)
         model_data = self.t_env.to_data_stream(
             model.get_model_data()[0]).execute_and_collect().next()
         self.assertIsNotNone(model_data[0])
         data = model_data[0].values.tolist()
-        expected = [1.141, 1.829]
+        expected = [1.503, 1.297]
         self.assertEqual(len(data), len(expected))
         for a, b in zip(data, expected):
             self.assertAlmostEqual(a, b, delta=0.1)
 
     def test_set_model_data(self):
-        regression = LinearRegression().set_weight_col('weight')
+        regression = LinearRegression() \
+            .set_max_iter(3) \
+            .set_learning_rate(0.05) \
+            .set_weight_col('weight')
         model = regression.fit(self.input_data_table)
 
         new_model = LinearRegressionModel()
