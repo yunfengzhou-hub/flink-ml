@@ -86,6 +86,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -376,29 +379,37 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
         InputChannel inputChannel =
                 getContainingTask().getEnvironment().getAllInputGates()[0].getChannel(0);
 
-        boolean endOfPartitionReceived = false;
-        long lastTriggerCheckpointId = 0;
-        while (!endOfPartitionReceived && status != HeadOperatorStatus.TERMINATED) {
-            mailboxExecutor.tryYield();
-            Thread.sleep(200);
+        AtomicBoolean endOfPartitionReceived = new AtomicBoolean(false);
+        final AtomicLong lastTriggerCheckpointId = new AtomicLong(0);
 
-            List<AbstractEvent> events = parseInputChannelEvents(inputChannel);
+        while (!endOfPartitionReceived.get() && status != HeadOperatorStatus.TERMINATED) {
+            Future<Void> future =
+                    mailboxExecutor.submit(
+                            () -> {
+                                List<AbstractEvent> events = parseInputChannelEvents(inputChannel);
 
-            for (AbstractEvent event : events) {
-                if (event instanceof CheckpointBarrier) {
-                    CheckpointBarrier barrier = (CheckpointBarrier) event;
-                    if (barrier.getId() > lastTriggerCheckpointId) {
-                        getContainingTask()
-                                .triggerCheckpointAsync(
-                                        new CheckpointMetaData(
-                                                barrier.getId(), barrier.getTimestamp()),
-                                        barrier.getCheckpointOptions());
-                        lastTriggerCheckpointId = barrier.getId();
-                    }
+                                for (AbstractEvent event : events) {
+                                    if (event instanceof CheckpointBarrier) {
+                                        CheckpointBarrier barrier = (CheckpointBarrier) event;
+                                        if (barrier.getId() > lastTriggerCheckpointId.get()) {
+                                            getContainingTask()
+                                                    .triggerCheckpointAsync(
+                                                            new CheckpointMetaData(
+                                                                    barrier.getId(),
+                                                                    barrier.getTimestamp()),
+                                                            barrier.getCheckpointOptions());
+                                            lastTriggerCheckpointId.set(barrier.getId());
+                                        }
 
-                } else if (event instanceof EndOfPartitionEvent) {
-                    endOfPartitionReceived = true;
-                }
+                                    } else if (event instanceof EndOfPartitionEvent) {
+                                        endOfPartitionReceived.set(true);
+                                    }
+                                }
+                            },
+                            "Head endInput() handle CheckpointBarrier and EndOfPartitionEvent");
+
+            while (!future.isDone()) {
+                mailboxExecutor.yield();
             }
         }
 
