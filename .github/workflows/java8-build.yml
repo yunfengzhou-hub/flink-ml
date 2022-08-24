@@ -17,3 +17,5 @@ jobs:
           java-version: 1.8
       - name: Build and test
         run: ./tools/ci/java_test_controller.sh "${{ matrix.stage }}"
+      - name: Repeat LogisticRegressionTest until failure
+        run: cd flink-ml-lib && bash ../tools/ci/run_until_fail.sh org.apache.flink.ml.classification.LogisticRegressionTest
