@@ -23,7 +23,7 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 1.8
-      - name: Build
+      - name: Build Java package
         run: mvn clean install -DskipTests
       - name: Install python
         uses: actions/setup-python@v2
@@ -32,6 +32,12 @@ jobs:
       - name: Install dependencies
         working-directory: flink-ml-python/dev
         run: python -m pip install -r dev-requirements.txt
+      - name: Build Python package
+        working-directory: flink-ml-python
+        run: python setup.py sdist
+      - name: Install Python package
+        working-directory: flink-ml-python
+        run: python -m pip install dist/*.tar.gz
       - name: Check code style
         working-directory: flink-ml-python
         run: python -m flake8 --config=setup.cfg
