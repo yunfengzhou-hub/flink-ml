@@ -47,6 +47,11 @@ class MLLibTest(PyFlinkMLTestCase):
         FLINK_ML_LIB_SOURCE_PATH = os.path.abspath(os.path.join(
             this_directory, "../../../../../flink-ml-lib"))
 
+        ml_test_jar = glob.glob(os.path.join(
+            FLINK_ML_LIB_SOURCE_PATH, "target", "flink-ml-lib-*-tests.jar"))[0]
+
+        self.env.add_classpaths("file://{0}".format(ml_test_jar))
+
         ml_lib_jar = glob.glob(os.path.join(
             FLINK_ML_LIB_SOURCE_PATH, "target", "flink-ml-lib-*SNAPSHOT.jar"))[0]
 
