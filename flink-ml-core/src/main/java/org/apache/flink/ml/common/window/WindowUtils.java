@@ -19,9 +19,8 @@
 package org.apache.flink.ml.common.window;
 
 import org.apache.flink.ml.common.datastream.EndOfStreamWindows;
+import org.apache.flink.streaming.api.datastream.AllWindowedStream;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
-import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
 import org.apache.flink.streaming.api.windowing.assigners.ProcessingTimeSessionWindows;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
@@ -38,28 +37,23 @@ import java.util.Map;
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class WindowUtils {
     /**
-     * Applies allWindow() and process() operation on the input stream.
+     * Applies windowAll() operation on the input stream.
      *
      * @param input The input data stream.
      * @param window The window that defines how input data would be sliced into batches.
-     * @param function The user defined process function.
      */
-    public static <IN, OUT> SingleOutputStreamOperator<OUT> allWindowProcess(
-            DataStream<IN> input,
-            Window window,
-            ProcessAllWindowFunction<IN, OUT, ? extends Window> function) {
-        SingleOutputStreamOperator<OUT> output;
+    public static <T, W extends org.apache.flink.streaming.api.windowing.windows.Window>
+            AllWindowedStream<T, W> windowAll(DataStream<T> input, Window window) {
+        AllWindowedStream<T, W> output;
         if (window instanceof BoundedWindow) {
-            output = input.windowAll(EndOfStreamWindows.get()).process(function);
+            output = input.windowAll((WindowAssigner) EndOfStreamWindows.get());
         } else if (window instanceof TumbleWindow && ((TumbleWindow) window).countWindowSize > 0) {
             long countWindowSize = ((TumbleWindow) window).countWindowSize;
-            output =
-                    input.countWindowAll(countWindowSize)
-                            .process((ProcessAllWindowFunction) function);
+            output = (AllWindowedStream<T, W>) input.countWindowAll(countWindowSize);
         } else {
             output =
-                    input.windowAll(WindowUtils.getDataStreamTimeWindowAssigner(window))
-                            .process((ProcessAllWindowFunction) function);
+                    input.windowAll(
+                            (WindowAssigner) WindowUtils.getDataStreamTimeWindowAssigner(window));
         }
         return output;
     }

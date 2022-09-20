@@ -27,7 +27,6 @@ import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
-import org.apache.flink.ml.common.window.Window;
 import org.apache.flink.ml.common.window.WindowUtils;
 import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.DenseVector;
@@ -110,19 +109,18 @@ public class AgglomerativeClustering
         OutputTag<Tuple4<Integer, Integer, Double, Integer>> mergeInfoOutputTag =
                 new OutputTag<Tuple4<Integer, Integer, Double, Integer>>("MERGE_INFO") {};
 
-        Window window = getWindow();
-        LocalAgglomerativeClusterFunction<? extends Window> localAgglomerativeClusterFunction =
-                new LocalAgglomerativeClusterFunction<>(
-                        getFeaturesCol(),
-                        getLinkage(),
-                        getDistanceMeasure(),
-                        getNumClusters(),
-                        getDistanceThreshold(),
-                        getComputeFullTree(),
-                        mergeInfoOutputTag,
-                        outputTypeInfo);
         SingleOutputStreamOperator<Row> output =
-                WindowUtils.allWindowProcess(dataStream, window, localAgglomerativeClusterFunction);
+                WindowUtils.windowAll(dataStream, getWindow())
+                        .process(
+                                new LocalAgglomerativeClusterFunction<>(
+                                        getFeaturesCol(),
+                                        getLinkage(),
+                                        getDistanceMeasure(),
+                                        getNumClusters(),
+                                        getDistanceThreshold(),
+                                        getComputeFullTree(),
+                                        mergeInfoOutputTag,
+                                        outputTypeInfo));
 
         Table outputTable = tEnv.fromDataStream(output);
 
