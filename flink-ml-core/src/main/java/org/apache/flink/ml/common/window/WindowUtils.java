@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.common.window;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.datastream.EndOfStreamWindows;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
@@ -48,21 +47,19 @@ public class WindowUtils {
     public static <IN, OUT> SingleOutputStreamOperator<OUT> allWindowProcess(
             DataStream<IN> input,
             Window window,
-            ProcessAllWindowFunction<IN, OUT, GlobalWindow> function,
-            TypeInformation<OUT> outputTypeInfo) {
+            ProcessAllWindowFunction<IN, OUT, GlobalWindow> function) {
         SingleOutputStreamOperator<OUT> output;
         if (window instanceof BoundedWindow) {
             output =
                     (SingleOutputStreamOperator<OUT>)
-                            input.windowAll(EndOfStreamWindows.get())
-                                    .process(function, outputTypeInfo);
+                            input.windowAll(EndOfStreamWindows.get()).process(function);
         } else if (window instanceof TumbleWindow && ((TumbleWindow) window).countWindowSize > 0) {
             long countWindowSize = ((TumbleWindow) window).countWindowSize;
-            output = input.countWindowAll(countWindowSize).process(function, outputTypeInfo);
+            output = input.countWindowAll(countWindowSize).process(function);
         } else {
             output =
                     input.windowAll(WindowUtils.getDataStreamWindowAssigner(window))
-                            .process(function, outputTypeInfo);
+                            .process(function);
         }
         return output;
     }

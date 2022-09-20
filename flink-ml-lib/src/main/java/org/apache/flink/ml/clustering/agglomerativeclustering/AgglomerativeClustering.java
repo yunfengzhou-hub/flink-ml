@@ -18,8 +18,10 @@
 
 package org.apache.flink.ml.clustering.agglomerativeclustering;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple4;
+import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.common.datastream.TableUtils;
@@ -118,10 +120,10 @@ public class AgglomerativeClustering
                         getNumClusters(),
                         getDistanceThreshold(),
                         getComputeFullTree(),
-                        mergeInfoOutputTag);
+                        mergeInfoOutputTag,
+                        outputTypeInfo);
         SingleOutputStreamOperator<Row> output =
-                WindowUtils.allWindowProcess(
-                        dataStream, window, localAgglomerativeClusterFunction, outputTypeInfo);
+                WindowUtils.allWindowProcess(dataStream, window, localAgglomerativeClusterFunction);
 
         Table outputTable = tEnv.fromDataStream(output);
 
@@ -151,7 +153,8 @@ public class AgglomerativeClustering
     }
 
     private static class LocalAgglomerativeClusterFunction
-            extends ProcessAllWindowFunction<Row, Row, GlobalWindow> {
+            extends ProcessAllWindowFunction<Row, Row, GlobalWindow>
+            implements ResultTypeQueryable<Row> {
         private final String featuresCol;
         private final String linkage;
         private final DistanceMeasure distanceMeasure;
@@ -159,6 +162,7 @@ public class AgglomerativeClustering
         private final Double distanceThreshold;
         private final boolean computeFullTree;
         private final OutputTag<Tuple4<Integer, Integer, Double, Integer>> mergeInfoOutputTag;
+        private final RowTypeInfo outputTypeInfo;
 
         /** Cluster id of each data point in inputList. */
         private int[] clusterIds;
@@ -174,7 +178,8 @@ public class AgglomerativeClustering
                 Integer numCluster,
                 Double distanceThreshold,
                 boolean computeFullTree,
-                OutputTag<Tuple4<Integer, Integer, Double, Integer>> mergeInfoOutputTag) {
+                OutputTag<Tuple4<Integer, Integer, Double, Integer>> mergeInfoOutputTag,
+                RowTypeInfo outputTypeInfo) {
             this.featuresCol = featuresCol;
             this.linkage = linkage;
             this.numCluster = numCluster;
@@ -183,6 +188,7 @@ public class AgglomerativeClustering
             this.mergeInfoOutputTag = mergeInfoOutputTag;
 
             distanceMeasure = DistanceMeasure.getInstance(distanceMeasureName);
+            this.outputTypeInfo = outputTypeInfo;
         }
 
         @Override
@@ -377,6 +383,11 @@ public class AgglomerativeClustering
                             "Unsupported " + LINKAGE + " type: " + linkage + ".");
             }
             return distance;
+        }
+
+        @Override
+        public TypeInformation<Row> getProducedType() {
+            return outputTypeInfo;
         }
 
         /** A cluster with cluster Id specified and data points that belong to this cluster. */

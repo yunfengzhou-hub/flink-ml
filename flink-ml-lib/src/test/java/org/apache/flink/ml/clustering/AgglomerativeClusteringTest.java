@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.clustering;
 
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -59,7 +58,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static org.apache.flink.table.api.Expressions.$;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -254,48 +252,11 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                         .setLinkage(AgglomerativeClusteringParams.LINKAGE_AVERAGE)
                         .setDistanceMeasure(EuclideanDistanceMeasure.NAME)
                         .setPredictionCol("pred")
-                        //
-                        // .setWindow(TumbleWindow.over(Duration.ofSeconds(1)).on("ts"));
                         .setWindow(TumbleWindow.over(Duration.ofSeconds(1)));
 
         Table[] outputs = agglomerativeClustering.transform(inputDataTable);
         verifyClusteringResult2(
                 EUCLIDEAN_WARD_WINDOW_AS_TWO_RESULT,
-                outputs[0],
-                agglomerativeClustering.getFeaturesCol(),
-                agglomerativeClustering.getPredictionCol());
-    }
-
-    @Test
-    public void testTransformWithProcTime2() throws Exception {
-        DataStream<DenseVector> inputDataStream =
-                env.fromCollection(INPUT_DATA)
-                        .map(x -> x)
-                        .assignTimestampsAndWatermarks(
-                                WatermarkStrategy.<DenseVector>forBoundedOutOfOrderness(
-                                                Duration.ofSeconds(20))
-                                        .withTimestampAssigner(
-                                                (element, recordTimestamp) -> element.size()));
-
-        inputDataTable =
-                tEnv.fromDataStream(
-                        inputDataStream,
-                        Schema.newBuilder()
-                                .columnByExpression("proc_time", "PROCTIME()")
-                                .columnByExpression("event_time", "PROCTIME()")
-                                .build());
-        inputDataTable =
-                inputDataTable.select($("f0").as("features"), $("proc_time"), $("event_time"));
-
-        AgglomerativeClustering agglomerativeClustering =
-                new AgglomerativeClustering()
-                        .setLinkage(AgglomerativeClusteringParams.LINKAGE_AVERAGE)
-                        .setDistanceMeasure(EuclideanDistanceMeasure.NAME)
-                        .setPredictionCol("pred");
-
-        Table[] outputs = agglomerativeClustering.transform(inputDataTable);
-        verifyClusteringResult(
-                EUCLIDEAN_WARD_NUM_CLUSTERS_AS_TWO_RESULT,
                 outputs[0],
                 agglomerativeClustering.getFeaturesCol(),
                 agglomerativeClustering.getPredictionCol());

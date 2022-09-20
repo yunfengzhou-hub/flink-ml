@@ -21,7 +21,6 @@ package org.apache.flink.ml.common.window;
 import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.java.typeutils.ListTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
@@ -90,10 +89,7 @@ public class WindowsTest extends AbstractTestBase {
     public void testBoundedWindow() throws Exception {
         DataStream<List<Long>> outputStream =
                 WindowUtils.allWindowProcess(
-                        inputStream,
-                        BoundedWindow.get(),
-                        new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class));
+                        inputStream, BoundedWindow.get(), new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(1, actualBatches.size());
         assertEquals(new HashSet<>(inputData), new HashSet<>(actualBatches.get(0)));
@@ -105,8 +101,7 @@ public class WindowsTest extends AbstractTestBase {
                 WindowUtils.allWindowProcess(
                         inputStream,
                         TumbleWindow.over(RECORD_NUM / 3),
-                        new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class));
+                        new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() >= 3 && actualBatches.size() <= 4);
         int count = 0;
@@ -122,8 +117,7 @@ public class WindowsTest extends AbstractTestBase {
                 WindowUtils.allWindowProcess(
                         inputStreamWithInterval,
                         TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime(),
-                        new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class));
+                        new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
         List<Long> mergedBatches = new ArrayList<>();
@@ -139,8 +133,7 @@ public class WindowsTest extends AbstractTestBase {
                 WindowUtils.allWindowProcess(
                         inputStreamWithTimestamp,
                         TumbleWindow.over(Duration.ofMillis(RECORD_NUM / 7)),
-                        new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class));
+                        new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(8, actualBatches.size());
         List<Long> mergedBatches = new ArrayList<>();
@@ -157,8 +150,7 @@ public class WindowsTest extends AbstractTestBase {
                 WindowUtils.allWindowProcess(
                         inputStreamWithInterval,
                         SessionWindow.withGap(Duration.ofMillis(100)).withProcessingTime(),
-                        new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class));
+                        new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
         List<Long> mergedBatches = new ArrayList<>();
@@ -174,8 +166,7 @@ public class WindowsTest extends AbstractTestBase {
                 WindowUtils.allWindowProcess(
                         inputStreamWithTimestamp,
                         SessionWindow.withGap(Duration.ofMillis(RECORD_NUM / 7)),
-                        new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class));
+                        new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(1, actualBatches.size());
         assertEquals(new HashSet<>(inputData), new HashSet<>(actualBatches.get(0)));
