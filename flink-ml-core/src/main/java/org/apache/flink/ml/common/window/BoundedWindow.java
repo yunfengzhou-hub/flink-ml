@@ -27,4 +27,14 @@ public class BoundedWindow implements Window {
     public static BoundedWindow get() {
         return INSTANCE;
     }
+
+    @Override
+    public int hashCode() {
+        return this.getClass().hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof BoundedWindow;
+    }
 }

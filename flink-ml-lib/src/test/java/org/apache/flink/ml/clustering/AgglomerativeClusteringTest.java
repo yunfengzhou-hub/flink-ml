@@ -28,6 +28,7 @@ import org.apache.flink.ml.clustering.agglomerativeclustering.AgglomerativeClust
 import org.apache.flink.ml.common.distance.CosineDistanceMeasure;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.common.distance.ManhattanDistanceMeasure;
+import org.apache.flink.ml.common.window.BoundedWindow;
 import org.apache.flink.ml.common.window.TumbleWindow;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
@@ -145,6 +146,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
         assertEquals(EuclideanDistanceMeasure.NAME, agglomerativeClustering.getDistanceMeasure());
         assertFalse(agglomerativeClustering.getComputeFullTree());
         assertEquals("prediction", agglomerativeClustering.getPredictionCol());
+        assertEquals(BoundedWindow.get(), agglomerativeClustering.getWindow());
 
         agglomerativeClustering
                 .setFeaturesCol("test_features")
@@ -163,6 +165,9 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
         assertEquals(CosineDistanceMeasure.NAME, agglomerativeClustering.getDistanceMeasure());
         assertTrue(agglomerativeClustering.getComputeFullTree());
         assertEquals("cluster_id", agglomerativeClustering.getPredictionCol());
+        assertEquals(
+                TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime(),
+                agglomerativeClustering.getWindow());
     }
 
     @Test
@@ -245,7 +250,6 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                         .build();
 
         Table inputDataTable = tEnv.fromDataStream(inputDataStream, schema);
-        inputDataTable.printSchema();
 
         AgglomerativeClustering agglomerativeClustering =
                 new AgglomerativeClustering()

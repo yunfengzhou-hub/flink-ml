@@ -235,7 +235,6 @@ public class AgglomerativeClustering
             }
 
             for (int i = 0; i < numDataPoints; i++) {
-                System.out.println(Row.join(inputList.get(i), Row.of(clusterIds[i])));
                 output.collect(Row.join(inputList.get(i), Row.of(clusterIds[i])));
             }
         }
