@@ -26,14 +26,20 @@ import java.util.Objects;
  * elements. Windows do not overlap.
  */
 public class TumbleWindow implements Window {
+    /** Size of this window as time interval */
     Duration timeWindowSize;
+
+    /** Offset of this window. Windows start at time N * size + offset, where 0 is the epoch. */
     Duration timeWindowOffset;
-    boolean isEventTime;
+
+    /** Size of this window as row-count interval. */
     long countWindowSize;
+
+    boolean isEventTime;
 
     private TumbleWindow() {
         this.timeWindowSize = null;
-        this.timeWindowOffset = Duration.ZERO;
+        this.timeWindowOffset = null;
         this.isEventTime = true;
         this.countWindowSize = -1;
     }
@@ -44,8 +50,19 @@ public class TumbleWindow implements Window {
      * @param size the size of the window as time interval.
      */
     public static TumbleWindow over(Duration size) {
+        return TumbleWindow.over(size, Duration.ZERO);
+    }
+
+    /**
+     * Creates a new {@link TumbleWindow}.
+     *
+     * @param size the size of the window as time interval.
+     * @param offset the offset of this window.
+     */
+    public static TumbleWindow over(Duration size, Duration offset) {
         TumbleWindow tumbleWindow = new TumbleWindow();
         tumbleWindow.timeWindowSize = size;
+        tumbleWindow.timeWindowOffset = offset;
         return tumbleWindow;
     }
 

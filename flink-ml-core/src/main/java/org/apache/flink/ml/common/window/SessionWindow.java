@@ -26,7 +26,9 @@ import java.util.Objects;
  * Windows do not overlap.
  */
 public class SessionWindow implements Window {
+    /** The session timeout, i.e. the time gap between sessions. */
     Duration gap;
+
     boolean isEventTime;
 
     private SessionWindow() {
