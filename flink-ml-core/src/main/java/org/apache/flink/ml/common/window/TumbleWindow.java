@@ -37,12 +37,22 @@ public class TumbleWindow implements Window {
         this.countWindowSize = -1;
     }
 
+    /**
+     * Creates a new {@link TumbleWindow}.
+     *
+     * @param size the size of the window as time interval.
+     */
     public static TumbleWindow over(Duration size) {
         TumbleWindow tumbleWindow = new TumbleWindow();
         tumbleWindow.timeWindowSize = size;
         return tumbleWindow;
     }
 
+    /**
+     * Creates a new {@link TumbleWindow}.
+     *
+     * @param size the size of the window as row-count interval.
+     */
     public static TumbleWindow over(long size) {
         TumbleWindow tumbleWindow = new TumbleWindow();
         tumbleWindow.countWindowSize = size;

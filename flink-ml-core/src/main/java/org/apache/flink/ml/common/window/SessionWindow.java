@@ -20,6 +20,10 @@ package org.apache.flink.ml.common.window;
 
 import java.time.Duration;
 
+/**
+ * A {@link Window} that windows elements into sessions based on the timestamp of the elements.
+ * Windows do not overlap.
+ */
 public class SessionWindow implements Window {
     Duration gap;
     boolean isEventTime;
@@ -29,6 +33,11 @@ public class SessionWindow implements Window {
         this.isEventTime = true;
     }
 
+    /**
+     * Creates a new {@link SessionWindow}.
+     *
+     * @param gap The session timeout, i.e. the time gap between sessions
+     */
     public static SessionWindow withGap(Duration gap) {
         SessionWindow sessionWindow = new SessionWindow();
         sessionWindow.gap = gap;

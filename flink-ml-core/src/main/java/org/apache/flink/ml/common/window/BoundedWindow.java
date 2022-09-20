@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.window;
 
+/** A {@link Window} that windows all elements in a bounded stream into one window. */
 public class BoundedWindow implements Window {
     private static final BoundedWindow INSTANCE = new BoundedWindow();
 

@@ -16,12 +16,28 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.window;
+package org.apache.flink.ml.param;
 
-import java.io.Serializable;
+import org.apache.flink.ml.common.window.Window;
+import org.apache.flink.ml.common.window.WindowUtils;
 
-/**
- * A {@link Window} determines how input data stream would be sliced into batches and fed into a
- * Flink ML Stage.
- */
-public interface Window extends Serializable {}
+/** Class for the Window parameter. */
+public class WindowParam extends Param<Window> {
+    public WindowParam(
+            String name,
+            String description,
+            Window defaultValue,
+            ParamValidator<Window> validator) {
+        super(name, Window.class, description, defaultValue, validator);
+    }
+
+    @Override
+    public Object jsonEncode(Window value) {
+        return WindowUtils.jsonEncode(value);
+    }
+
+    @Override
+    public Window jsonDecode(Object json) {
+        return WindowUtils.jsonDecode(json);
+    }
+}

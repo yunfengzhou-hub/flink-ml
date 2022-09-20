@@ -41,6 +41,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+/** Tests the {@link Window}s and {@link WindowUtils}. */
 @SuppressWarnings("unchecked")
 public class WindowsTest extends AbstractTestBase {
     private static final int RECORD_NUM = 100;
@@ -92,8 +93,7 @@ public class WindowsTest extends AbstractTestBase {
                         inputStream,
                         BoundedWindow.get(),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class)
-                );
+                        new ListTypeInfo<>(Long.class));
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(1, actualBatches.size());
         assertEquals(new HashSet<>(inputData), new HashSet<>(actualBatches.get(0)));
@@ -106,8 +106,7 @@ public class WindowsTest extends AbstractTestBase {
                         inputStream,
                         TumbleWindow.over(RECORD_NUM / 3),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class)
-                );
+                        new ListTypeInfo<>(Long.class));
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() >= 3 && actualBatches.size() <= 4);
         int count = 0;
@@ -124,8 +123,7 @@ public class WindowsTest extends AbstractTestBase {
                         inputStreamWithInterval,
                         TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime(),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class)
-                );
+                        new ListTypeInfo<>(Long.class));
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
         List<Long> mergedBatches = new ArrayList<>();
@@ -142,8 +140,7 @@ public class WindowsTest extends AbstractTestBase {
                         inputStreamWithTimestamp,
                         TumbleWindow.over(Duration.ofMillis(RECORD_NUM / 7)),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class)
-                );
+                        new ListTypeInfo<>(Long.class));
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(8, actualBatches.size());
         List<Long> mergedBatches = new ArrayList<>();
@@ -161,8 +158,7 @@ public class WindowsTest extends AbstractTestBase {
                         inputStreamWithInterval,
                         SessionWindow.withGap(Duration.ofMillis(100)).withProcessingTime(),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class)
-                );
+                        new ListTypeInfo<>(Long.class));
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
         List<Long> mergedBatches = new ArrayList<>();
@@ -179,8 +175,7 @@ public class WindowsTest extends AbstractTestBase {
                         inputStreamWithTimestamp,
                         SessionWindow.withGap(Duration.ofMillis(RECORD_NUM / 7)),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class)
-                );
+                        new ListTypeInfo<>(Long.class));
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(1, actualBatches.size());
         assertEquals(new HashSet<>(inputData), new HashSet<>(actualBatches.get(0)));

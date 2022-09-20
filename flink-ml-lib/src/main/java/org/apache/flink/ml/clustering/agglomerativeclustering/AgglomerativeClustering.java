@@ -121,11 +121,7 @@ public class AgglomerativeClustering
                         mergeInfoOutputTag);
         SingleOutputStreamOperator<Row> output =
                 WindowUtils.allWindowProcess(
-                        dataStream,
-                        window,
-                        localAgglomerativeClusterFunction,
-                        outputTypeInfo
-                );
+                        dataStream, window, localAgglomerativeClusterFunction, outputTypeInfo);
 
         Table outputTable = tEnv.fromDataStream(output);
 

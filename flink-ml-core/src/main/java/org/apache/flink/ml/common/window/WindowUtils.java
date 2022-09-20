@@ -35,10 +35,18 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
+/** Utility class for operations related to the window. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class WindowUtils {
+    /**
+     * Applies allWindow() and process() operation on the input stream.
+     *
+     * @param input The input data stream.
+     * @param window The window that defines how input data would be sliced into batches.
+     * @param function The user defined process function.
+     */
     public static <IN, OUT> SingleOutputStreamOperator<OUT> allWindowProcess(
-            DataStream<IN> dataStream,
+            DataStream<IN> input,
             Window window,
             ProcessAllWindowFunction<IN, OUT, GlobalWindow> function,
             TypeInformation<OUT> outputTypeInfo) {
@@ -46,16 +54,14 @@ public class WindowUtils {
         if (window instanceof BoundedWindow) {
             output =
                     (SingleOutputStreamOperator<OUT>)
-                            dataStream
-                                    .windowAll(EndOfStreamWindows.get())
+                            input.windowAll(EndOfStreamWindows.get())
                                     .process(function, outputTypeInfo);
         } else if (window instanceof TumbleWindow && ((TumbleWindow) window).countWindowSize > 0) {
             long countWindowSize = ((TumbleWindow) window).countWindowSize;
-            output = dataStream.countWindowAll(countWindowSize).process(function, outputTypeInfo);
+            output = input.countWindowAll(countWindowSize).process(function, outputTypeInfo);
         } else {
             output =
-                    dataStream
-                            .windowAll(WindowUtils.getDataStreamWindowAssigner(window))
+                    input.windowAll(WindowUtils.getDataStreamWindowAssigner(window))
                             .process(function, outputTypeInfo);
         }
         return output;
