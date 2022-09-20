@@ -119,16 +119,13 @@ public class AgglomerativeClustering
                         getDistanceThreshold(),
                         getComputeFullTree(),
                         mergeInfoOutputTag);
-        boolean isRowTime = WindowUtils.isRowTime(inputs[0], window);
-        //        dataStream = WindowUtils.assignTimestampsAndWatermarksIfNeeded(dataStream,
-        // window);
         SingleOutputStreamOperator<Row> output =
                 WindowUtils.allWindowProcess(
                         dataStream,
                         window,
                         localAgglomerativeClusterFunction,
-                        outputTypeInfo,
-                        isRowTime);
+                        outputTypeInfo
+                );
 
         Table outputTable = tEnv.fromDataStream(output);
 

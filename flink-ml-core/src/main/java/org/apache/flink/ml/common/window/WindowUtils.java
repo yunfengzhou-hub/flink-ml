@@ -30,13 +30,7 @@ import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTime
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
-import org.apache.flink.table.api.Table;
-import org.apache.flink.table.catalog.Column;
-import org.apache.flink.table.catalog.ResolvedSchema;
-import org.apache.flink.table.types.logical.utils.LogicalTypeChecks;
 
-import javax.activation.UnsupportedDataTypeException;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,8 +41,7 @@ public class WindowUtils {
             DataStream<IN> dataStream,
             Window window,
             ProcessAllWindowFunction<IN, OUT, GlobalWindow> function,
-            TypeInformation<OUT> outputTypeInfo,
-            boolean isEventTime) {
+            TypeInformation<OUT> outputTypeInfo) {
         SingleOutputStreamOperator<OUT> output;
         if (window instanceof BoundedWindow) {
             output =
@@ -62,18 +55,18 @@ public class WindowUtils {
         } else {
             output =
                     dataStream
-                            .windowAll(WindowUtils.getDataStreamWindowAssigner(window, isEventTime))
+                            .windowAll(WindowUtils.getDataStreamWindowAssigner(window))
                             .process(function, outputTypeInfo);
         }
         return output;
     }
 
-    private static WindowAssigner getDataStreamWindowAssigner(Window window, boolean isEventTime) {
+    private static WindowAssigner getDataStreamWindowAssigner(Window window) {
         if (window instanceof TumbleWindow) {
             TumbleWindow tumbleWindow = (TumbleWindow) window;
             long size = tumbleWindow.timeWindowSize.toMillis();
             long offset = tumbleWindow.timeWindowOffset.toMillis();
-            if (isEventTime) {
+            if (((TumbleWindow) window).isEventTime) {
                 return TumblingEventTimeWindows.of(
                         Time.milliseconds(size), Time.milliseconds(offset));
             } else {
@@ -82,7 +75,7 @@ public class WindowUtils {
             }
         } else if (window instanceof SessionWindow) {
             long gap = ((SessionWindow) window).gap.toMillis();
-            if (isEventTime) {
+            if (((SessionWindow) window).isEventTime) {
                 return EventTimeSessionWindows.withGap(Time.milliseconds(gap));
             } else {
                 return ProcessingTimeSessionWindows.withGap(Time.milliseconds(gap));
@@ -93,39 +86,13 @@ public class WindowUtils {
         }
     }
 
-    public static boolean isRowTime(Table table, Window window) {
-        ResolvedSchema schema = table.getResolvedSchema();
-        boolean isEventTime = false;
-        String timestampCol = null;
-        if (window instanceof TumbleWindow) {
-            timestampCol = ((TumbleWindow) window).timestampCol;
-        } else if (window instanceof SessionWindow) {
-            timestampCol = ((SessionWindow) window).timestampCol;
-        }
-
-        if (timestampCol != null) {
-            Column.PhysicalColumn column =
-                    (Column.PhysicalColumn)
-                            schema.getColumns().get(schema.getColumnNames().indexOf(timestampCol));
-            if (LogicalTypeChecks.isRowtimeAttribute(column.getDataType().getLogicalType())) {
-                isEventTime = true;
-            }
-        } else {
-            if (!schema.getWatermarkSpecs().isEmpty()) {
-                isEventTime = true;
-            }
-        }
-        return isEventTime;
-    }
-
-    public static Object jsonEncode(Window value) throws IOException {
+    public static Object jsonEncode(Window value) {
         Map<String, Object> map = new HashMap<>();
         map.put("class", value.getClass().getCanonicalName());
         if (value instanceof BoundedWindow) {
             return map;
         } else if (value instanceof TumbleWindow) {
             TumbleWindow tumbleWindow = (TumbleWindow) value;
-            map.put("timestampCol", tumbleWindow.timestampCol);
             if (tumbleWindow.timeWindowSize != null) {
                 map.put("timeWindowSize", tumbleWindow.timeWindowSize.toMillis());
             }
@@ -133,17 +100,16 @@ public class WindowUtils {
             map.put("countWindowSize", tumbleWindow.countWindowSize);
             return map;
         } else {
-            throw new UnsupportedDataTypeException();
+            throw new UnsupportedOperationException();
         }
     }
 
-    public static Window jsonDecode(Object json) throws IOException {
+    public static Window jsonDecode(Object json) {
         Map<String, Object> map = (Map<String, Object>) json;
         String clazzString = (String) map.get("class");
         if (clazzString.equals(BoundedWindow.class.getCanonicalName())) {
             return BoundedWindow.get();
         } else if (clazzString.equals(TumbleWindow.class.getCanonicalName())) {
-            String timestampCol = (String) map.get("timestampCol");
             long countWindowSize = (long) map.get("countWindowSize");
             Duration timeWindowSize = null;
             if (map.containsKey("timeWindowSize")) {
@@ -154,10 +120,10 @@ public class WindowUtils {
             if (countWindowSize > 0) {
                 return TumbleWindow.over(countWindowSize);
             } else {
-                return TumbleWindow.over(timeWindowSize).on(timestampCol);
+                return TumbleWindow.over(timeWindowSize);
             }
         } else {
-            throw new UnsupportedDataTypeException();
+            throw new UnsupportedOperationException();
         }
     }
 }

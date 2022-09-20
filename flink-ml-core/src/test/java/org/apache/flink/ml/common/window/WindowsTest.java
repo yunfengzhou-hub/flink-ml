@@ -92,8 +92,8 @@ public class WindowsTest extends AbstractTestBase {
                         inputStream,
                         BoundedWindow.get(),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class),
-                        false);
+                        new ListTypeInfo<>(Long.class)
+                );
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(1, actualBatches.size());
         assertEquals(new HashSet<>(inputData), new HashSet<>(actualBatches.get(0)));
@@ -106,8 +106,8 @@ public class WindowsTest extends AbstractTestBase {
                         inputStream,
                         TumbleWindow.over(RECORD_NUM / 3),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class),
-                        false);
+                        new ListTypeInfo<>(Long.class)
+                );
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() >= 3 && actualBatches.size() <= 4);
         int count = 0;
@@ -122,10 +122,10 @@ public class WindowsTest extends AbstractTestBase {
         DataStream<List<Long>> outputStream =
                 WindowUtils.allWindowProcess(
                         inputStreamWithInterval,
-                        TumbleWindow.over(Duration.ofMillis(100)),
+                        TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime(),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class),
-                        false);
+                        new ListTypeInfo<>(Long.class)
+                );
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
         List<Long> mergedBatches = new ArrayList<>();
@@ -142,8 +142,8 @@ public class WindowsTest extends AbstractTestBase {
                         inputStreamWithTimestamp,
                         TumbleWindow.over(Duration.ofMillis(RECORD_NUM / 7)),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class),
-                        true);
+                        new ListTypeInfo<>(Long.class)
+                );
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(8, actualBatches.size());
         List<Long> mergedBatches = new ArrayList<>();
@@ -159,10 +159,10 @@ public class WindowsTest extends AbstractTestBase {
         DataStream<List<Long>> outputStream =
                 WindowUtils.allWindowProcess(
                         inputStreamWithInterval,
-                        SessionWindow.withGap(Duration.ofMillis(100)),
+                        SessionWindow.withGap(Duration.ofMillis(100)).withProcessingTime(),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class),
-                        false);
+                        new ListTypeInfo<>(Long.class)
+                );
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
         List<Long> mergedBatches = new ArrayList<>();
@@ -179,8 +179,8 @@ public class WindowsTest extends AbstractTestBase {
                         inputStreamWithTimestamp,
                         SessionWindow.withGap(Duration.ofMillis(RECORD_NUM / 7)),
                         new CreateAllWindowBatchFunction<>(),
-                        new ListTypeInfo<>(Long.class),
-                        true);
+                        new ListTypeInfo<>(Long.class)
+                );
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(1, actualBatches.size());
         assertEquals(new HashSet<>(inputData), new HashSet<>(actualBatches.get(0)));

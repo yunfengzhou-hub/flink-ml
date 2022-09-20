@@ -25,15 +25,15 @@ import java.time.Duration;
  * elements. Windows do not overlap.
  */
 public class TumbleWindow implements Window {
-    String timestampCol;
     Duration timeWindowSize;
     Duration timeWindowOffset;
+    boolean isEventTime;
     long countWindowSize;
 
     private TumbleWindow() {
-        this.timestampCol = null;
         this.timeWindowSize = null;
         this.timeWindowOffset = Duration.ZERO;
+        this.isEventTime = true;
         this.countWindowSize = -1;
     }
 
@@ -49,8 +49,13 @@ public class TumbleWindow implements Window {
         return tumbleWindow;
     }
 
-    public TumbleWindow on(String timestampCol) {
-        this.timestampCol = timestampCol;
+    public TumbleWindow withEventTime() {
+        isEventTime = true;
+        return this;
+    }
+
+    public TumbleWindow withProcessingTime() {
+        isEventTime = false;
         return this;
     }
 }

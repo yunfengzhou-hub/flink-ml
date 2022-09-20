@@ -21,12 +21,12 @@ package org.apache.flink.ml.common.window;
 import java.time.Duration;
 
 public class SessionWindow implements Window {
-    String timestampCol;
     Duration gap;
+    boolean isEventTime;
 
     private SessionWindow() {
-        this.timestampCol = null;
         this.gap = null;
+        this.isEventTime = true;
     }
 
     public static SessionWindow withGap(Duration gap) {
@@ -35,8 +35,13 @@ public class SessionWindow implements Window {
         return sessionWindow;
     }
 
-    public SessionWindow on(String timestampCol) {
-        this.timestampCol = timestampCol;
+    public SessionWindow withEventTime() {
+        isEventTime = true;
+        return this;
+    }
+
+    public SessionWindow withProcessingTime() {
+        isEventTime = false;
         return this;
     }
 }

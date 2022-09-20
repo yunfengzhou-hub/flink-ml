@@ -156,7 +156,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                 .setDistanceMeasure(CosineDistanceMeasure.NAME)
                 .setComputeFullTree(true)
                 .setPredictionCol("cluster_id")
-                .setWindow(TumbleWindow.over(Duration.ofMillis(100)).on("rowtime"));
+                .setWindow(TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime());
 
         assertEquals("test_features", agglomerativeClustering.getFeaturesCol());
         assertNull(agglomerativeClustering.getNumClusters());
@@ -264,19 +264,6 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                 outputs[0],
                 agglomerativeClustering.getFeaturesCol(),
                 agglomerativeClustering.getPredictionCol());
-    }
-
-    @Test
-    public void testTransformWithProcTime() throws Exception {
-        DataStream<DenseVector> inputDataStream = env.fromCollection(INPUT_DATA).map(x -> x);
-        Schema schema =
-                Schema.newBuilder()
-                        .column("f0", DataTypes.of(DenseVectorTypeInfo.INSTANCE))
-                        .columnByExpression("ts", "PROCTIME()")
-                        .build();
-        Table inputDataTable = tEnv.fromDataStream(inputDataStream, schema);
-
-        inputDataTable.printSchema();
     }
 
     @Test
