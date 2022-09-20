@@ -137,7 +137,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
     }
 
     @Test
-    public void testParam() throws IllegalAccessException {
+    public void testParam() {
         AgglomerativeClustering agglomerativeClustering = new AgglomerativeClustering();
         assertEquals("features", agglomerativeClustering.getFeaturesCol());
         assertEquals(2, agglomerativeClustering.getNumClusters().intValue());
@@ -196,8 +196,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                 new AgglomerativeClustering()
                         .setLinkage(AgglomerativeClusteringParams.LINKAGE_AVERAGE)
                         .setDistanceMeasure(EuclideanDistanceMeasure.NAME)
-                        .setPredictionCol("pred")
-                        .setWindow(TumbleWindow.over(INPUT_DATA.size()));
+                        .setPredictionCol("pred");
 
         // Tests euclidean distance with linkage as average, numClusters = 2.
         outputs = agglomerativeClustering.transform(inputDataTable);
@@ -230,6 +229,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     public void testTransformWithEventTimeWindow() throws Exception {
         RowTypeInfo outputTypeInfo =
                 new RowTypeInfo(
@@ -259,11 +259,26 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                         .setWindow(TumbleWindow.over(Duration.ofSeconds(1)));
 
         Table[] outputs = agglomerativeClustering.transform(inputDataTable);
-        verifyClusteringResult2(
-                EUCLIDEAN_WARD_WINDOW_AS_TWO_RESULT,
-                outputs[0],
-                agglomerativeClustering.getFeaturesCol(),
-                agglomerativeClustering.getPredictionCol());
+
+        List<Row> output = IteratorUtils.toList(tEnv.toDataStream(outputs[0]).executeAndCollect());
+        List<Set<DenseVector>> actualGroups =
+                KMeansTest.groupFeaturesByPrediction(
+                        output,
+                        agglomerativeClustering.getFeaturesCol(),
+                        agglomerativeClustering.getPredictionCol());
+
+        boolean isAllSubSet = true;
+        for (Set<DenseVector> expectedSet : EUCLIDEAN_WARD_WINDOW_AS_TWO_RESULT) {
+            boolean isSubset = false;
+            for (Set<DenseVector> actualSet : actualGroups) {
+                if (actualSet.containsAll(expectedSet)) {
+                    isSubset = true;
+                    break;
+                }
+            }
+            isAllSubSet &= isSubset;
+        }
+        assertTrue(isAllSubSet);
     }
 
     @Test
@@ -361,30 +376,5 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
         List<Set<DenseVector>> actualGroups =
                 KMeansTest.groupFeaturesByPrediction(output, featureCol, predictionCol);
         assertTrue(CollectionUtils.isEqualCollection(expected, actualGroups));
-    }
-
-    @SuppressWarnings("unchecked")
-    public void verifyClusteringResult2(
-            List<Set<DenseVector>> expected,
-            Table outputTable,
-            String featureCol,
-            String predictionCol)
-            throws Exception {
-        List<Row> output = IteratorUtils.toList(tEnv.toDataStream(outputTable).executeAndCollect());
-        List<Set<DenseVector>> actualGroups =
-                KMeansTest.groupFeaturesByPrediction(output, featureCol, predictionCol);
-
-        boolean isAllSubSet = true;
-        for (Set<DenseVector> expectedSet : expected) {
-            boolean isSubset = false;
-            for (Set<DenseVector> actualSet : actualGroups) {
-                if (actualSet.containsAll(expectedSet)) {
-                    isSubset = true;
-                    break;
-                }
-            }
-            isAllSubSet &= isSubset;
-        }
-        assertTrue(isAllSubSet);
     }
 }

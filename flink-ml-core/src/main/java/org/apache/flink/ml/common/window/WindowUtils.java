@@ -86,7 +86,7 @@ public class WindowUtils {
 
     public static Object jsonEncode(Window value) {
         Map<String, Object> map = new HashMap<>();
-        map.put("class", value.getClass().getCanonicalName());
+        map.put("class", value.getClass().getName());
         if (value instanceof BoundedWindow) {
             return map;
         } else if (value instanceof TumbleWindow) {
@@ -116,9 +116,9 @@ public class WindowUtils {
     public static Window jsonDecode(Object json) {
         Map<String, Object> map = (Map<String, Object>) json;
         String classString = (String) map.get("class");
-        if (classString.equals(BoundedWindow.class.getCanonicalName())) {
+        if (classString.equals(BoundedWindow.class.getName())) {
             return BoundedWindow.get();
-        } else if (classString.equals(TumbleWindow.class.getCanonicalName())) {
+        } else if (classString.equals(TumbleWindow.class.getName())) {
             Duration timeWindowSize = null;
             if (map.containsKey("timeWindowSize")) {
                 timeWindowSize = Duration.parse((String) map.get("timeWindowSize"));
@@ -136,7 +136,7 @@ public class WindowUtils {
             tumbleWindow.isEventTime = isEventTime;
 
             return tumbleWindow;
-        } else if (classString.equals(SessionWindow.class.getCanonicalName())) {
+        } else if (classString.equals(SessionWindow.class.getName())) {
             Duration gap = null;
             if (map.containsKey("gap")) {
                 gap = Duration.parse((String) map.get("gap"));

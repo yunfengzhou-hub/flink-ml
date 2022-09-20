@@ -112,7 +112,7 @@ public class AgglomerativeClustering
         SingleOutputStreamOperator<Row> output =
                 WindowUtils.windowAll(dataStream, getWindow())
                         .process(
-                                new LocalAgglomerativeClusterFunction<>(
+                                new LocalAgglomerativeClusteringFunction<>(
                                         getFeaturesCol(),
                                         getLinkage(),
                                         getDistanceMeasure(),
@@ -149,7 +149,7 @@ public class AgglomerativeClustering
         return paramMap;
     }
 
-    private static class LocalAgglomerativeClusterFunction<
+    private static class LocalAgglomerativeClusteringFunction<
                     W extends org.apache.flink.streaming.api.windowing.windows.Window>
             extends ProcessAllWindowFunction<Row, Row, W> implements ResultTypeQueryable<Row> {
         private final String featuresCol;
@@ -168,7 +168,7 @@ public class AgglomerativeClustering
         /** Next cluster Id to be assigned. */
         private int nextClusterId = 0;
 
-        public LocalAgglomerativeClusterFunction(
+        public LocalAgglomerativeClusteringFunction(
                 String featuresCol,
                 String linkage,
                 String distanceMeasureName,
