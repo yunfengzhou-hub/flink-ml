@@ -18,8 +18,14 @@
 
 package org.apache.flink.ml.common.window;
 
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.util.Preconditions;
+
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Window} that windows elements into fixed-size windows based on the timestamp of the
@@ -27,10 +33,10 @@ import java.util.Objects;
  */
 public class TumbleWindow implements Window {
     /** Size of this window as time interval */
-    Duration timeWindowSize;
+    Time timeWindowSize;
 
     /** Offset of this window. Windows start at time N * size + offset, where 0 is the epoch. */
-    Duration timeWindowOffset;
+    Time timeWindowOffset;
 
     /** Size of this window as row-count interval. */
     long countWindowSize;
@@ -49,8 +55,8 @@ public class TumbleWindow implements Window {
      *
      * @param size the size of the window as time interval.
      */
-    public static TumbleWindow over(Duration size) {
-        return TumbleWindow.over(size, Duration.ZERO);
+    public static TumbleWindow over(Time size) {
+        return TumbleWindow.over(size, Time.milliseconds(0));
     }
 
     /**
@@ -59,7 +65,7 @@ public class TumbleWindow implements Window {
      * @param size the size of the window as time interval.
      * @param offset the offset of this window.
      */
-    public static TumbleWindow over(Duration size, Duration offset) {
+    public static TumbleWindow over(Time size, Time offset) {
         TumbleWindow tumbleWindow = new TumbleWindow();
         tumbleWindow.timeWindowSize = size;
         tumbleWindow.timeWindowOffset = offset;
@@ -85,6 +91,48 @@ public class TumbleWindow implements Window {
     public TumbleWindow withProcessingTime() {
         isEventTime = false;
         return this;
+    }
+
+    @Override
+    public Map<String, Object> toMap() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("class", this.getClass().getName());
+        if (timeWindowSize != null) {
+            map.put("timeWindowSizeSize", timeWindowSize.getSize());
+            map.put("timeWindowSizeUnit", timeWindowSize.getUnit());
+        }
+        if (timeWindowOffset != null) {
+            map.put("timeWindowOffsetSize", timeWindowOffset.getSize());
+            map.put("timeWindowOffsetUnit", timeWindowOffset.getUnit());
+        }
+        map.put("isEventTime", isEventTime);
+        map.put("countWindowSize", countWindowSize);
+        return map;
+    }
+
+    public static TumbleWindow parse(Map<String, Object> map) {
+        Preconditions.checkArgument(TumbleWindow.class.getName().equals(map.get("class")));
+        Time timeWindowSize = null;
+        if (map.containsKey("timeWindowSizeSize")) {
+            long size = (long) map.get("timeWindowSizeSize");
+            TimeUnit unit = TimeUnit.valueOf((String) map.get("timeWindowSizeUnit"));
+            timeWindowSize = Time.of(size, unit);
+        }
+        Time timeWindowOffset = null;
+        if (map.containsKey("timeWindowOffsetSize")) {
+            long size = (long) map.get("timeWindowOffsetSize");
+            TimeUnit unit = TimeUnit.valueOf((String) map.get("timeWindowOffsetUnit"));
+            timeWindowOffset = Time.of(size, unit);
+        }
+        long countWindowSize = ((Number) map.get("countWindowSize")).longValue();
+        boolean isEventTime = (boolean) map.get("isEventTime");
+
+        TumbleWindow tumbleWindow = TumbleWindow.over(countWindowSize);
+        tumbleWindow.timeWindowOffset = timeWindowOffset;
+        tumbleWindow.timeWindowSize = timeWindowSize;
+        tumbleWindow.isEventTime = isEventTime;
+
+        return tumbleWindow;
     }
 
     @Override

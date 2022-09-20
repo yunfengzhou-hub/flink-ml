@@ -18,7 +18,10 @@
 
 package org.apache.flink.ml.clustering;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.IteratorUtils;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
@@ -43,15 +46,11 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
-
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.IteratorUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
@@ -156,7 +155,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                 .setDistanceMeasure(CosineDistanceMeasure.NAME)
                 .setComputeFullTree(true)
                 .setPredictionCol("cluster_id")
-                .setWindow(TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime());
+                .setWindow(TumbleWindow.over(Time.milliseconds(100)).withProcessingTime());
 
         assertEquals("test_features", agglomerativeClustering.getFeaturesCol());
         assertNull(agglomerativeClustering.getNumClusters());
@@ -166,7 +165,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
         assertTrue(agglomerativeClustering.getComputeFullTree());
         assertEquals("cluster_id", agglomerativeClustering.getPredictionCol());
         assertEquals(
-                TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime(),
+                TumbleWindow.over(Time.milliseconds(100)).withProcessingTime(),
                 agglomerativeClustering.getWindow());
     }
 
@@ -256,7 +255,7 @@ public class AgglomerativeClusteringTest extends AbstractTestBase {
                         .setLinkage(AgglomerativeClusteringParams.LINKAGE_AVERAGE)
                         .setDistanceMeasure(EuclideanDistanceMeasure.NAME)
                         .setPredictionCol("pred")
-                        .setWindow(TumbleWindow.over(Duration.ofSeconds(1)));
+                        .setWindow(TumbleWindow.over(Time.seconds(1)));
 
         Table[] outputs = agglomerativeClustering.transform(inputDataTable);
 

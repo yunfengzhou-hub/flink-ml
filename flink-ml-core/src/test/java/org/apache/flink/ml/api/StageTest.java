@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.api;
 
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.ml.common.window.SessionWindow;
 import org.apache.flink.ml.common.window.TumbleWindow;
 import org.apache.flink.ml.common.window.Window;
@@ -399,7 +400,7 @@ public class StageTest {
         stage.set(MyParams.DOUBLE_ARRAY_PARAM, new Double[] {50.0, 51.0});
         stage.set(MyParams.STRING_ARRAY_PARAM, new String[] {"50", "51"});
         stage.set(MyParams.VECTOR_PARAM, Vectors.dense(2, 3, 4));
-        stage.set(MyParams.WINDOW_PARAM, SessionWindow.withGap(Duration.ofMillis(100)));
+        stage.set(MyParams.WINDOW_PARAM, SessionWindow.withGap(Time.milliseconds(100)));
         stage.set(
                 MyParams.DOUBLE_ARRAY_ARRAY_PARAM,
                 new Double[][] {new Double[] {50.0, 51.0}, new Double[] {52.0, 53.0}});
@@ -440,7 +441,7 @@ public class StageTest {
                 new String[] {"52", "53"}, stage.get(MyParams.STRING_ARRAY_ARRAY_PARAM)[1]);
         Assert.assertEquals(Vectors.dense(2, 3, 4), loadedStage.get(MyParams.VECTOR_PARAM));
         Assert.assertEquals(
-                SessionWindow.withGap(Duration.ofMillis(100)),
+                SessionWindow.withGap(Time.milliseconds(100)),
                 loadedStage.get(MyParams.WINDOW_PARAM));
     }
 

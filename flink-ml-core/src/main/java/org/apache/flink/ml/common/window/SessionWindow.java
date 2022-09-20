@@ -18,8 +18,13 @@
 
 package org.apache.flink.ml.common.window;
 
-import java.time.Duration;
+import org.apache.flink.api.common.time.Time;
+import org.apache.flink.util.Preconditions;
+
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Window} that windows elements into sessions based on the timestamp of the elements.
@@ -27,7 +32,7 @@ import java.util.Objects;
  */
 public class SessionWindow implements Window {
     /** The session timeout, i.e. the time gap between sessions. */
-    Duration gap;
+    Time gap;
 
     boolean isEventTime;
 
@@ -41,7 +46,7 @@ public class SessionWindow implements Window {
      *
      * @param gap The session timeout, i.e. the time gap between sessions
      */
-    public static SessionWindow withGap(Duration gap) {
+    public static SessionWindow withGap(Time gap) {
         SessionWindow sessionWindow = new SessionWindow();
         sessionWindow.gap = gap;
         return sessionWindow;
@@ -55,6 +60,34 @@ public class SessionWindow implements Window {
     public SessionWindow withProcessingTime() {
         isEventTime = false;
         return this;
+    }
+
+    @Override
+    public Map<String, Object> toMap() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("class", this.getClass().getName());
+        if (gap != null) {
+            map.put("gapSize", gap.getSize());
+            map.put("gapUnit", gap.getUnit().toString());
+        }
+        map.put("isEventTime", isEventTime);
+        return map;
+    }
+
+    public static SessionWindow parse(Map<String, Object> map) {
+        Preconditions.checkArgument(SessionWindow.class.getName().equals(map.get("class")));
+        Time gap = null;
+        if (map.containsKey("gapSize")) {
+            long size = (long) map.get("gapSize");
+            TimeUnit unit = TimeUnit.valueOf((String) map.get("gapUnit"));
+            gap = Time.of(size, unit);
+        }
+        boolean isEventTime = (boolean) map.get("isEventTime");
+
+        SessionWindow sessionWindow = SessionWindow.withGap(gap);
+        sessionWindow.isEventTime = isEventTime;
+
+        return sessionWindow;
     }
 
     @Override

@@ -18,8 +18,12 @@
 
 package org.apache.flink.ml.common.window;
 
+import java.util.Map;
+
 /**
  * A {@link Window} determines how input data stream would be sliced into batches and fed into a
  * Flink ML Stage.
  */
-public interface Window {}
+public interface Window {
+    public Map<String, Object> toMap();
+}

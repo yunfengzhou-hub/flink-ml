@@ -29,10 +29,6 @@ import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
-
 /** Utility class for operations related to the window. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class WindowUtils {
@@ -72,84 +68,18 @@ public class WindowUtils {
                         Time.milliseconds(size), Time.milliseconds(offset));
             }
         } else if (window instanceof SessionWindow) {
-            long gap = ((SessionWindow) window).gap.toMillis();
+            Time gap = Time.of(
+                    ((SessionWindow) window).gap.getSize(),
+                    ((SessionWindow) window).gap.getUnit()
+            );
             if (((SessionWindow) window).isEventTime) {
-                return EventTimeSessionWindows.withGap(Time.milliseconds(gap));
+                return EventTimeSessionWindows.withGap(gap);
             } else {
-                return ProcessingTimeSessionWindows.withGap(Time.milliseconds(gap));
+                return ProcessingTimeSessionWindows.withGap(gap);
             }
         } else {
             throw new UnsupportedOperationException(
                     String.format("Unsupported %s subclass: %s", Window.class, window.getClass()));
-        }
-    }
-
-    public static Object jsonEncode(Window value) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("class", value.getClass().getName());
-        if (value instanceof BoundedWindow) {
-            return map;
-        } else if (value instanceof TumbleWindow) {
-            TumbleWindow tumbleWindow = (TumbleWindow) value;
-            if (tumbleWindow.timeWindowSize != null) {
-                map.put("timeWindowSize", tumbleWindow.timeWindowSize.toString());
-            }
-            if (tumbleWindow.timeWindowOffset != null) {
-                map.put("timeWindowOffset", tumbleWindow.timeWindowOffset.toString());
-            }
-            map.put("isEventTime", tumbleWindow.isEventTime);
-            map.put("countWindowSize", tumbleWindow.countWindowSize);
-            return map;
-        } else if (value instanceof SessionWindow) {
-            SessionWindow sessionWindow = (SessionWindow) value;
-            if (sessionWindow.gap != null) {
-                map.put("gap", sessionWindow.gap.toString());
-            }
-            map.put("isEventTime", sessionWindow.isEventTime);
-            return map;
-        } else {
-            throw new UnsupportedOperationException(
-                    String.format("Unsupported %s subclass: %s", Window.class, value.getClass()));
-        }
-    }
-
-    public static Window jsonDecode(Object json) {
-        Map<String, Object> map = (Map<String, Object>) json;
-        String classString = (String) map.get("class");
-        if (classString.equals(BoundedWindow.class.getName())) {
-            return BoundedWindow.get();
-        } else if (classString.equals(TumbleWindow.class.getName())) {
-            Duration timeWindowSize = null;
-            if (map.containsKey("timeWindowSize")) {
-                timeWindowSize = Duration.parse((String) map.get("timeWindowSize"));
-            }
-            Duration timeWindowOffset = null;
-            if (map.containsKey("timeWindowOffset")) {
-                timeWindowOffset = Duration.parse((String) map.get("timeWindowOffset"));
-            }
-            long countWindowSize = ((Number) map.get("countWindowSize")).longValue();
-            boolean isEventTime = (boolean) map.get("isEventTime");
-
-            TumbleWindow tumbleWindow = TumbleWindow.over(countWindowSize);
-            tumbleWindow.timeWindowOffset = timeWindowOffset;
-            tumbleWindow.timeWindowSize = timeWindowSize;
-            tumbleWindow.isEventTime = isEventTime;
-
-            return tumbleWindow;
-        } else if (classString.equals(SessionWindow.class.getName())) {
-            Duration gap = null;
-            if (map.containsKey("gap")) {
-                gap = Duration.parse((String) map.get("gap"));
-            }
-            boolean isEventTime = (boolean) map.get("isEventTime");
-
-            SessionWindow sessionWindow = SessionWindow.withGap(gap);
-            sessionWindow.isEventTime = isEventTime;
-
-            return sessionWindow;
-        } else {
-            throw new UnsupportedOperationException(
-                    String.format("Unsupported %s subclass: %s", Window.class, classString));
         }
     }
 }

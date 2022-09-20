@@ -30,6 +30,7 @@ from pyflink.ml.core.linalg import DenseVectorTypeInfo, SparseVectorTypeInfo, De
     VectorTypeInfo, DenseVector
 from pyflink.ml.core.param import Param, WithParams, StringArrayParam, IntArrayParam, VectorParam, \
     FloatArrayParam, FloatArrayArrayParam
+from pyflink.ml.core.window import BoundedWindow, SessionWindow, TumbleWindow
 
 _from_java_type_alias = _from_java_type
 
@@ -229,6 +230,23 @@ class VectorJavaParamConverter(JavaParamConverter):
 
     def to_python(self, value):
         return DenseVector(tuple(value.get(i) for i in range(value.size())))
+
+
+class WindowJavaParamConverter(JavaParamConverter):
+    def to_java(self, value):
+        if isinstance(value, BoundedWindow):
+            return get_gateway().jvm.org.apache.flink.ml.common.window.BoundedWindow.get()
+        elif isinstance(value, SessionWindow):
+            value.__class__ = SessionWindow
+            window = get_gateway().jvm.org.apache.flink.ml.common.window.SessionWindow.with_gap(value.gap)
+            if value.is_event_time:
+                window = window.withEventTime()
+            else:
+                window = window.withProcessingTime()
+            return window
+
+    def to_python(self, value):
+
 
 
 class StringArrayJavaParamConverter(JavaParamConverter):

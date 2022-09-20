@@ -18,8 +18,18 @@
 
 package org.apache.flink.ml.param;
 
+import org.apache.flink.ml.api.Stage;
+import org.apache.flink.ml.common.window.BoundedWindow;
+import org.apache.flink.ml.common.window.SessionWindow;
+import org.apache.flink.ml.common.window.TumbleWindow;
 import org.apache.flink.ml.common.window.Window;
 import org.apache.flink.ml.common.window.WindowUtils;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.time.Duration;
+import java.util.Map;
 
 /** Class for the Window parameter. */
 public class WindowParam extends Param<Window> {
@@ -33,11 +43,29 @@ public class WindowParam extends Param<Window> {
 
     @Override
     public Object jsonEncode(Window value) {
-        return WindowUtils.jsonEncode(value);
+        return value.toMap();
     }
 
     @Override
     public Window jsonDecode(Object json) {
-        return WindowUtils.jsonDecode(json);
+        Map<String, Object> map = (Map<String, Object>) json;
+        String className = (String) map.get("class");
+
+        try {
+            Class<?> clazz = Class.forName(className);
+            Method method = clazz.getMethod("parse", map.getClass());
+            method.setAccessible(true);
+            return (Window) method.invoke(null, map);
+        } catch (NoSuchMethodException e) {
+            String methodName =
+                    String.format("%s::parse(Map<String, Object>)", className);
+            throw new RuntimeException(
+                    "Failed to decode window parameter because the static method "
+                            + methodName
+                            + " is not implemented.",
+                    e);
+        } catch (ClassNotFoundException | IllegalAccessException | InvocationTargetException e) {
+            throw new RuntimeException("Failed to decode window parameter.", e);
+        }
     }
 }

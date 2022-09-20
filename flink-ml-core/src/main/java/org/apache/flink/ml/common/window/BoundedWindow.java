@@ -18,6 +18,11 @@
 
 package org.apache.flink.ml.common.window;
 
+import org.apache.flink.util.Preconditions;
+
+import java.util.HashMap;
+import java.util.Map;
+
 /** A {@link Window} that windows all elements in a bounded stream into one window. */
 public class BoundedWindow implements Window {
     private static final BoundedWindow INSTANCE = new BoundedWindow();
@@ -25,6 +30,18 @@ public class BoundedWindow implements Window {
     private BoundedWindow() {}
 
     public static BoundedWindow get() {
+        return INSTANCE;
+    }
+
+    @Override
+    public Map<String, Object> toMap() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("class", this.getClass().getName());
+        return map;
+    }
+
+    public static BoundedWindow parse(Map<String, Object> map) {
+        Preconditions.checkArgument(BoundedWindow.class.getName().equals(map.get("class")));
         return INSTANCE;
     }
 

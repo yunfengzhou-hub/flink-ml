@@ -18,20 +18,19 @@
 
 package org.apache.flink.ml.common.window;
 
+import org.apache.commons.collections.IteratorUtils;
 import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.time.Time;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.util.Collector;
-
-import org.apache.commons.collections.IteratorUtils;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -113,7 +112,7 @@ public class WindowsTest extends AbstractTestBase {
         DataStream<List<Long>> outputStream =
                 WindowUtils.windowAll(
                                 inputStreamWithInterval,
-                                TumbleWindow.over(Duration.ofMillis(100)).withProcessingTime())
+                                TumbleWindow.over(Time.milliseconds(100)).withProcessingTime())
                         .process(new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
@@ -129,7 +128,7 @@ public class WindowsTest extends AbstractTestBase {
         DataStream<List<Long>> outputStream =
                 WindowUtils.windowAll(
                                 inputStreamWithTimestamp,
-                                TumbleWindow.over(Duration.ofMillis(RECORD_NUM / 7)))
+                                TumbleWindow.over(Time.milliseconds(RECORD_NUM / 7)))
                         .process(new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(8, actualBatches.size());
@@ -146,7 +145,7 @@ public class WindowsTest extends AbstractTestBase {
         DataStream<List<Long>> outputStream =
                 WindowUtils.windowAll(
                                 inputStreamWithInterval,
-                                SessionWindow.withGap(Duration.ofMillis(100)).withProcessingTime())
+                                SessionWindow.withGap(Time.milliseconds(100)).withProcessingTime())
                         .process(new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertTrue(actualBatches.size() > 1);
@@ -162,7 +161,7 @@ public class WindowsTest extends AbstractTestBase {
         DataStream<List<Long>> outputStream =
                 WindowUtils.windowAll(
                                 inputStreamWithTimestamp,
-                                SessionWindow.withGap(Duration.ofMillis(RECORD_NUM / 7)))
+                                SessionWindow.withGap(Time.milliseconds(RECORD_NUM / 7)))
                         .process(new CreateAllWindowBatchFunction<>());
         List<List<Long>> actualBatches = IteratorUtils.toList(outputStream.executeAndCollect());
         assertEquals(1, actualBatches.size());
