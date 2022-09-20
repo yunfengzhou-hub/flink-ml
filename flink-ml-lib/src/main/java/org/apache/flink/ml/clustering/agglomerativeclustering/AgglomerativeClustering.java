@@ -40,7 +40,6 @@ import org.apache.flink.ml.util.ReadWriteUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
-import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
@@ -112,8 +111,8 @@ public class AgglomerativeClustering
                 new OutputTag<Tuple4<Integer, Integer, Double, Integer>>("MERGE_INFO") {};
 
         Window window = getWindow();
-        LocalAgglomerativeClusterFunction localAgglomerativeClusterFunction =
-                new LocalAgglomerativeClusterFunction(
+        LocalAgglomerativeClusterFunction<? extends Window> localAgglomerativeClusterFunction =
+                new LocalAgglomerativeClusterFunction<>(
                         getFeaturesCol(),
                         getLinkage(),
                         getDistanceMeasure(),
@@ -152,9 +151,9 @@ public class AgglomerativeClustering
         return paramMap;
     }
 
-    private static class LocalAgglomerativeClusterFunction
-            extends ProcessAllWindowFunction<Row, Row, GlobalWindow>
-            implements ResultTypeQueryable<Row> {
+    private static class LocalAgglomerativeClusterFunction<
+                    W extends org.apache.flink.streaming.api.windowing.windows.Window>
+            extends ProcessAllWindowFunction<Row, Row, W> implements ResultTypeQueryable<Row> {
         private final String featuresCol;
         private final String linkage;
         private final DistanceMeasure distanceMeasure;
@@ -193,7 +192,7 @@ public class AgglomerativeClustering
 
         @Override
         public void process(
-                ProcessAllWindowFunction<Row, Row, GlobalWindow>.Context context,
+                ProcessAllWindowFunction<Row, Row, W>.Context context,
                 Iterable<Row> values,
                 Collector<Row> output) {
             List<Row> inputList = IteratorUtils.toList(values.iterator());

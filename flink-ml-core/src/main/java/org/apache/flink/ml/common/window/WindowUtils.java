@@ -28,7 +28,7 @@ import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindo
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.assigners.WindowAssigner;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
+import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -47,24 +47,25 @@ public class WindowUtils {
     public static <IN, OUT> SingleOutputStreamOperator<OUT> allWindowProcess(
             DataStream<IN> input,
             Window window,
-            ProcessAllWindowFunction<IN, OUT, GlobalWindow> function) {
+            ProcessAllWindowFunction<IN, OUT, ? extends Window> function) {
         SingleOutputStreamOperator<OUT> output;
         if (window instanceof BoundedWindow) {
-            output =
-                    (SingleOutputStreamOperator<OUT>)
-                            input.windowAll(EndOfStreamWindows.get()).process(function);
+            output = input.windowAll(EndOfStreamWindows.get()).process(function);
         } else if (window instanceof TumbleWindow && ((TumbleWindow) window).countWindowSize > 0) {
             long countWindowSize = ((TumbleWindow) window).countWindowSize;
-            output = input.countWindowAll(countWindowSize).process(function);
+            output =
+                    input.countWindowAll(countWindowSize)
+                            .process((ProcessAllWindowFunction) function);
         } else {
             output =
-                    input.windowAll(WindowUtils.getDataStreamWindowAssigner(window))
-                            .process(function);
+                    input.windowAll(WindowUtils.getDataStreamTimeWindowAssigner(window))
+                            .process((ProcessAllWindowFunction) function);
         }
         return output;
     }
 
-    private static WindowAssigner getDataStreamWindowAssigner(Window window) {
+    private static WindowAssigner<Object, TimeWindow> getDataStreamTimeWindowAssigner(
+            Window window) {
         if (window instanceof TumbleWindow) {
             TumbleWindow tumbleWindow = (TumbleWindow) window;
             long size = tumbleWindow.timeWindowSize.toMillis();

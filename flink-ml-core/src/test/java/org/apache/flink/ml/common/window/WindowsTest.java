@@ -24,7 +24,6 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
-import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.util.Collector;
 
@@ -172,11 +171,12 @@ public class WindowsTest extends AbstractTestBase {
         assertEquals(new HashSet<>(inputData), new HashSet<>(actualBatches.get(0)));
     }
 
-    private static class CreateAllWindowBatchFunction<IN>
-            extends ProcessAllWindowFunction<IN, List<IN>, GlobalWindow> {
+    private static class CreateAllWindowBatchFunction<
+                    IN, W extends org.apache.flink.streaming.api.windowing.windows.Window>
+            extends ProcessAllWindowFunction<IN, List<IN>, W> {
         @Override
         public void process(
-                ProcessAllWindowFunction<IN, List<IN>, GlobalWindow>.Context context,
+                ProcessAllWindowFunction<IN, List<IN>, W>.Context context,
                 Iterable<IN> elements,
                 Collector<List<IN>> out) {
             List<IN> list = new ArrayList<>();
