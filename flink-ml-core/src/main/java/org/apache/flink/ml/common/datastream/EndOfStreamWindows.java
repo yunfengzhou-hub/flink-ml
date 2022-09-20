@@ -33,7 +33,7 @@ import java.util.Collections;
  * A {@link WindowAssigner} that assigns all elements of a bounded input stream into one window
  * pane. The results are emitted once the input stream has ended.
  */
-public class EndOfStreamWindows extends WindowAssigner<Object, TimeWindow> {
+public class EndOfStreamWindows extends WindowAssigner {
 
     private static final EndOfStreamWindows INSTANCE = new EndOfStreamWindows();
 
