@@ -18,6 +18,9 @@
 
 package org.apache.flink.ml.api;
 
+import org.apache.flink.ml.common.window.SessionWindow;
+import org.apache.flink.ml.common.window.TumbleWindow;
+import org.apache.flink.ml.common.window.Window;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.param.BooleanParam;
@@ -37,6 +40,7 @@ import org.apache.flink.ml.param.StringArrayArrayParam;
 import org.apache.flink.ml.param.StringArrayParam;
 import org.apache.flink.ml.param.StringParam;
 import org.apache.flink.ml.param.VectorParam;
+import org.apache.flink.ml.param.WindowParam;
 import org.apache.flink.ml.param.WithParams;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ReadWriteUtils;
@@ -48,6 +52,7 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -119,6 +124,13 @@ public class StageTest {
 
         Param<Vector> VECTOR_PARAM =
                 new VectorParam("vectorParam", "Description", Vectors.dense(1.0, 2.0, 3.0));
+
+        Param<Window> WINDOW_PARAM =
+                new WindowParam(
+                        "windowParam",
+                        "Description",
+                        TumbleWindow.over(100),
+                        ParamValidators.notNull());
     }
 
     /**
@@ -341,6 +353,10 @@ public class StageTest {
         stage.set(MyParams.VECTOR_PARAM, Vectors.dense(1, 5, 3));
         Assert.assertEquals(Vectors.dense(1, 5, 3), stage.get(MyParams.VECTOR_PARAM));
 
+        stage.set(MyParams.WINDOW_PARAM, TumbleWindow.over(50).withProcessingTime());
+        Assert.assertEquals(
+                TumbleWindow.over(50).withProcessingTime(), stage.get(MyParams.WINDOW_PARAM));
+
         stage.set(
                 MyParams.DOUBLE_ARRAY_ARRAY_PARAM,
                 new Double[][] {new Double[] {50.0, 51.0}, new Double[] {52.0, 53.0}});
@@ -383,6 +399,7 @@ public class StageTest {
         stage.set(MyParams.DOUBLE_ARRAY_PARAM, new Double[] {50.0, 51.0});
         stage.set(MyParams.STRING_ARRAY_PARAM, new String[] {"50", "51"});
         stage.set(MyParams.VECTOR_PARAM, Vectors.dense(2, 3, 4));
+        stage.set(MyParams.WINDOW_PARAM, SessionWindow.withGap(Duration.ofMillis(100)));
         stage.set(
                 MyParams.DOUBLE_ARRAY_ARRAY_PARAM,
                 new Double[][] {new Double[] {50.0, 51.0}, new Double[] {52.0, 53.0}});
@@ -422,6 +439,9 @@ public class StageTest {
         Assert.assertArrayEquals(
                 new String[] {"52", "53"}, stage.get(MyParams.STRING_ARRAY_ARRAY_PARAM)[1]);
         Assert.assertEquals(Vectors.dense(2, 3, 4), loadedStage.get(MyParams.VECTOR_PARAM));
+        Assert.assertEquals(
+                SessionWindow.withGap(Duration.ofMillis(100)),
+                loadedStage.get(MyParams.WINDOW_PARAM));
     }
 
     @Test

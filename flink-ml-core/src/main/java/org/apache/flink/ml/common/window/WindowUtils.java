@@ -98,10 +98,20 @@ public class WindowUtils {
         } else if (value instanceof TumbleWindow) {
             TumbleWindow tumbleWindow = (TumbleWindow) value;
             if (tumbleWindow.timeWindowSize != null) {
-                map.put("timeWindowSize", tumbleWindow.timeWindowSize.toMillis());
+                map.put("timeWindowSize", tumbleWindow.timeWindowSize.toString());
             }
-            map.put("timeWindowOffset", tumbleWindow.timeWindowOffset.toMillis());
+            if (tumbleWindow.timeWindowOffset != null) {
+                map.put("timeWindowOffset", tumbleWindow.timeWindowOffset.toString());
+            }
+            map.put("isEventTime", tumbleWindow.isEventTime);
             map.put("countWindowSize", tumbleWindow.countWindowSize);
+            return map;
+        } else if (value instanceof SessionWindow) {
+            SessionWindow sessionWindow = (SessionWindow) value;
+            if (sessionWindow.gap != null) {
+                map.put("gap", sessionWindow.gap.toString());
+            }
+            map.put("isEventTime", sessionWindow.isEventTime);
             return map;
         } else {
             throw new UnsupportedOperationException();
@@ -114,18 +124,37 @@ public class WindowUtils {
         if (clazzString.equals(BoundedWindow.class.getCanonicalName())) {
             return BoundedWindow.get();
         } else if (clazzString.equals(TumbleWindow.class.getCanonicalName())) {
-            long countWindowSize = (long) map.get("countWindowSize");
             Duration timeWindowSize = null;
             if (map.containsKey("timeWindowSize")) {
-                long timeWindowSizeMillis = (long) map.get("timeWindowSize");
-                timeWindowSize = Duration.ofMillis(timeWindowSizeMillis);
+                String timeWindowSizeString = (String) map.get("timeWindowSize");
+                timeWindowSize = Duration.parse(timeWindowSizeString);
             }
+            Duration timeWindowOffset = null;
+            if (map.containsKey("timeWindowOffset")) {
+                String timeWindowOffsetString = (String) map.get("timeWindowOffset");
+                timeWindowOffset = Duration.parse(timeWindowOffsetString);
+            }
+            long countWindowSize = ((Number) map.get("countWindowSize")).longValue();
+            boolean isEventTime = (boolean) map.get("isEventTime");
 
-            if (countWindowSize > 0) {
-                return TumbleWindow.over(countWindowSize);
-            } else {
-                return TumbleWindow.over(timeWindowSize);
+            TumbleWindow tumbleWindow = TumbleWindow.over(countWindowSize);
+            tumbleWindow.timeWindowOffset = timeWindowOffset;
+            tumbleWindow.timeWindowSize = timeWindowSize;
+            tumbleWindow.isEventTime = isEventTime;
+
+            return tumbleWindow;
+        } else if (clazzString.equals(SessionWindow.class.getCanonicalName())) {
+            Duration gap = null;
+            if (map.containsKey("gap")) {
+                String gapString = (String) map.get("gap");
+                gap = Duration.parse(gapString);
             }
+            boolean isEventTime = (boolean) map.get("isEventTime");
+
+            SessionWindow sessionWindow = SessionWindow.withGap(gap);
+            sessionWindow.isEventTime = isEventTime;
+
+            return sessionWindow;
         } else {
             throw new UnsupportedOperationException();
         }

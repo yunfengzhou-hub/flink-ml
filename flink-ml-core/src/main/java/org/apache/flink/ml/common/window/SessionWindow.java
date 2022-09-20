@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.window;
 
 import java.time.Duration;
+import java.util.Objects;
 
 /**
  * A {@link Window} that windows elements into sessions based on the timestamp of the elements.
@@ -52,5 +53,24 @@ public class SessionWindow implements Window {
     public SessionWindow withProcessingTime() {
         isEventTime = false;
         return this;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(gap, isEventTime);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof SessionWindow)) {
+            return false;
+        }
+
+        SessionWindow window = (SessionWindow) obj;
+
+        boolean isEqual = this.isEventTime == window.isEventTime;
+        isEqual &= Objects.equals(this.gap, window.gap);
+
+        return isEqual;
     }
 }

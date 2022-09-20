@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.window;
 
 import java.time.Duration;
+import java.util.Objects;
 
 /**
  * A {@link Window} that windows elements into fixed-size windows based on the timestamp of the
@@ -67,5 +68,26 @@ public class TumbleWindow implements Window {
     public TumbleWindow withProcessingTime() {
         isEventTime = false;
         return this;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(timeWindowSize, timeWindowOffset, isEventTime, countWindowSize);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof TumbleWindow)) {
+            return false;
+        }
+
+        TumbleWindow window = (TumbleWindow) obj;
+
+        boolean isEqual = this.isEventTime == window.isEventTime;
+        isEqual &= this.countWindowSize == window.countWindowSize;
+        isEqual &= Objects.equals(this.timeWindowSize, window.timeWindowSize);
+        isEqual &= Objects.equals(this.timeWindowOffset, window.timeWindowOffset);
+
+        return isEqual;
     }
 }
