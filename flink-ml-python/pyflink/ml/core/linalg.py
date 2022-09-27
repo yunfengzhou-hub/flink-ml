@@ -24,6 +24,23 @@ import numpy as np
 from pyflink.common import TypeInformation
 from pyflink.fn_execution.stream_slow import OutputStream, InputStream
 from pyflink.java_gateway import get_gateway
+from pyflink.table import UserDefinedType, DataTypes
+
+
+class DenseVectorDataType(UserDefinedType):
+    @classmethod
+    def sql_type(cls):
+        return DataTypes.ARRAY(DataTypes.DOUBLE())
+
+    @classmethod
+    def module(cls):
+        return 'pyflink.ml.core.linalg'
+
+    def serialize(self, obj):
+        return obj.to_array().tolist()
+
+    def deserialize(self, datum):
+        return Vectors.dense(datum)
 
 
 class VectorTypeInfo(TypeInformation):
