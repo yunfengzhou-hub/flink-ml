@@ -46,13 +46,12 @@ public class DoubleArrayToVectorTest extends AbstractTestBase {
 
         Table input = tEnv.fromDataStream(env.fromElements(DOUBLE_ARRAY_DATA)).as("f0");
 
-        DoubleArrayToVector transformer =
-                new DoubleArrayToVector().setInputCols("f0").setOutputCols("f1");
+        DoubleArrayToVector transformer = new DoubleArrayToVector().setInputCols("f0");
 
         Table output = transformer.transform(input)[0];
 
         Row row = output.execute().collect().next();
-        Vector vector = row.getFieldAs("f1");
+        Vector vector = row.getFieldAs("f0");
         assertEquals(VECTOR_DATA[0], vector);
     }
 
@@ -63,13 +62,12 @@ public class DoubleArrayToVectorTest extends AbstractTestBase {
 
         Table input = tEnv.fromDataStream(env.fromElements(VECTOR_DATA)).as("f0");
 
-        VectorToDoubleArray transformer =
-                new VectorToDoubleArray().setInputCols("f0").setOutputCols("f1");
+        VectorToDoubleArray transformer = new VectorToDoubleArray().setInputCols("f0");
 
         Table output = transformer.transform(input)[0];
 
         Row row = output.execute().collect().next();
-        Double[] doubles = row.getFieldAs("f1");
+        Double[] doubles = row.getFieldAs("f0");
         assertArrayEquals(DOUBLE_ARRAY_DATA[0], doubles);
     }
 }

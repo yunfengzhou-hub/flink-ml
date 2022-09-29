@@ -38,6 +38,7 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -54,45 +55,38 @@ public class DoubleArrayToVector
     @Override
     public Table[] transform(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
-        Preconditions.checkArgument(getInputCols().length == getOutputCols().length);
 
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
 
-        TypeInformation<?>[] outputTypes = new TypeInformation<?>[getOutputCols().length];
-        for (int i = 0; i < getOutputCols().length; i++) {
-            outputTypes[i] = DenseVectorTypeInfo.INSTANCE;
+        RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
+        TypeInformation<?>[] outputTypes = inputTypeInfo.getFieldTypes();
+        String[] outputFieldNames = inputTypeInfo.getFieldNames();
+        for (int i = 0; i < outputFieldNames.length; i++) {
+            if (Arrays.asList(getInputCols()).contains(outputFieldNames[i])) {
+                outputTypes[i] = DenseVectorTypeInfo.INSTANCE;
+            }
         }
 
-        RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
-        RowTypeInfo outputTypeInfo =
-                new RowTypeInfo(
-                        ArrayUtils.addAll(inputTypeInfo.getFieldTypes(), outputTypes),
-                        ArrayUtils.addAll(inputTypeInfo.getFieldNames(), getOutputCols()));
+        RowTypeInfo outputTypeInfo = new RowTypeInfo(outputTypes, outputFieldNames);
 
         DataStream<Row> stream =
                 tEnv.toDataStream(inputs[0])
-                        .map(
-                                new DoubleArrayToDenseVectorFunction(
-                                        getInputCols(), getOutputCols()),
-                                outputTypeInfo);
+                        .map(new DoubleArrayToDenseVectorFunction(getInputCols()), outputTypeInfo);
 
         return new Table[] {tEnv.fromDataStream(stream)};
     }
 
     private static class DoubleArrayToDenseVectorFunction implements MapFunction<Row, Row> {
         private final String[] inputCols;
-        private final String[] outputCols;
 
-        private DoubleArrayToDenseVectorFunction(String[] inputCols, String[] outputCols) {
+        private DoubleArrayToDenseVectorFunction(String[] inputCols) {
             this.inputCols = inputCols;
-            this.outputCols = outputCols;
         }
 
         @Override
         public Row map(Row value) throws Exception {
-            Row row = Row.withPositions(outputCols.length);
-            for (int i = 0; i < outputCols.length; i++) {
+            for (int i = 0; i < inputCols.length; i++) {
                 Object obj = value.getFieldAs(inputCols[i]);
                 double[] doubles;
                 if (obj instanceof double[]) {
@@ -105,9 +99,10 @@ public class DoubleArrayToVector
                                     "Input data type %s cannot be converted to Vector. It must be double[] or Double[].",
                                     obj.getClass()));
                 }
-                row.setField(i, Vectors.dense(doubles));
+                value.setField(i, Vectors.dense(doubles));
             }
-            return Row.join(value, row);
+
+            return value;
         }
     }
 

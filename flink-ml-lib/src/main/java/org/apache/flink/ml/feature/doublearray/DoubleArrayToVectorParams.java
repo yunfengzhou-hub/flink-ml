@@ -19,7 +19,6 @@
 package org.apache.flink.ml.feature.doublearray;
 
 import org.apache.flink.ml.common.param.HasInputCols;
-import org.apache.flink.ml.common.param.HasOutputCols;
 
 /** DoubleArrayToVectorParams. */
-public interface DoubleArrayToVectorParams<T> extends HasInputCols<T>, HasOutputCols<T> {}
+public interface DoubleArrayToVectorParams<T> extends HasInputCols<T> {}

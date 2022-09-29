@@ -35,9 +35,8 @@ import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.commons.lang3.ArrayUtils;
-
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -54,48 +53,42 @@ public class VectorToDoubleArray
     @Override
     public Table[] transform(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
-        Preconditions.checkArgument(getInputCols().length == getOutputCols().length);
 
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
 
-        TypeInformation<?>[] outputTypes = new TypeInformation<?>[getOutputCols().length];
-        for (int i = 0; i < getOutputCols().length; i++) {
-            outputTypes[i] = Types.PRIMITIVE_ARRAY(Types.DOUBLE);
+        RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
+        TypeInformation<?>[] outputTypes = inputTypeInfo.getFieldTypes();
+        String[] outputFieldNames = inputTypeInfo.getFieldNames();
+        for (int i = 0; i < outputFieldNames.length; i++) {
+            if (Arrays.asList(getInputCols()).contains(outputFieldNames[i])) {
+                outputTypes[i] = Types.PRIMITIVE_ARRAY(Types.DOUBLE);
+            }
         }
 
-        RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
-        RowTypeInfo outputTypeInfo =
-                new RowTypeInfo(
-                        ArrayUtils.addAll(inputTypeInfo.getFieldTypes(), outputTypes),
-                        ArrayUtils.addAll(inputTypeInfo.getFieldNames(), getOutputCols()));
+        RowTypeInfo outputTypeInfo = new RowTypeInfo(outputTypes, outputFieldNames);
 
         DataStream<Row> stream =
                 tEnv.toDataStream(inputs[0])
-                        .map(
-                                new VectorToDoubleArrayFunction(getInputCols(), getOutputCols()),
-                                outputTypeInfo);
+                        .map(new VectorToDoubleArrayFunction(getInputCols()), outputTypeInfo);
 
         return new Table[] {tEnv.fromDataStream(stream)};
     }
 
     private static class VectorToDoubleArrayFunction implements MapFunction<Row, Row> {
         private final String[] inputCols;
-        private final String[] outputCols;
 
-        private VectorToDoubleArrayFunction(String[] inputCols, String[] outputCols) {
+        private VectorToDoubleArrayFunction(String[] inputCols) {
             this.inputCols = inputCols;
-            this.outputCols = outputCols;
         }
 
         @Override
         public Row map(Row value) throws Exception {
-            Row row = Row.withPositions(outputCols.length);
-            for (int i = 0; i < outputCols.length; i++) {
+            for (int i = 0; i < inputCols.length; i++) {
                 Vector vector = value.getFieldAs(inputCols[i]);
-                row.setField(i, vector.toArray());
+                value.setField(i, vector.toArray());
             }
-            return Row.join(value, row);
+            return value;
         }
     }
 

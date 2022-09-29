@@ -18,13 +18,12 @@
 
 from pyflink.ml.core.wrapper import JavaWithParams
 from pyflink.ml.lib.feature.common import JavaFeatureTransformer
-from pyflink.ml.lib.param import HasInputCols, HasOutputCols
+from pyflink.ml.lib.param import HasInputCols
 
 
 class _DoubleArrayToVectorParams(
     JavaWithParams,
-    HasInputCols,
-    HasOutputCols
+    HasInputCols
 ):
     """
     Params for :class:`DoubleArrayToVector`.

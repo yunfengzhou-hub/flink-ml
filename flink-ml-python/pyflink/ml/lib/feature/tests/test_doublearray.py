@@ -29,32 +29,31 @@ class DoubleArrayTest(PyFlinkMLTestCase):
         self.vector_data = [(Vectors.dense(0.0, 1.0, 2.0),)]
         self.double_array_data = [([0.0, 1.0, 2.0],)]
 
-    # def test_double_array_to_vector(self):
-    #     input_table = self.t_env.from_data_stream(
-    #         self.env.from_collection(
-    #             self.double_array_data,
-    #             type_info=Types.ROW_NAMED(
-    #                 ['f0'],
-    #                 [Types.PRIMITIVE_ARRAY(Types.DOUBLE())]
-    #             )
-    #         )
-    #     )
-    #
-    #     transformer = DoubleArrayToVector() \
-    #         .set_input_cols("f0") \
-    #         .set_output_cols("f1")
-    #
-    #     output = transformer.transform(input_table)[0].select("f1")
-    #     # output = transformer.transform(input_table)[0]
-    #     #
-    #     # self.t_env.to_data_stream(output).print()
-    #     # self.env.execute()
-    #
-    #     output.print_schema()
-    #
-    #     results = [x for x in self.t_env.to_data_stream(output).execute_and_collect()]
+    def test_double_array_to_vector(self):
+        input_table = self.t_env.from_data_stream(
+            self.env.from_collection(
+                self.double_array_data,
+                type_info=Types.ROW_NAMED(
+                    ['f0'],
+                    [Types.PRIMITIVE_ARRAY(Types.DOUBLE())]
+                )
+            )
+        )
 
-        # self.assertEquals(results[0][0], self.vector_data[0][0])
+        transformer = DoubleArrayToVector() \
+            .set_input_cols("f0")
+
+        output = transformer.transform(input_table)[0]
+        # output = transformer.transform(input_table)[0]
+        #
+        # self.t_env.to_data_stream(output).print()
+        # self.env.execute()
+
+        output.print_schema()
+
+        results = [x for x in self.t_env.to_data_stream(output).execute_and_collect()]
+
+        self.assertEquals(results[0][0], self.vector_data[0][0])
 
     def test_vector_to_double_array(self):
         input_table = self.t_env.from_data_stream(
@@ -68,10 +67,9 @@ class DoubleArrayTest(PyFlinkMLTestCase):
         )
 
         transformer = VectorToDoubleArray() \
-            .set_input_cols("f0") \
-            .set_output_cols("f1")
+            .set_input_cols("f0")
 
-        output = transformer.transform(input_table)[0].select("f1")
+        output = transformer.transform(input_table)[0]
 
         self.t_env.to_data_stream(output).print()
         self.env.execute()
