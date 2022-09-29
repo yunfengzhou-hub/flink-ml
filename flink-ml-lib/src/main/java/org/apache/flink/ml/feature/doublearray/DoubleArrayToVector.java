@@ -102,8 +102,8 @@ public class DoubleArrayToVector
                 } else {
                     throw new RuntimeException(
                             String.format(
-                                    "Input data %s cannot be converted to Vector. It must be double[] or Double[].",
-                                    obj));
+                                    "Input data type %s cannot be converted to Vector. It must be double[] or Double[].",
+                                    obj.getClass()));
                 }
                 row.setField(i, Vectors.dense(doubles));
             }
