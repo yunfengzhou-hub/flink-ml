@@ -47,10 +47,16 @@ import java.util.Map;
 
 /**
  * A Transformer which combines a given list of input columns into a vector column. Types of input
- * columns must be either vector or numerical value.
+ * columns must be either vector or numerical types. The operator deals with null values or records
+ * with wrong sizes according to the strategy specified by the {@link HasHandleInvalid} parameter as
+ * follows:
  *
- * <p>The `keep` option of {@link HasHandleInvalid} means that we output bad rows with output column
- * set to null.
+ * <ul>
+ *   <li>The `keep` option means that if the input column data is NaN, then it keeps this value and
+ *       if data is null vector, then uses a NaN vector to replace it.
+ *   <li>The `skip` option means that it filters out rows with invalid elements.
+ *   <li>The `error` option means that it throws an error exception when meeting some invalid data.
+ * </ul>
  */
 public class VectorAssembler
         implements Transformer<VectorAssembler>, VectorAssemblerParams<VectorAssembler> {
@@ -64,6 +70,7 @@ public class VectorAssembler
     @Override
     public Table[] transform(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
+        Preconditions.checkArgument(getInputSizes().length == getInputCols().length);
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
         RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
@@ -74,64 +81,109 @@ public class VectorAssembler
         DataStream<Row> output =
                 tEnv.toDataStream(inputs[0])
                         .flatMap(
-                                new AssemblerFunc(getInputCols(), getHandleInvalid()),
+                                new AssemblerFunction(
+                                        getInputCols(), getHandleInvalid(), getInputSizes()),
                                 outputTypeInfo);
         Table outputTable = tEnv.fromDataStream(output);
         return new Table[] {outputTable};
     }
 
-    private static class AssemblerFunc implements FlatMapFunction<Row, Row> {
+    private static class AssemblerFunction implements FlatMapFunction<Row, Row> {
         private final String[] inputCols;
         private final String handleInvalid;
+        private final Integer[] inputSizes;
+        private int vectorSize = 0;
+        private final boolean keepInvalid;
 
-        public AssemblerFunc(String[] inputCols, String handleInvalid) {
+        public AssemblerFunction(String[] inputCols, String handleInvalid, Integer[] inputSizes) {
             this.inputCols = inputCols;
             this.handleInvalid = handleInvalid;
+            this.inputSizes = inputSizes;
+            keepInvalid = handleInvalid.equals(HasHandleInvalid.KEEP_INVALID);
         }
 
         @Override
         public void flatMap(Row value, Collector<Row> out) {
             int nnz = 0;
-            int vectorSize = 0;
             try {
-                for (String inputCol : inputCols) {
-                    Object object = value.getField(inputCol);
-                    Preconditions.checkNotNull(object, "Input column value should not be null.");
-                    if (object instanceof Number) {
-                        nnz += 1;
-                        vectorSize += 1;
-                    } else if (object instanceof SparseVector) {
-                        nnz += ((SparseVector) object).indices.length;
-                        vectorSize += ((SparseVector) object).size();
-                    } else if (object instanceof DenseVector) {
-                        nnz += ((DenseVector) object).size();
-                        vectorSize += ((DenseVector) object).size();
+                for (int i = 0; i < inputCols.length; ++i) {
+                    Object object = value.getField(inputCols[i]);
+                    if (object != null) {
+                        if (object instanceof Number) {
+                            if (!keepInvalid) {
+                                checkVectorAndNumberSize(inputSizes[i], 1);
+                            }
+                            vectorSize += 1;
+                            nnz += 1;
+                        } else if (object instanceof SparseVector) {
+                            int localSize = ((SparseVector) object).size();
+                            if (!keepInvalid) {
+                                checkVectorAndNumberSize(inputSizes[i], localSize);
+                            }
+                            nnz += ((SparseVector) object).indices.length;
+                            vectorSize += localSize;
+                        } else if (object instanceof DenseVector) {
+                            int localSize = ((DenseVector) object).size();
+                            if (!keepInvalid) {
+                                checkVectorAndNumberSize(inputSizes[i], localSize);
+                            }
+                            vectorSize += localSize;
+                            nnz += ((DenseVector) object).size();
+                        } else {
+                            throw new IllegalArgumentException(
+                                    "Input type has not been supported yet. Only Vector and Number types are supported.");
+                        }
                     } else {
-                        throw new IllegalArgumentException(
-                                "Input type has not been supported yet.");
+                        vectorSize += inputSizes[i];
+                        nnz += inputSizes[i];
+                    }
+                    if (object == null) {
+                        if (keepInvalid) {
+                            if (inputSizes[i] > 1) {
+                                DenseVector tmpVec = new DenseVector(inputSizes[i]);
+                                for (int j = 0; j < inputSizes[i]; ++j) {
+                                    tmpVec.values[j] = Double.NaN;
+                                }
+                                object = tmpVec;
+                            } else {
+                                object = Double.NaN;
+                            }
+                            value.setField(inputCols[i], object);
+                        } else {
+                            throw new RuntimeException(
+                                    "Input column value is null. Please check the input data or using handleInvalid = 'keep'.");
+                        }
+                    }
+                    if (object instanceof Number) {
+                        if (Double.isNaN(((Number) object).doubleValue()) && !keepInvalid) {
+                            throw new RuntimeException(
+                                    "Encountered NaN while assembling a row with handleInvalid = 'error'. Consider "
+                                            + "removing NaNs from dataset or using handleInvalid = 'keep' or 'skip'.");
+                        }
                     }
                 }
+
+                boolean toDense = nnz * RATIO > vectorSize;
+
+                Vector assembledVec =
+                        toDense
+                                ? assembleDense(inputCols, value, vectorSize)
+                                : assembleSparse(inputCols, value, vectorSize, nnz);
+                out.collect(Row.join(value, Row.of(assembledVec)));
             } catch (Exception e) {
-                switch (handleInvalid) {
-                    case ERROR_INVALID:
-                        throw e;
-                    case SKIP_INVALID:
-                        return;
-                    case KEEP_INVALID:
-                        out.collect(Row.join(value, Row.of((Object) null)));
-                        return;
-                    default:
-                        throw new UnsupportedOperationException(
-                                "Unsupported " + HANDLE_INVALID + " type: " + handleInvalid);
+                if (handleInvalid.equals(ERROR_INVALID)) {
+                    throw new RuntimeException("Vector assembler failed with exception : " + e);
                 }
             }
+        }
 
-            boolean toDense = nnz * RATIO > vectorSize;
-            Vector assembledVec =
-                    toDense
-                            ? assembleDense(inputCols, value, vectorSize)
-                            : assembleSparse(inputCols, value, vectorSize, nnz);
-            out.collect(Row.join(value, Row.of(assembledVec)));
+        private void checkVectorAndNumberSize(int expectedSize, int currentSize) {
+            if (currentSize != expectedSize) {
+                throw new IllegalArgumentException(
+                        String.format(
+                                "Input vector/number size does not meet with expected. Expected size: %d, actual size: %s.",
+                                expectedSize, currentSize));
+            }
         }
     }
 
@@ -154,7 +206,8 @@ public class VectorAssembler
         double[] values = new double[vectorSize];
         int currentOffset = 0;
 
-        for (String inputCol : inputCols) {
+        for (int e = 0; e < inputCols.length; ++e) {
+            String inputCol = inputCols[e];
             Object object = inputRow.getField(inputCol);
             if (object instanceof Number) {
                 values[currentOffset++] = ((Number) object).doubleValue();
@@ -167,8 +220,7 @@ public class VectorAssembler
 
             } else {
                 DenseVector denseVector = (DenseVector) object;
-                System.arraycopy(
-                        denseVector.values, 0, values, currentOffset, denseVector.values.length);
+                System.arraycopy(denseVector.values, 0, values, currentOffset, denseVector.size());
 
                 currentOffset += denseVector.size();
             }
@@ -185,11 +237,13 @@ public class VectorAssembler
         int currentIndex = 0;
         int currentOffset = 0;
 
-        for (String inputCol : inputCols) {
+        for (int e = 0; e < inputCols.length; ++e) {
+            String inputCol = inputCols[e];
             Object object = inputRow.getField(inputCol);
             if (object instanceof Number) {
                 indices[currentOffset] = currentIndex;
-                values[currentOffset] = ((Number) object).doubleValue();
+                Double value = ((Number) object).doubleValue();
+                values[currentOffset] = value;
                 currentOffset++;
                 currentIndex++;
             } else if (object instanceof SparseVector) {
