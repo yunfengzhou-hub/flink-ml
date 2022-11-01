@@ -46,16 +46,20 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A Transformer which combines a given list of input columns into a vector column. Types of input
- * columns must be either vector or numerical types. The operator deals with null values or records
- * with wrong sizes according to the strategy specified by the {@link HasHandleInvalid} parameter as
- * follows:
+ * A Transformer which combines a given list of input columns into a vector column. Input columns
+ * would be numerics or vectors whose size is specified by the {@link #INPUT_SIZES} parameter.
+ * Invalid input data with null values or values with wrong sizes would be dealt with according to
+ * the strategy specified by the {@link HasHandleInvalid} parameter as follows:
  *
  * <ul>
- *   <li>The `keep` option means that if the input column data is NaN, then it keeps this value and
- *       if data is null vector, then uses a NaN vector to replace it.
- *   <li>The `skip` option means that it filters out rows with invalid elements.
- *   <li>The `error` option means that it throws an error exception when meeting some invalid data.
+ *   <li>keep: If the input column data is null, a vector would be created with the specified size
+ *       and NaN values. The vector would be used in the assembling process to represent the input
+ *       column data. If the input column data is a vector, the data would be used in the assembling
+ *       process even if it has a wrong size.
+ *   <li>skip: If the input column data is null or a vector with wrong size, the input row would be
+ *       filtered out and not be sent to downstream operators.
+ *   <li>error: If the input column data is null or a vector with wrong size, an exception would be
+ *       thrown.
  * </ul>
  */
 public class VectorAssembler
@@ -110,56 +114,44 @@ public class VectorAssembler
                     Object object = value.getField(inputCols[i]);
                     if (object != null) {
                         if (object instanceof Number) {
-                            if (!keepInvalid) {
-                                checkVectorAndNumberSize(inputSizes[i], 1);
+                            if (Double.isNaN(((Number) object).doubleValue()) && !keepInvalid) {
+                                throw new RuntimeException(
+                                        "Encountered NaN while assembling a row with handleInvalid = 'error'. Consider "
+                                                + "removing NaNs from dataset or using handleInvalid = 'keep' or 'skip'.");
                             }
+                            checkVectorAndNumberSizeIfNotKeepInvalid(inputSizes[i], 1);
                             vectorSize += 1;
                             nnz += 1;
                         } else if (object instanceof SparseVector) {
                             int localSize = ((SparseVector) object).size();
-                            if (!keepInvalid) {
-                                checkVectorAndNumberSize(inputSizes[i], localSize);
-                            }
+                            checkVectorAndNumberSizeIfNotKeepInvalid(inputSizes[i], localSize);
                             nnz += ((SparseVector) object).indices.length;
                             vectorSize += localSize;
                         } else if (object instanceof DenseVector) {
                             int localSize = ((DenseVector) object).size();
-                            if (!keepInvalid) {
-                                checkVectorAndNumberSize(inputSizes[i], localSize);
-                            }
+                            checkVectorAndNumberSizeIfNotKeepInvalid(inputSizes[i], localSize);
                             vectorSize += localSize;
                             nnz += ((DenseVector) object).size();
                         } else {
                             throw new IllegalArgumentException(
                                     "Input type has not been supported yet. Only Vector and Number types are supported.");
                         }
-                    } else {
+                    } else if (keepInvalid) {
                         vectorSize += inputSizes[i];
                         nnz += inputSizes[i];
-                    }
-                    if (object == null) {
-                        if (keepInvalid) {
-                            if (inputSizes[i] > 1) {
-                                DenseVector tmpVec = new DenseVector(inputSizes[i]);
-                                for (int j = 0; j < inputSizes[i]; ++j) {
-                                    tmpVec.values[j] = Double.NaN;
-                                }
-                                object = tmpVec;
-                            } else {
-                                object = Double.NaN;
+                        if (inputSizes[i] > 1) {
+                            DenseVector tmpVec = new DenseVector(inputSizes[i]);
+                            for (int j = 0; j < inputSizes[i]; ++j) {
+                                tmpVec.values[j] = Double.NaN;
                             }
-                            value.setField(inputCols[i], object);
+                            object = tmpVec;
                         } else {
-                            throw new RuntimeException(
-                                    "Input column value is null. Please check the input data or using handleInvalid = 'keep'.");
+                            object = Double.NaN;
                         }
-                    }
-                    if (object instanceof Number) {
-                        if (Double.isNaN(((Number) object).doubleValue()) && !keepInvalid) {
-                            throw new RuntimeException(
-                                    "Encountered NaN while assembling a row with handleInvalid = 'error'. Consider "
-                                            + "removing NaNs from dataset or using handleInvalid = 'keep' or 'skip'.");
-                        }
+                        value.setField(inputCols[i], object);
+                    } else {
+                        throw new RuntimeException(
+                                "Input column value is null. Please check the input data or using handleInvalid = 'keep'.");
                     }
                 }
 
@@ -177,7 +169,10 @@ public class VectorAssembler
             }
         }
 
-        private void checkVectorAndNumberSize(int expectedSize, int currentSize) {
+        private void checkVectorAndNumberSizeIfNotKeepInvalid(int expectedSize, int currentSize) {
+            if (keepInvalid) {
+                return;
+            }
             if (currentSize != expectedSize) {
                 throw new IllegalArgumentException(
                         String.format(
@@ -206,8 +201,7 @@ public class VectorAssembler
         double[] values = new double[vectorSize];
         int currentOffset = 0;
 
-        for (int e = 0; e < inputCols.length; ++e) {
-            String inputCol = inputCols[e];
+        for (String inputCol : inputCols) {
             Object object = inputRow.getField(inputCol);
             if (object instanceof Number) {
                 values[currentOffset++] = ((Number) object).doubleValue();
@@ -237,8 +231,7 @@ public class VectorAssembler
         int currentIndex = 0;
         int currentOffset = 0;
 
-        for (int e = 0; e < inputCols.length; ++e) {
-            String inputCol = inputCols[e];
+        for (String inputCol : inputCols) {
             Object object = inputRow.getField(inputCol);
             if (object instanceof Number) {
                 indices[currentOffset] = currentIndex;
