@@ -19,21 +19,24 @@ public class BatchFailoverExample {
         isFailed = false;
 
         DataStream<Long> stream = env.fromSequence(0, 10);
-        stream = stream.map(new MyMapFunction<>("id"));
+        stream = stream.map(new MyMapFunction<>("id1", false));
+        stream = stream.map(new MyMapFunction<>("id2", true));
         stream.print();
         env.execute();
     }
 
     public static class MyMapFunction<T> implements MapFunction<T, T> {
         private final String id;
+        private final boolean shouldFail;
 
-        public MyMapFunction(String id) {
+        public MyMapFunction(String id, boolean shouldFail) {
             this.id = id;
+            this.shouldFail = shouldFail;
         }
 
         @Override
         public T map(T t) throws Exception {
-            if (t.equals(5L) && !isFailed) {
+            if (shouldFail && t.equals(5L) && !isFailed) {
                 isFailed = true;
                 System.out.println("fail");
                 throw new RuntimeException();
