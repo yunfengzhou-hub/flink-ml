@@ -260,6 +260,7 @@ public abstract class AbstractPerRoundWrapperOperator<T, S extends StreamOperato
                         metrics,
                         streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(
                                 ManagedMemoryUseCase.STATE_BACKEND,
+                                containingTask.getJobConfiguration(),
                                 containingTask
                                         .getEnvironment()
                                         .getTaskManagerInfo()
@@ -535,7 +536,7 @@ public abstract class AbstractPerRoundWrapperOperator<T, S extends StreamOperato
                         MetricOptions.LATENCY_SOURCE_GRANULARITY.key(),
                         granularity);
             }
-            MetricGroup jobMetricGroup = this.metrics.getJobMetricGroup();
+            MetricGroup jobMetricGroup = this.metrics.getIOMetricGroup();
             return new LatencyStats(
                     jobMetricGroup.addGroup("latency"),
                     historySize,

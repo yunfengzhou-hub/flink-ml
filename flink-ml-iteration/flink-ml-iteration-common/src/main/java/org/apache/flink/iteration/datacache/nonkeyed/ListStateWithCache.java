@@ -93,6 +93,7 @@ public class ListStateWithCache<T> implements ListState<T> {
         double fraction =
                 config.getManagedMemoryFractionOperatorUseCaseOfSlot(
                         ManagedMemoryUseCase.OPERATOR,
+                        runtimeContext.getJobConfiguration(),
                         runtimeContext.getTaskManagerRuntimeInfo().getConfiguration(),
                         runtimeContext.getUserCodeClassLoader());
         if (fraction > 0) {

@@ -19,6 +19,7 @@
 package org.apache.flink.iteration.proxy.state;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.runtime.asyncprocessing.AsyncExecutionController;
 import org.apache.flink.runtime.state.KeyedStateCheckpointOutputStream;
 import org.apache.flink.streaming.api.operators.InternalTimeServiceManager;
 import org.apache.flink.streaming.api.operators.InternalTimerService;
@@ -49,8 +50,25 @@ public class ProxyInternalTimeServiceManager<K> implements InternalTimeServiceMa
     }
 
     @Override
+    public <N> InternalTimerService<N> getAsyncInternalTimerService(
+            String s,
+            TypeSerializer<K> typeSerializer,
+            TypeSerializer<N> typeSerializer1,
+            Triggerable<K, N> triggerable,
+            AsyncExecutionController<K> asyncExecutionController) {
+        return wrappedManager.getAsyncInternalTimerService(
+                s, typeSerializer, typeSerializer1, triggerable, asyncExecutionController);
+    }
+
+    @Override
     public void advanceWatermark(Watermark watermark) throws Exception {
         wrappedManager.advanceWatermark(watermark);
+    }
+
+    @Override
+    public boolean tryAdvanceWatermark(
+            Watermark watermark, ShouldStopAdvancingFn shouldStopAdvancingFn) throws Exception {
+        return wrappedManager.tryAdvanceWatermark(watermark, shouldStopAdvancingFn);
     }
 
     @Override

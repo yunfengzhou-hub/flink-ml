@@ -18,6 +18,7 @@
 
 package org.apache.flink.iteration.proxy.state;
 
+import org.apache.flink.runtime.state.AsyncKeyedStateBackend;
 import org.apache.flink.runtime.state.CheckpointableKeyedStateBackend;
 import org.apache.flink.runtime.state.KeyGroupStatePartitionStreamProvider;
 import org.apache.flink.runtime.state.OperatorStateBackend;
@@ -75,6 +76,11 @@ public class ProxyStreamOperatorStateContext implements StreamOperatorStateConte
         return wrapped.keyedStateBackend() == null
                 ? null
                 : new ProxyKeyedStateBackend<>(wrapped.keyedStateBackend(), stateNamePrefix);
+    }
+
+    @Override
+    public AsyncKeyedStateBackend asyncKeyedStateBackend() {
+        return wrapped.asyncKeyedStateBackend();
     }
 
     @Override

@@ -48,7 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static org.apache.flink.shaded.guava30.com.google.common.hash.Hashing.murmur3_32;
+import static org.apache.flink.shaded.guava31.com.google.common.hash.Hashing.murmur3_32;
 
 /**
  * A Transformer that transforms a set of categorical or numerical features into a sparse vector of
@@ -68,7 +68,7 @@ import static org.apache.flink.shaded.guava30.com.google.common.hash.Hashing.mur
 public class FeatureHasher
         implements Transformer<FeatureHasher>, FeatureHasherParams<FeatureHasher> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
-    private static final org.apache.flink.shaded.guava30.com.google.common.hash.HashFunction HASH =
+    private static final org.apache.flink.shaded.guava31.com.google.common.hash.HashFunction HASH =
             murmur3_32(0);
 
     public FeatureHasher() {

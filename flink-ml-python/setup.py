@@ -23,7 +23,7 @@ from shutil import copytree, rmtree
 
 from setuptools import setup
 
-if sys.version_info < (3, 7) or sys.version_info >= (3, 9):
+if sys.version_info < (3, 7) or sys.version_info >= (3, 10):
     print("Only Python versions between 3.7 and 3.8 (inclusive) are supported for Flink ML. "
           "The current Python version is %s." % python_version(), file=sys.stderr)
     sys.exit(-1)
@@ -119,8 +119,8 @@ try:
         author='Apache Software Foundation',
         author_email='dev@flink.apache.org',
         python_requires='>=3.7',
-        install_requires=['apache-flink==1.17.1', 'jsonpickle==2.0.0', 'cloudpickle==2.2.0',
-                          'pandas>=1.3.0,<1.4.0', 'numpy>=1.21.4,<1.22.0'],
+        install_requires=['apache-flink==1.20.0', 'jsonpickle==2.0.0', 'cloudpickle==2.2.0',
+                          'pandas>=1.3.0,<1.4.0', 'numpy>=1.21.4,<1.23.0'],
         tests_require=['pytest==4.4.1'],
         description='Apache Flink ML Python API',
         long_description=long_description,

@@ -43,7 +43,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.apache.flink.shaded.guava30.com.google.common.hash.Hashing.murmur3_32;
+import static org.apache.flink.shaded.guava31.com.google.common.hash.Hashing.murmur3_32;
 
 /**
  * A Transformer that maps a sequence of terms(strings, numbers, booleans) to a sparse vector with a
@@ -58,7 +58,7 @@ import static org.apache.flink.shaded.guava30.com.google.common.hash.Hashing.mur
 public class HashingTF implements Transformer<HashingTF>, HashingTFParams<HashingTF> {
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
 
-    private static final org.apache.flink.shaded.guava30.com.google.common.hash.HashFunction
+    private static final org.apache.flink.shaded.guava31.com.google.common.hash.HashFunction
             HASH_FUNC = murmur3_32(0);
 
     public HashingTF() {

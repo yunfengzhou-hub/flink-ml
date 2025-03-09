@@ -591,6 +591,15 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
         }
 
         @Override
+        public void execute(
+                MailOptions mailOptions,
+                ThrowingRunnable<? extends Exception> throwingRunnable,
+                String s,
+                Object... objects) {
+            mailboxExecutor.execute(mailOptions, throwingRunnable, s, objects);
+        }
+
+        @Override
         public void yield() throws InterruptedException, FlinkRuntimeException {
             mailboxExecutor.yield();
         }
@@ -598,6 +607,11 @@ public class HeadOperator extends AbstractStreamOperator<IterationRecord<?>>
         @Override
         public boolean tryYield() throws FlinkRuntimeException {
             return mailboxExecutor.tryYield();
+        }
+
+        @Override
+        public boolean shouldInterrupt() {
+            return mailboxExecutor.shouldInterrupt();
         }
 
         /**

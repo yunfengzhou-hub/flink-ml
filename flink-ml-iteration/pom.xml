@@ -40,7 +40,7 @@ under the License.
         <module>flink-ml-iteration-common</module>
         <module>flink-ml-iteration-1.15</module>
         <module>flink-ml-iteration-1.16</module>
-        <module>flink-ml-iteration-1.17</module>
+        <module>flink-ml-iteration-1.20</module>
     </modules>
 
 </project>

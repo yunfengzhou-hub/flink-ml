@@ -93,6 +93,7 @@ public class OperatorUtils {
                         .getConfiguration()
                         .getManagedMemoryFractionOperatorUseCaseOfSlot(
                                 ManagedMemoryUseCase.OPERATOR,
+                                operator.getRuntimeContext().getJobConfiguration(),
                                 operator.getRuntimeContext()
                                         .getTaskManagerRuntimeInfo()
                                         .getConfiguration(),

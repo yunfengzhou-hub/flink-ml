@@ -496,6 +496,7 @@ public abstract class AbstractBroadcastWrapperOperator<T, S extends StreamOperat
                         metrics,
                         streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(
                                 ManagedMemoryUseCase.STATE_BACKEND,
+                                containingTask.getJobConfiguration(),
                                 containingTask
                                         .getEnvironment()
                                         .getTaskManagerInfo()

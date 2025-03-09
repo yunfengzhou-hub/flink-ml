@@ -116,6 +116,7 @@ public class CoGroupOperator<IN1, IN2, KEY extends Serializable, OUT>
         double managedMemoryFraction =
                 config.getManagedMemoryFractionOperatorUseCaseOfSlot(
                                 ManagedMemoryUseCase.OPERATOR,
+                                containingTask.getJobConfiguration(),
                                 containingTask.getEnvironment().getTaskConfiguration(),
                                 userCodeClassLoader)
                         / 2;

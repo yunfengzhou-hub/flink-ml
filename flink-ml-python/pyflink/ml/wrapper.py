@@ -39,17 +39,20 @@ _from_java_type_alias = _from_java_type
 
 def _from_java_type_wrapper(j_type_info: JavaObject) -> TypeInformation:
     gateway = get_gateway()
-    JGenericTypeInfo = gateway.jvm.org.apache.flink.api.java.typeutils.GenericTypeInfo
-    if _is_instance_of(j_type_info, JGenericTypeInfo):
-        JClass = j_type_info.getTypeClass()
-        if JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.DenseVector):
-            return DenseVectorTypeInfo()
-        elif JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.SparseVector):
-            return SparseVectorTypeInfo()
-        elif JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.DenseMatrix):
-            return DenseMatrixTypeInfo()
-        elif JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.Vector):
-            return VectorTypeInfo()
+    # JGenericTypeInfo = gateway.jvm.org.apache.flink.api.common.typeinfo.TypeInformation
+    # if _is_instance_of(j_type_info, JGenericTypeInfo):
+    JClass = j_type_info.getTypeClass()
+    if JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.DenseVector):
+        return DenseVectorTypeInfo()
+    elif JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.SparseVector):
+        return SparseVectorTypeInfo()
+    elif JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.DenseMatrix):
+        return DenseMatrixTypeInfo()
+    elif JClass == get_java_class(gateway.jvm.org.apache.flink.ml.linalg.Vector):
+        return VectorTypeInfo()
+        # else:
+        #     raise TypeError("Unsupported type: " + str(j_type_info))
+    print("_from_java_type_wrapper type: " + str(j_type_info))
     return _from_java_type_alias(j_type_info)
 
 
